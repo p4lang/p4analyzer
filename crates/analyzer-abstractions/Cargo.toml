@@ -1,0 +1,10 @@
+[package]
+name = "analyzer-abstractions"
+description = "Provides the base types and utilities for P4 Analyzer services."
+version = "0.0.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+lsp-types = "0.93.1"

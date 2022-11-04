@@ -1,0 +1,13 @@
+[package]
+name = "analyzer-host"
+description = "Provides types and utilities for hosting P4 Analyzer services."
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+analyzer-abstractions = { path = "../analyzer-abstractions" }
+thiserror = "1.0.37"
+cancellation = "0.1.0"
+async-channel = "1.7.1"
+serde = "1.0.143"
+serde_json = "1.0.83"
