@@ -1,11 +1,11 @@
-pub mod json_rpc;
 mod fsm;
+pub mod json_rpc;
 
-use cancellation::{CancellationToken, OperationCanceled};
 use analyzer_abstractions::LoggerImpl;
-use async_channel::{Sender, Receiver};
-use json_rpc::message::Message;
+use async_channel::{Receiver, Sender};
+use cancellation::{CancellationToken, OperationCanceled};
 use fsm::ProtocolMachine;
+use json_rpc::message::Message;
 
 /// A tuple type that represents both a sender and a receiver of [`Message`] instances.
 pub type MessageChannel = (Sender<Message>, Receiver<Message>);
@@ -16,7 +16,7 @@ pub struct AnalyzerHost<'host> {
 	receiver: Receiver<Message>,
 
 	/// A logger that the `AnalyzerHost` will use to output log messages.
-	logger: &'host LoggerImpl
+	logger: &'host LoggerImpl,
 }
 
 impl<'host> AnalyzerHost<'host> {
@@ -28,7 +28,7 @@ impl<'host> AnalyzerHost<'host> {
 		AnalyzerHost {
 			sender,
 			receiver,
-			logger
+			logger,
 		}
 	}
 
@@ -42,7 +42,9 @@ impl<'host> AnalyzerHost<'host> {
 		while protocol_machine.is_active() && !cancel_token.is_canceled() {
 			let request_message = self.receiver.recv().await;
 
-			if cancel_token.is_canceled() { break; }
+			if cancel_token.is_canceled() {
+				break;
+			}
 
 			match request_message {
 				Ok(message) => {
@@ -53,16 +55,20 @@ impl<'host> AnalyzerHost<'host> {
 							if let Some(Message::Response(_)) = &message {
 								self.sender.send(message.unwrap()).await.unwrap();
 							}
-						},
+						}
 						Err(err) => {
 							self.logger.log_error(&err.to_string());
 						}
 					}
 				}
-				Err(_) => continue
+				Err(_) => continue,
 			}
 		}
 
-		if protocol_machine.is_active() { Err(OperationCanceled) } else { Ok(()) }
+		if protocol_machine.is_active() {
+			Err(OperationCanceled)
+		} else {
+			Ok(())
+		}
 	}
 }

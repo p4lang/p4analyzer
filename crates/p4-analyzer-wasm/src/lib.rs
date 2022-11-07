@@ -1,13 +1,10 @@
-use analyzer_abstractions::{Logger, lsp_types::request};
-use analyzer_host::{
-	AnalyzerHost, MessageChannel,
-	json_rpc::message::*
-};
+use analyzer_abstractions::{lsp_types::request, Logger};
+use analyzer_host::{json_rpc::message::*, AnalyzerHost, MessageChannel};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 #[wasm_bindgen]
-extern {
+extern "C" {
 	#[wasm_bindgen(js_namespace = console)]
 	fn log(s: &str);
 }
@@ -37,14 +34,14 @@ async fn try_run() {
 	// }
 }
 
-struct ConsoleLogger { }
+struct ConsoleLogger {}
 
 impl Logger for ConsoleLogger {
-    fn log_message(&self, msg: &str) {
-			log(msg);
-    }
+	fn log_message(&self, msg: &str) {
+		log(msg);
+	}
 
-    fn log_error(&self, msg: &str) {
-      log(msg);
-    }
+	fn log_error(&self, msg: &str) {
+		log(msg);
+	}
 }
