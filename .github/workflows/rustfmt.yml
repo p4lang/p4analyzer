@@ -6,6 +6,7 @@ on:
 
 jobs:
   format:
+		name: Format Rust Sources
     runs-on: ubuntu-latest
     steps:
 			- uses: actions/checkout@v3
@@ -15,7 +16,7 @@ jobs:
 					toolchain: stable
 					components: rustfmt
 					override: true
-			- name: Format Rust Sources
+			- name: Run 'rustfmt-check'
 				uses: ./.github/actions/mbrobbel/rustfmt-check
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
