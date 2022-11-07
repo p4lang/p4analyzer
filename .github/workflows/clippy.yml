@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
+      - uses: ./.github/actions/actions-rs/toolchain
         with:
             toolchain: nightly
             components: clippy

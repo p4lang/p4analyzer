@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: ./.github/actions/actions-rs/toolchain
         with:
           toolchain: stable
       - name: Run cargo bloat
