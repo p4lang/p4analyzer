@@ -5,18 +5,18 @@ on:
     branches: [ $default-branch ]
 
 jobs:
-  format:
-		name: Format Rust Sources
+  format_rust_sources:
+    name: Format Rust Sources
     runs-on: ubuntu-latest
     steps:
-			- uses: actions/checkout@v3
-			- name: Install Rust
-				uses: ./.github/actions/actions-rs/toolchain
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        uses: ./.github/actions/actions-rs/toolchain
         with:
-					toolchain: stable
-					components: rustfmt
-					override: true
-			- name: Run 'rustfmt-check'
-				uses: ./.github/actions/mbrobbel/rustfmt-check
+          toolchain: stable
+          components: rustfmt
+          override: true
+      - name: Run 'rustfmt-check'
+        uses: ./.github/actions/mbrobbel/rustfmt-check
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
