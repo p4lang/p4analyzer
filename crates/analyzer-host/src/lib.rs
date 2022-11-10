@@ -10,7 +10,7 @@ use fsm::ProtocolMachine;
 /// A tuple type that represents both a sender and a receiver of [`Message`] instances.
 pub type MessageChannel = (Sender<Message>, Receiver<Message>);
 
-/// Provides a runtime environment for the P4 Analyzer, utilizing services that are provided by the host.
+/// Provides a runtime environment for the P4 Analyzer, utilizing services that are provided by the host process.
 pub struct AnalyzerHost<'host> {
 	sender: Sender<Message>,
 	receiver: Receiver<Message>,

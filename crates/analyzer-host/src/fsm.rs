@@ -39,7 +39,7 @@ pub enum ProtocolError {
 /// A state machine that models the Language Server Protocol (LSP). In the specification, a LSP server has a lifecycle
 /// that is managed fully by the client. [`ProtocolMachine`] ensures that the server responds accordingly by
 /// transitioning itself through states based on the requests received, and then processed on behalf of the client. If
-/// the server is in an invalid state for a given request, then the client will receive an apprpriate error response.
+/// the server is in an invalid state for a given request, then the client will receive an appropriate error response.
 #[derive(Copy, Clone)]
 pub(crate) struct ProtocolMachine<'machine> {
   /// A logger that the [`ProtocolMachine`] will use to output log messages.
