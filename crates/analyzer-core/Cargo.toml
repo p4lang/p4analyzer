@@ -1,0 +1,15 @@
+[package]
+name = "analyzer-core"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+lazy_static = "1.4.0"
+logos = "0.12.1"
+regex = "1.7.0"
+salsa = { git = "https://github.com/salsa-rs/salsa", package = "salsa-2022" }
+
+[dev-dependencies]
+pretty_assertions = "1.3.0"
