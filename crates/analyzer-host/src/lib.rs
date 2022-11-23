@@ -1,11 +1,12 @@
-pub mod json_rpc;
 mod fsm;
+pub mod json_rpc;
+pub mod tracing;
 
+use analyzer_abstractions::{tracing::*, LoggerImpl};
+use async_channel::{Receiver, Sender};
 use cancellation::{CancellationToken, OperationCanceled};
-use analyzer_abstractions::LoggerImpl;
-use async_channel::{Sender, Receiver};
-use json_rpc::message::Message;
 use fsm::ProtocolMachine;
+use json_rpc::message::Message;
 
 /// A tuple type that represents both a sender and a receiver of [`Message`] instances.
 pub type MessageChannel = (Sender<Message>, Receiver<Message>);
@@ -16,7 +17,7 @@ pub struct AnalyzerHost<'host> {
 	receiver: Receiver<Message>,
 
 	/// A logger that the `AnalyzerHost` will use to output log messages.
-	logger: &'host LoggerImpl
+	logger: &'host LoggerImpl,
 }
 
 impl<'host> AnalyzerHost<'host> {
@@ -28,7 +29,7 @@ impl<'host> AnalyzerHost<'host> {
 		AnalyzerHost {
 			sender,
 			receiver,
-			logger
+			logger,
 		}
 	}
 
@@ -37,32 +38,49 @@ impl<'host> AnalyzerHost<'host> {
 	/// Once started, request messages will be received through the message channel, forwarded for processing to the internal
 	/// state machine, with response messages sent back through the message channel for the client to process.
 	pub async fn start(&self, cancel_token: &CancellationToken) -> Result<(), OperationCanceled> {
+		info!(lsp_event = true, "AnalyzerHost is starting.");
+
 		let mut protocol_machine = ProtocolMachine::new(self.logger);
 
 		while protocol_machine.is_active() && !cancel_token.is_canceled() {
 			let request_message = self.receiver.recv().await;
 
-			if cancel_token.is_canceled() { break; }
+			if cancel_token.is_canceled() {
+				break;
+			}
 
 			match request_message {
 				Ok(message) => {
-					let response_message = protocol_machine.process_request(message).await;
+					let request_message_span =
+						info_span!("[Request Message]", message = format!("{}", message));
 
-					match response_message {
-						Ok(message) => {
-							if let Some(Message::Response(_)) = &message {
-								self.sender.send(message.unwrap()).await.unwrap();
+					async {
+						let response_message = protocol_machine.process_message(message).await;
+
+						match response_message {
+							Ok(message) => {
+								if let Some(Message::Response(_)) = &message {
+									self.sender.send(message.unwrap()).await.unwrap();
+								}
 							}
-						},
-						Err(err) => {
-							self.logger.log_error(&err.to_string());
+							Err(err) => {
+								error!("Protocol Error: {}", &err.to_string());
+							}
 						}
 					}
+					.instrument(request_message_span)
+					.await;
 				}
-				Err(_) => continue
+				Err(_) => continue,
 			}
 		}
 
-		if protocol_machine.is_active() { Err(OperationCanceled) } else { Ok(()) }
+		info!(lsp_event = true, "AnalyzerHost is stopping.");
+
+		if protocol_machine.is_active() {
+			return Err(OperationCanceled);
+		}
+
+		Ok(())
 	}
 }

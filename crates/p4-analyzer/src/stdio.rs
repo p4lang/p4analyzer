@@ -1,17 +1,12 @@
-use std::{
-	io::{stdin, stdout}
-};
-use analyzer_host::{
-	json_rpc::{message::Message},
-	MessageChannel
-};
+use analyzer_host::{json_rpc::message::Message, MessageChannel};
 use cancellation::{CancellationToken, OperationCanceled};
+use std::io::{stdin, stdout};
 
 /// Connects the `stdin` and `stdout` of the process to appropriate [`MessageChannel`] instances, and executes a sender and
 /// reader thread to marshal [`Message`] instances between them.
 pub(crate) struct ConsoleDriver {
 	stdin_channel: MessageChannel,
-	stdout_channel: MessageChannel
+	stdout_channel: MessageChannel,
 }
 
 impl ConsoleDriver {
@@ -19,7 +14,7 @@ impl ConsoleDriver {
 	pub fn new() -> Self {
 		ConsoleDriver {
 			stdin_channel: async_channel::unbounded::<Message>(),
-			stdout_channel: async_channel::unbounded::<Message>()
+			stdout_channel: async_channel::unbounded::<Message>(),
 		}
 	}
 
@@ -74,8 +69,13 @@ impl ConsoleDriver {
 			},
 			|| {
 				receiver_task.join().unwrap();
-			});
+			},
+		);
 
-		if cancel_token.is_canceled() { Err(OperationCanceled) } else { Ok(()) }
+		if cancel_token.is_canceled() {
+			return Err(OperationCanceled);
+		}
+
+		Ok(())
 	}
 }
