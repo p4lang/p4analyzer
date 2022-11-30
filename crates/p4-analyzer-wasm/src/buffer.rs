@@ -23,11 +23,11 @@ pub(crate) fn to_u8_vec(buffer: &ArrayBuffer) -> Vec<u8> {
 	Uint8Array::new(buffer).to_vec()
 }
 
-/// Converts a vector of `u8` into a new Buffer.
-pub(crate) fn to_buffer(vec: &Vec<u8>) -> Buffer {
-	let array_buffer = Uint8Array::new_with_length(vec.len() as u32);
+/// Converts a `u8` slice into a new Buffer.
+pub(crate) fn to_buffer(src: &[u8]) -> Buffer {
+	let array_buffer = Uint8Array::new_with_length(src.len() as u32);
 
-	array_buffer.copy_from(vec);
+	array_buffer.copy_from(src);
 
 	Buffer::from(array_buffer)
 }

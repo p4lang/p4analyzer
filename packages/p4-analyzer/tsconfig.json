@@ -1,0 +1,17 @@
+{
+	"compilerOptions": {
+		"rootDir": "src",
+		"outDir": "lib",
+		"declaration": true,
+		"declarationDir": "typings",
+		"target": "ES2021",
+		"lib": [
+			"ES2021"
+		],
+		"module": "CommonJS"
+	},
+	"include": [
+		"src/**/*",
+		"p4_analyzer_wasm.d.ts"
+	]
+}

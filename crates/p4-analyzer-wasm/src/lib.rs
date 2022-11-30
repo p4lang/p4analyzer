@@ -1,6 +1,8 @@
 mod buffer;
 
-use analyzer_abstractions::{tracing::subscriber, Logger, lsp_types::request};
+extern crate console_error_panic_hook;
+
+use analyzer_abstractions::{tracing::subscriber, Logger};
 use analyzer_host::{
 	json_rpc::message::*,
 	tracing::{
@@ -9,15 +11,15 @@ use analyzer_host::{
 	},
 	AnalyzerHost, MessageChannel,
 };
-use buffer::{Buffer, to_buffer, to_u8_vec};
-use cancellation::{CancellationToken, CancellationTokenSource, OperationCanceled};
-use futures::future::{join, join_all};
-use js_sys::{Error, Promise};
+use buffer::{to_buffer, to_u8_vec, Buffer};
+use cancellation::{CancellationTokenSource, OperationCanceled};
+use futures::future::join;
+use js_sys::Error;
+use std::panic;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub struct LspServer {
-	input_buffer: Vec<u8>,
 	on_receive_cb: js_sys::Function,
 	request_channel: MessageChannel,
 	response_channel: MessageChannel,
@@ -29,8 +31,9 @@ impl LspServer {
 	/// Initializes a new [`LspServer`] instance.
 	#[wasm_bindgen(constructor)]
 	pub fn new(on_receive_cb: js_sys::Function) -> Self {
+		console_error_panic_hook::set_once();
+
 		Self {
-			input_buffer: Vec::<u8>::new(),
 			on_receive_cb,
 			request_channel: async_channel::unbounded::<Message>(),
 			response_channel: async_channel::unbounded::<Message>(),
@@ -47,7 +50,7 @@ impl LspServer {
 			.expect("Unable to set global tracing subscriber.");
 
 		match join(host.start(&self.cts), self.on_receive()).await {
-			(Ok(_), Ok(_)) => Ok(JsValue::undefined()),
+			(Ok(_), Ok(_)) => Ok(JsValue::UNDEFINED),
 			_ => Err(JsValue::from(Error::new("The server was stopped."))),
 		}
 	}
@@ -55,20 +58,21 @@ impl LspServer {
 	/// Updates the underlying input buffer and attempts to read a [`Message`] from it. If a [`Message`] could be read
 	/// from the input buffer then it is sent to the underlying request channel for processing by the [`AnalyzerHost`].
 	#[wasm_bindgen(js_name = "sendRequestBuffer")]
-	pub async fn send_request_buffer(&mut self, request_buffer: Buffer) -> Result<JsValue, JsValue> {
-		self.input_buffer.append(&mut to_u8_vec(&request_buffer.buffer()));
+	pub async fn send_request_buffer(&self, request_buffer: Buffer) -> Result<Buffer, JsValue> {
+		let mut message_buffer = &to_u8_vec(&request_buffer.buffer())[..];
 
-		let mut input_buffer_slice = &self.input_buffer[..];
+		match Message::read(&mut message_buffer) {
+			Ok(Some(message)) => {
+				let (sender, _) = self.request_channel.clone();
 
-		if let Ok(Some(message)) = Message::read(&mut input_buffer_slice) {
-			let (sender, _) = self.request_channel.clone();
+				if sender.send(message).await.is_err() {
+					return Err(JsValue::from(Error::new("Unexpected error writing request message to request channel.")));
+				}
 
-			if sender.send(message).await.is_err() {
-				return Err(JsValue::from(Error::new("Unexpected error writing request message to request channel.")));
+				Ok(to_buffer(message_buffer)) // Return a buffer over the modified `message_buffer`.
 			}
+			_ => Ok(request_buffer), // Return the unmodified `request_buffer`.
 		}
-
-		Ok(JsValue::undefined())
 	}
 
 	/// Stops the LSP server by cancelling all of its underlying operations.
@@ -85,13 +89,14 @@ impl LspServer {
 	/// then invokes the receiver callback provided by the JavaScript host.
 	async fn on_receive(&self) -> Result<(), OperationCanceled> {
 		let (_, receiver) = self.response_channel.clone();
-		let this = JsValue::null();
 
 		while let Ok(message) = receiver.recv().await {
 			let mut buffer = Vec::<u8>::new();
 
 			message.write(&mut buffer).unwrap();
-			self.on_receive_cb.call1(&this, &to_buffer(&buffer)).unwrap();
+			self.on_receive_cb
+				.call1(&JsValue::NULL, &to_buffer(&buffer))
+				.unwrap();
 		}
 
 		Ok(())

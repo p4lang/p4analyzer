@@ -1,6 +1,6 @@
 [package]
 name = "p4-analyzer"
-description = "The P4 Analyzer Command Line Interface (CLI)."
+description = "A LSP compliant P4 analyzer."
 version = "0.0.0"
 edition = "2021"
 

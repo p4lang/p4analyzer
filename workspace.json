@@ -1,0 +1,6 @@
+{
+	"version": 2,
+	"projects": {
+		"p4-analyzer": "packages/p4-analyzer"
+	}
+}

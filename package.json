@@ -1,0 +1,21 @@
+{
+	"name": "p4-analyzer-sources",
+	"description": "Package sources for the P4 Analyzer.",
+	"private": true,
+	"scripts": {
+		"prebuild": "cargo build && wasm-pack build --target nodejs crates/p4-analyzer-wasm",
+		"build": "nx run-many --target=build --all"
+	},
+	"workspaces": {
+		"packages": [
+			"./packages/*"
+		]
+	},
+	"dependencies": {},
+	"devDependencies": {
+		"typescript": "^4",
+		"@nrwl/cli": "~15.2",
+		"@nrwl/workspace": "~15.2",
+		"@types/node": "^16"
+	}
+}
