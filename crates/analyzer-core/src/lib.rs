@@ -1,30 +1,16 @@
 use std::sync::{Arc, Mutex};
 
 use lazy_static::lazy_static;
-use logos::Logos;
+use logos::{Logos, Span};
 use regex::Regex;
-use salsa::DebugWithDb;
 
 #[derive(Default)]
 #[salsa::db(crate::Jar)]
 pub(crate) struct Database {
 	storage: salsa::Storage<Self>,
-	logs: Option<Arc<Mutex<Vec<String>>>>,
 }
 
-impl salsa::Database for Database {
-	fn salsa_event(&self, event: salsa::Event) {
-		// Log interesting events, if logging is enabled
-		if let Some(logs) = &self.logs {
-			// don't log boring events
-			if let salsa::EventKind::WillExecute { .. } = event.kind {
-				logs.lock()
-					.unwrap()
-					.push(format!("Event: {:?}", event.debug(self)));
-			}
-		}
-	}
-}
+impl salsa::Database for Database {}
 
 #[salsa::jar(db = Db)]
 pub struct Jar(
@@ -48,7 +34,7 @@ pub struct Buffer {
 #[salsa::tracked]
 pub struct LexedBuffer {
 	#[return_ref]
-	pub lexemes: Vec<Token>,
+	pub lexemes: Vec<(Token, Span)>,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
@@ -59,10 +45,23 @@ pub struct Literal {
 	value: i64,
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+pub enum PreprocessorQuotationStyle {
+	AngleBrackets,
+	DoubleQuotes,
+}
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub enum PreprocessorDirective {
-	Include,
-	Other(String),
+	Include(PreprocessorQuotationStyle, String),
+	If,
+	ElseIf,
+	Else,
+	EndIf,
+	Define,
+	Undef,
+	Pragma,
+	Other(String, String),
 }
 
 #[derive(Logos, PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
@@ -154,7 +153,7 @@ pub enum Token {
 	#[token("(")]
 	OpenParen,
 
-	#[regex(r"#\s*\w.*", read_directive)]
+	#[regex(r"#\s*\w+", read_directive)]
 	PreprocessorDirective(PreprocessorDirective),
 
 	#[token(";")]
@@ -196,11 +195,47 @@ fn read_directive(lex: &mut logos::Lexer<Token>) -> Option<PreprocessorDirective
 	}
 
 	let directive = match caps.get(1)?.as_str() {
-		"include" => PreprocessorDirective::Include, // TODO: needs the path
-		_ => PreprocessorDirective::Other(buf),
+		"include" => {
+			// TODO: needs the path
+			let (quotation_style, path) = parse_include(buf)?;
+			PreprocessorDirective::Include(quotation_style, path)
+		}
+		"if" => PreprocessorDirective::If,
+		"elif" => PreprocessorDirective::ElseIf,
+		"else" => PreprocessorDirective::Else,
+		"endif" => PreprocessorDirective::EndIf,
+		"define" => PreprocessorDirective::Define,
+		"undef" => PreprocessorDirective::Undef,
+		"pragma" => PreprocessorDirective::Pragma,
+		directive => PreprocessorDirective::Other(directive.to_string(), buf),
 	};
 
 	Some(directive)
+}
+
+fn parse_include(buf: String) -> Option<(PreprocessorQuotationStyle, String)> {
+	use PreprocessorQuotationStyle::*;
+
+	let mut iter = buf.chars().skip_while(|ch| ch.is_ascii_whitespace());
+	let quotation_style = match iter.next() {
+		Some('<') => Some(AngleBrackets),
+		Some('"') => Some(DoubleQuotes),
+		_ => None,
+	}?;
+
+	let mut buf = String::new();
+	loop {
+		let ch = iter.next();
+		// TODO: escapes?
+		match (quotation_style, ch) {
+			(AngleBrackets, Some('>')) => break,
+			(DoubleQuotes, Some('"')) => break,
+			(_, Some(ch)) => buf.push(ch),
+			(_, None) => return None,
+		};
+	}
+
+	Some((quotation_style, buf))
 }
 
 // TODO: report nice errors
@@ -291,179 +326,8 @@ fn lex(db: &dyn crate::Db, buf: Buffer) -> LexedBuffer {
 	let contents = buf.contents(db);
 	let lexer = Token::lexer(contents);
 	// TODO: we should extract the slices or at least spans as well
-	LexedBuffer::new(db, lexer.collect())
+	LexedBuffer::new(db, lexer.spanned().collect())
 }
 
 #[cfg(test)]
-mod tests {
-	use super::*;
-	use pretty_assertions::{assert_eq, assert_ne};
-
-	fn lex_str(s: &str) -> Vec<Token> {
-		let db = Database::default();
-		let buf = Buffer::new(&db, s.to_string());
-		let lexed = lex(&db, buf);
-		lexed.lexemes(&db).clone()
-	}
-
-	#[test]
-	fn it_works() {
-		use Token::Identifier;
-		assert_eq!(lex_str("hello"), vec![Identifier]);
-	}
-
-	#[test]
-	fn int_literals() {
-		use Token::{Integer, Whitespace};
-		assert_eq!(
-			lex_str(
-				r##"
-				123
-				10s5
-				2w11
-				0xff
-			"##
-			),
-			vec![
-				Whitespace,
-				Integer(Literal {
-					base: 10,
-					signed: false,
-					width: None,
-					value: 123
-				}),
-				Whitespace,
-				Integer(Literal {
-					base: 10,
-					signed: true,
-					width: Some(10),
-					value: 5
-				}),
-				Whitespace,
-				Integer(Literal {
-					base: 10,
-					signed: false,
-					width: Some(2),
-					value: 11
-				}),
-				Whitespace,
-				Integer(Literal {
-					base: 16,
-					signed: false,
-					width: None,
-					value: 255
-				}),
-				Whitespace,
-			]
-		);
-	}
-
-	#[test]
-	fn real_p4() {
-		use self::PreprocessorDirective::*;
-		use Token::*;
-
-		assert_eq!(
-			lex_str(
-				r##"
-			// Include P4 core library
-			# include <core.p4>
-
-			// Include very simple switch architecture declarations
-			# include "very_simple_switch_model.p4"
-			# foo something
-
-			// This program processes packets comprising an Ethernet and an IPv4
-			// header, and it forwards packets using the destination IP address
-
-			typedef bit<48>  EthernetAddress;
-			typedef bit<32>  IPv4Address;
-
-			// Standard Ethernet header
-			header Ethernet_h {
-				EthernetAddress dstAddr;
-				EthernetAddress srcAddr;
-				bit<16>         etherType;
-			}
-			"##
-			), vec![
-				Whitespace,
-				Comment,
-				Whitespace,
-				PreprocessorDirective(Include),
-				Whitespace,
-				Comment,
-				Whitespace,
-				PreprocessorDirective(Include),
-				Whitespace,
-				Comment,
-				Whitespace,
-				Comment,
-				Whitespace,
-				KwTypedef,
-				Whitespace,
-				Identifier,
-				OpenChevron,
-				Integer(Literal {
-					base: 10,
-					signed: false,
-					width: None,
-					value: 48
-				}),
-				CloseChevron,
-				Whitespace,
-				Identifier,
-				Semicolon,
-				Whitespace,
-				KwTypedef,
-				Whitespace,
-				Identifier,
-				OpenChevron,
-				Integer(Literal {
-					base: 10,
-					signed: false,
-					width: None,
-					value: 32
-				}),
-				CloseChevron,
-				Whitespace,
-				Identifier,
-				Semicolon,
-				Whitespace,
-				Comment,
-				Whitespace,
-				KwHeader,
-				Whitespace,
-				Identifier,
-				Whitespace,
-				OpenBrace,
-				Whitespace,
-				Identifier,
-				Whitespace,
-				Identifier,
-				Semicolon,
-				Whitespace,
-				Identifier,
-				Whitespace,
-				Identifier,
-				Semicolon,
-				Whitespace,
-				Identifier,
-				OpenChevron,
-				Integer(Literal {
-					base: 10,
-					signed: false,
-					width: None,
-					value: 16
-				}),
-				CloseChevron,
-				Whitespace,
-				Identifier,
-				Semicolon,
-				Whitespace,
-				CloseBrace,
-				Whitespace,
-			]
-		);
-	}
-}
+mod tests;
