@@ -11,8 +11,8 @@
 		"p4analyzer": "./bin/p4analyzer.js"
 	},
 	"exports": {
-		".": "./index.js",
-		"./server": "./server/index.js"
+		".": "./lib/index.js",
+		"./server": "./lib/server/index.js"
 	},
 	"typesVersions": {
 		"*": {

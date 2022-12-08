@@ -3,21 +3,25 @@
  */
 
 /**
- * A callback for receiving `Buffer` instances that contain LSP response data.
+ * A callback for receiving the `Buffer` instances that contain LSP response data.
+ *
+ * @internal
  */
-export type OnReceiveResponseBufferCallback = (data: Buffer) => void;
+export type OnResponseCallback = (data: Buffer) => void;
 
 /**
  * The P4 Language Server Protocol (LSP) server.
+ *
+ * @internal
  */
 export declare class LspServer {
 	/**
 	 * Initializes a new {@link LspServer}.
-	 *k
-	 * @param onReceiveResponseCallback An {@link OnReceiveResponseBufferCallback} function that will receive the
-	 * buffers of data representing responses.
+	 *
+	 * @param onResponse An {@link OnResponseCallback} function that will receive buffers
+	 * of data that represent LSP response messages.
 	 */
-	constructor(onReceiveResponseCallback: OnReceiveResponseBufferCallback);
+	constructor(onResponse: OnResponseCallback);
 
 	/**
 	 * Starts the {@link LspServer}.
@@ -25,22 +29,16 @@ export declare class LspServer {
 	start(): Promise<void>;
 
 	/**
-	 * Sends a buffer containing data representing LSP request data to the {@link LspServer}.
+	 * Sends a buffer containing data representing a LSP request message to the {@link LspServer}.
 	 *
-	 * @param requestBuffer The `Buffer` that contains the request data.
-	 * @returns A `Promise` that yields a `Buffer`.
+	 * @param requestBuffer The `Buffer` that contains the request message.
+	 * @returns A `Promise` that yields when the message consumed from `requestBuffer` has been submitted
+	 * for processing; or rejects if the message could not not be processed.
 	 *
 	 * @remarks
-	 * The {@link LspServer} will attempt to read a message from `requestBuffer`. If a message could not be read, then the
-	 * returned `Buffer` will be `requestBuffer`. However, if a message could be read, then the message is consumed and the
-	 * returned `Buffer` will represent the slice of unconsumed data that follows it.
-	 *
-	 * Typical calling code will maintain a running `Buffer`, and on receiving new messsage data, calls
-	 * {@link LspServer.sendRequestBuffer} supplying the concatination of the current running buffer and the new data, before
-	 * assigning the returned buffer to the running buffer. This results in a running buffer that expands and contracts as
-	 * messages are processed by the P4 Analyzer webassembly instance.
+
 	 */
-	sendRequestBuffer(requestBuffer: Buffer): Promise<Buffer>;
+	 sendRequest(requestBuffer: Buffer): Promise<void>;
 
 	/**
 	 * Stops the {@link LspServer}.

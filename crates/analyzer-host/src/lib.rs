@@ -71,7 +71,11 @@ impl<'host> AnalyzerHost<'host> {
 					.instrument(request_message_span)
 					.await;
 				}
-				Err(_) => continue,
+				Err(err) => {
+					error!("Unexpected error receving request: {:?}", err);
+
+					continue
+				},
 			}
 		}
 

@@ -20,6 +20,12 @@
 		}
 	},
 	"targetDependencies": {
+		"package": [
+			{
+				"target": "build",
+				"projects": "self"
+			}
+		],
 		"build": [
 			{
 				"target": "build",

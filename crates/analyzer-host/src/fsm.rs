@@ -1,7 +1,10 @@
 use crate::json_rpc::{from_json, message::*, DeserializeError, ErrorCode};
 use analyzer_abstractions::lsp_types::{
-	DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-	InitializeResult, ServerCapabilities, ServerInfo,
+	CompletionOptions, DeclarationCapability, DidChangeTextDocumentParams,
+	DidCloseTextDocumentParams, DidOpenTextDocumentParams, HoverProviderCapability,
+	ImplementationProviderCapability, InitializeResult, OneOf, ServerCapabilities, ServerInfo,
+	SignatureHelpOptions, TextDocumentSyncCapability, TextDocumentSyncKind, TraceValue,
+	TypeDefinitionProviderCapability, WorkDoneProgressOptions, CompletionParams, CompletionResponse, CompletionList, CompletionItem, HoverParams, Hover, HoverContents, MarkupContent, MarkupKind, CompletionItemKind,
 };
 use analyzer_abstractions::tracing::{error, info};
 use analyzer_abstractions::{lsp_types::InitializeParams, LoggerImpl};
@@ -160,9 +163,44 @@ impl<'machine> ProtocolMachine<'machine> {
 				self.transition_to(ProtocolState::Initializing);
 
 				let params = from_json::<InitializeParams>("InitializeParams", &request.params)?;
+				let trace = params.trace.unwrap_or(TraceValue::Off);
+
+				info!("Tracevalue = {:?}", trace);
 
 				let result = InitializeResult {
 					capabilities: ServerCapabilities {
+						text_document_sync: Some(TextDocumentSyncCapability::Kind(
+							TextDocumentSyncKind::INCREMENTAL,
+						)),
+						completion_provider: Some(CompletionOptions {
+							resolve_provider: Some(true),
+							trigger_characters: Some(vec![
+								"(".to_string(),
+								"<".to_string(),
+								".".to_string(),
+							]),
+							all_commit_characters: None,
+							work_done_progress_options: WorkDoneProgressOptions {
+								work_done_progress: None,
+							},
+						}),
+						hover_provider: Some(HoverProviderCapability::Simple(true)),
+						signature_help_provider: Some(SignatureHelpOptions {
+							trigger_characters: Some(vec!["(".to_string(), ",".to_string()]),
+							retrigger_characters: None,
+							work_done_progress_options: WorkDoneProgressOptions {
+								work_done_progress: None,
+							},
+						}),
+						declaration_provider: Some(DeclarationCapability::Simple(true)),
+						definition_provider: Some(OneOf::Left(true)),
+						type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(
+							true,
+						)),
+						implementation_provider: Some(ImplementationProviderCapability::Simple(
+							true,
+						)),
+						references_provider: Some(OneOf::Left(true)),
 						..Default::default()
 					},
 					server_info: Some(ServerInfo {
@@ -272,6 +310,69 @@ impl<'machine> ProtocolMachine<'machine> {
 				)?;
 
 				info!("{}", params.text_document.uri);
+
+				Ok(None)
+			}
+
+			Message::Request(request) if request.is("textDocument/hover") => {
+				info!("Received 'textDocument/completion' request.");
+
+				let params = from_json::<HoverParams>("HoverParams", &request.params)?;
+
+				let line = params.text_document_position_params.position.line;
+				let character = params.text_document_position_params.position.character;
+
+				let hover = Hover {
+					range: None,
+					contents: HoverContents::Markup(MarkupContent{
+						kind: MarkupKind::Markdown,
+						value: format!("Hovering over Ln *{}*, Col *{}*.", line, character)
+					})
+				};
+
+				Ok(Some(Message::Response(Response::new(
+					request.id,
+					hover,
+				))))
+			}
+
+			Message::Request(request) if request.is("textDocument/completion") => {
+				info!("Received 'textDocument/completion' request.");
+
+				let params = from_json::<CompletionParams>("dsd", &request.params)?;
+
+				let line = params.text_document_position.position.line;
+
+				let data = CompletionList {
+					is_incomplete: false,
+					items: vec![
+						CompletionItem {
+							label: String::from("p4"),
+							kind: Some(CompletionItemKind::FILE),
+							..Default::default()
+						},
+						CompletionItem {
+							label: String::from("rules"),
+							kind: Some(CompletionItemKind::FILE),
+							..Default::default()
+						}
+					]
+				};
+
+				Ok(Some(Message::Response(Response::new(
+					request.id,
+					data,
+				))))
+			}
+
+			Message::Notification(notification) => {
+				info!("Received '{}' notification.", notification.method);
+
+				Ok(None)
+			}
+
+			Message::Request(request) => {
+				info!("Received '{}' request.", request.method);
 
 				Ok(None)
 			}

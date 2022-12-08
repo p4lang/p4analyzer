@@ -23,4 +23,5 @@ node_modules
 **/typings
 
 # General
+*.vsix
 p4-analyzer.log

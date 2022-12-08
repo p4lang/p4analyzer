@@ -15,12 +15,12 @@ use buffer::{to_buffer, to_u8_vec, Buffer};
 use cancellation::{CancellationTokenSource, OperationCanceled};
 use futures::future::join;
 use js_sys::Error;
-use std::panic;
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub struct LspServer {
-	on_receive_cb: js_sys::Function,
+	on_response_callback: js_sys::Function,
 	request_channel: MessageChannel,
 	response_channel: MessageChannel,
 	cts: CancellationTokenSource,
@@ -30,11 +30,11 @@ pub struct LspServer {
 impl LspServer {
 	/// Initializes a new [`LspServer`] instance.
 	#[wasm_bindgen(constructor)]
-	pub fn new(on_receive_cb: js_sys::Function) -> Self {
+	pub fn new(on_response_callback: js_sys::Function) -> Self {
 		console_error_panic_hook::set_once();
 
 		Self {
-			on_receive_cb,
+			on_response_callback,
 			request_channel: async_channel::unbounded::<Message>(),
 			response_channel: async_channel::unbounded::<Message>(),
 			cts: CancellationTokenSource::new(),
@@ -55,23 +55,26 @@ impl LspServer {
 		}
 	}
 
-	/// Updates the underlying input buffer and attempts to read a [`Message`] from it. If a [`Message`] could be read
-	/// from the input buffer then it is sent to the underlying request channel for processing by the [`AnalyzerHost`].
-	#[wasm_bindgen(js_name = "sendRequestBuffer")]
-	pub async fn send_request_buffer(&self, request_buffer: Buffer) -> Result<Buffer, JsValue> {
-		let mut message_buffer = &to_u8_vec(&request_buffer.buffer())[..];
-
-		match Message::read(&mut message_buffer) {
-			Ok(Some(message)) => {
+	/// Reads a request message from a given `Buffer`, and sends it to the underlying request channel for processing
+	/// by the [`AnalyzerHost`].
+	#[wasm_bindgen(js_name = "sendRequest")]
+	pub async fn send_request(&self, request_buffer: Buffer) -> Result<JsValue, JsValue> {
+		match serde_json::from_slice::<Message>(to_u8_vec(&request_buffer).as_slice()) {
+			Ok(message) => {
 				let (sender, _) = self.request_channel.clone();
 
 				if sender.send(message).await.is_err() {
-					return Err(JsValue::from(Error::new("Unexpected error writing request message to request channel.")));
+					return Err(JsValue::from(Error::new(
+						"Unexpected error writing request message to request channel.",
+					)));
 				}
 
-				Ok(to_buffer(message_buffer)) // Return a buffer over the modified `message_buffer`.
+				Ok(JsValue::UNDEFINED)
 			}
-			_ => Ok(request_buffer), // Return the unmodified `request_buffer`.
+			Err(err) => Err(JsValue::from(Error::new(&format!(
+				"Unexpected error reading request message: {}",
+				err.to_string()
+			)))),
 		}
 	}
 
@@ -85,17 +88,28 @@ impl LspServer {
 		receiver.close();
 	}
 
-	/// Asynchronously receives response messages from the response channel, converts them to a Buffer instance, and
+	/// Asynchronously receives response messages from the response channel, converts them to a `Buffer`, and
 	/// then invokes the receiver callback provided by the JavaScript host.
 	async fn on_receive(&self) -> Result<(), OperationCanceled> {
+		#[derive(Serialize)]
+		struct JsonRpcEnvelope {
+			jsonrpc: &'static str,
+
+			#[serde(flatten)]
+			msg: Message,
+		}
+
 		let (_, receiver) = self.response_channel.clone();
 
 		while let Ok(message) = receiver.recv().await {
-			let mut buffer = Vec::<u8>::new();
+			let message_text = serde_json::to_string(&JsonRpcEnvelope {
+				jsonrpc: "2.0",
+				msg: message,
+			})
+			.unwrap();
 
-			message.write(&mut buffer).unwrap();
-			self.on_receive_cb
-				.call1(&JsValue::NULL, &to_buffer(&buffer))
+			self.on_response_callback
+				.call1(&JsValue::NULL, &to_buffer(message_text.as_bytes()))
 				.unwrap();
 		}
 
@@ -114,6 +128,9 @@ impl LspServer {
 extern "C" {
 	#[wasm_bindgen(js_namespace = console)]
 	fn log(s: &str);
+
+	#[wasm_bindgen(js_namespace = console)]
+	fn error(s: &str);
 }
 
 struct ConsoleLogger {}

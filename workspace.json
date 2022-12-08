@@ -1,6 +1,7 @@
 {
 	"version": 2,
 	"projects": {
-		"p4-analyzer": "packages/p4-analyzer"
+		"p4-analyzer": "packages/p4-analyzer",
+		"p4-analyzer-vscode": "packages/p4-analyzer-vscode"
 	}
 }

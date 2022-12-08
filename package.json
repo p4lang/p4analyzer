@@ -4,18 +4,24 @@
 	"private": true,
 	"scripts": {
 		"prebuild": "cargo build && wasm-pack build --target nodejs crates/p4-analyzer-wasm",
-		"build": "nx run-many --target=build --all"
+		"build": "nx run-many --target=build --all",
+		"package": "nx run-many --target=package --all"
 	},
 	"workspaces": {
 		"packages": [
 			"./packages/*"
 		]
 	},
-	"dependencies": {},
+	"dependencies": {
+		"vscode-languageclient": "~8.0"
+	},
 	"devDependencies": {
+		"vsce": "^2",
 		"typescript": "^4",
+		"esbuild": "latest",
 		"@nrwl/cli": "~15.2",
 		"@nrwl/workspace": "~15.2",
-		"@types/node": "^16"
+		"@types/node": "^16",
+		"@types/vscode": "^1"
 	}
 }

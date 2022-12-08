@@ -75,19 +75,27 @@ where
 		_ctx: tracing_subscriber::layer::Context<S>,
 	) {
 		// Ignore any events that do not carry a `lsp_event` field.
-		if !event.fields().any(|field| field.name() == "lsp_event") {
-			return;
-		}
+		// if !event.fields().any(|field| field.name() == "lsp_event") {
+		// 	return;
+		// }
 
 		let mut visitor = LspTracingMessageVisitor::new();
 
 		event.record(&mut visitor);
 
+		// let notification = Notification::new(
+		// 	"$/logTrace",
+		// 	LogTraceParams {
+		// 		message: visitor.message,
+		// 		verbose: None,
+		// 	},
+		// );
+
 		let notification = Notification::new(
-			"$/logTrace",
-			LogTraceParams {
+			"window/logMessage",
+			LogMessageParams {
 				message: visitor.message,
-				verbose: None,
+				typ: MessageType::LOG,
 			},
 		);
 

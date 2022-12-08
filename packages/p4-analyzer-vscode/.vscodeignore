@@ -1,0 +1,7 @@
+src/**
+project.json
+tsconfig.json
+../../**/*
+../**/*
+*.vsix
+
