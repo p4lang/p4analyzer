@@ -1,4 +1,6 @@
-use super::*;
+extern crate analyzer_core;
+
+use analyzer_core::*;
 use pretty_assertions::assert_eq;
 
 fn lex_str(s: &str) -> Vec<Token> {
@@ -179,4 +181,12 @@ fn real_p4() {
 			Whitespace,
 		]
 	);
+}
+
+#[test]
+fn preprocessor_parser() {
+	use PreprocessorExpression::*;
+	use PreprocessorBinOp::*;
+
+	assert_eq!(parse_pp_expression(" 2 == 3".to_string()), Some(BinOp(Equals, Box::new(IntLiteral(2)), Box::new(IntLiteral(3)))));
 }

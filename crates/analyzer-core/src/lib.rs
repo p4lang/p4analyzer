@@ -1,12 +1,10 @@
-use std::sync::{Arc, Mutex};
-
 use lazy_static::lazy_static;
 use logos::{Logos, Span};
 use regex::Regex;
 
 #[derive(Default)]
 #[salsa::db(crate::Jar)]
-pub(crate) struct Database {
+pub struct Database {
 	storage: salsa::Storage<Self>,
 }
 
@@ -24,6 +22,12 @@ pub trait Db: salsa::DbWithJar<Jar> {}
 
 impl<DB> Db for DB where DB: ?Sized + salsa::DbWithJar<Jar> {}
 
+pub struct Lexer<'db> {
+	db: &'db dyn Db,
+	pub source: &'db str,
+	pub position: usize,
+}
+
 /// The input buffer.
 #[salsa::input]
 pub struct Buffer {
@@ -39,10 +43,10 @@ pub struct LexedBuffer {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct Literal {
-	base: u8,
-	signed: bool,
-	width: Option<u32>,
-	value: i64,
+	pub base: u8,
+	pub signed: bool,
+	pub width: Option<u32>,
+	pub value: i64,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
@@ -52,15 +56,40 @@ pub enum PreprocessorQuotationStyle {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+pub enum PreprocessorBinOp {
+	Or,
+	And,
+	Plus,
+	Minus,
+	Times,
+	Divide,
+	Equals,
+	NotEquals,
+	LessThan,
+	LessOrEqual,
+	GreaterThan,
+	GreaterOrEqual,
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+pub enum PreprocessorExpression {
+	IntLiteral(i64),
+	Identifier(String),
+	BinOp(PreprocessorBinOp, Box<PreprocessorExpression>, Box<PreprocessorExpression>),
+	Not(Box<PreprocessorExpression>),
+	Defined(Box<PreprocessorExpression>),
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub enum PreprocessorDirective {
 	Include(PreprocessorQuotationStyle, String),
-	If,
-	ElseIf,
+	If(PreprocessorExpression),
+	ElseIf(PreprocessorExpression),
 	Else,
 	EndIf,
-	Define,
-	Undef,
-	Pragma,
+	Define(String, String),
+	Undef(String),
+	Pragma(String),
 	Other(String, String),
 }
 
@@ -93,6 +122,18 @@ pub enum Token {
 
 	#[token("=")]
 	Equals,
+
+	#[token("*")]
+	Asterisk,
+
+	#[token("/")]
+	Slash,
+
+	#[token("+")]
+	Plus,
+
+	#[token("-")]
+	Minus,
 
 	#[error]
 	Error,
@@ -200,17 +241,138 @@ fn read_directive(lex: &mut logos::Lexer<Token>) -> Option<PreprocessorDirective
 			let (quotation_style, path) = parse_include(buf)?;
 			PreprocessorDirective::Include(quotation_style, path)
 		}
-		"if" => PreprocessorDirective::If,
-		"elif" => PreprocessorDirective::ElseIf,
+		"if" => {
+			let expr = parse_pp_expression(buf)?;
+			PreprocessorDirective::If(expr)
+		},
+		"elif" => {
+			let expr = parse_pp_expression(buf)?;
+			PreprocessorDirective::ElseIf(expr)
+		},
 		"else" => PreprocessorDirective::Else,
 		"endif" => PreprocessorDirective::EndIf,
-		"define" => PreprocessorDirective::Define,
-		"undef" => PreprocessorDirective::Undef,
-		"pragma" => PreprocessorDirective::Pragma,
+		"define" => {
+			let (symbol, rhs) = parse_define(buf)?;
+			PreprocessorDirective::Define(symbol, rhs)
+		},
+		"undef" => {
+			let words: Vec<_> = buf.trim().split_ascii_whitespace().collect();
+			if words.len() != 1 {
+				return None;
+			}
+			PreprocessorDirective::Undef(words[0].to_string())
+		},
+		"pragma" => PreprocessorDirective::Pragma(buf.chars().skip_while(
+			|ch| ch.is_ascii_whitespace()
+		).collect()),
 		directive => PreprocessorDirective::Other(directive.to_string(), buf),
 	};
 
 	Some(directive)
+}
+
+// TODO: is taking ownership necessary?
+pub fn parse_pp_expression(buf: String) -> Option<PreprocessorExpression> {
+	use std::iter::Peekable;
+	use std::ops::Range;
+	use Token::*;
+
+	// TODO: move all this into a separate module
+	type ParseResult = Option<PreprocessorExpression>;
+	type Span = Range<usize>;
+
+	struct PPParser<'a> {
+		lexer: Peekable<logos::SpannedIter<'a, Token>>,
+		input: &'a str,
+	}
+
+	impl <'a> PPParser<'a> {
+		fn expect(&mut self, tk: Token) -> Option<Span> {
+			match self.lexer.next() {
+				Some((t, span)) if t == tk => Some(span),
+				_ => None,
+			}
+		}
+
+		fn next_non_ws(&mut self) -> Option<(Token, Span)> {
+			match self.lexer.next() {
+				Some((Whitespace, _)) => self.next_non_ws(),
+				r => r,
+			}
+		}
+
+		fn peek_non_ws(&mut self) -> Option<(Token, Span)> {
+			match self.lexer.peek() {
+				Some((Whitespace, _)) => {
+					self.lexer.next();
+					self.peek_non_ws()
+				}
+				r => r.cloned(),
+			}
+		}
+
+		fn expression(&mut self) -> ParseResult {
+			match self.peek_non_ws() {
+				Some((Whitespace, _)) => unreachable!(),
+				// Some((OpenParen, _)) => self.parentheses(),
+				Some(_) => {
+					use PreprocessorBinOp as PP;
+					let a = self.term()?;
+					let bin_op = match self.next_non_ws() {
+						Some((Equals, _)) => PP::Equals,
+						// TODO: other bin ops
+						_ => return None,
+					};
+					let b = self.term()?;
+					Some(PreprocessorExpression::BinOp(bin_op, a.into(), b.into()))
+				}
+				None => None,
+			}
+		}
+
+		fn parentheses(&mut self) -> ParseResult {
+			self.lexer.next()?;
+			let res = self.expression()?;
+			self.expect(CloseParen)?;
+			Some(res)
+		}
+
+		fn term(&mut self) -> ParseResult {
+			use PreprocessorBinOp as PP;
+			let a = self.factor()?;
+			let bin_op = match self.next_non_ws() {
+				Some((Asterisk, _)) => PP::Times,
+				Some((Slash, _)) => PP::Divide,
+				_ => todo!(),
+			};
+			let b = self.factor()?;
+			Some(PreprocessorExpression::BinOp(bin_op, a.into(), b.into()))
+		}
+
+		fn factor(&mut self) -> ParseResult {
+			match self.peek_non_ws() {
+				Some((Integer(lit), _)) => {
+					self.lexer.next()?;
+					Some(PreprocessorExpression::IntLiteral(lit.value))
+				},
+				Some((Identifier, span)) => {
+					self.lexer.next()?;
+					let str = &self.input[span];
+					Some(PreprocessorExpression::Identifier(str.to_string()))
+				},
+				Some((OpenParen, _)) => self.parentheses(),
+				Some(_) => todo!("error here"),
+				None => None,
+			}
+		}
+	}
+
+	let lexer = Token::lexer(&buf).spanned().peekable();
+	let mut parser = PPParser {
+		lexer,
+		input: &buf,
+	};
+	parser.expression()
 }
 
 fn parse_include(buf: String) -> Option<(PreprocessorQuotationStyle, String)> {
@@ -236,6 +398,11 @@ fn parse_include(buf: String) -> Option<(PreprocessorQuotationStyle, String)> {
 	}
 
 	Some((quotation_style, buf))
+}
+
+fn parse_define(buf: String) -> Option<(String, String)> {
+	let mut iter = buf.chars().skip_while(|ch| ch.is_ascii_whitespace());
+	todo!()
 }
 
 // TODO: report nice errors
@@ -322,12 +489,9 @@ fn read_comment(lex: &mut logos::Lexer<Token>) -> bool {
 }
 
 #[salsa::tracked(return_ref)]
-fn lex(db: &dyn crate::Db, buf: Buffer) -> LexedBuffer {
+pub fn lex(db: &dyn crate::Db, buf: Buffer) -> LexedBuffer {
 	let contents = buf.contents(db);
 	let lexer = Token::lexer(contents);
 	// TODO: we should extract the slices or at least spans as well
 	LexedBuffer::new(db, lexer.spanned().collect())
 }
-
-#[cfg(test)]
-mod tests;
