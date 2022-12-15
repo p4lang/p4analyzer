@@ -69,7 +69,8 @@ fn int_literals() {
 
 #[test]
 fn real_p4() {
-	use self::PreprocessorDirective::*;
+	use preprocessor::PreprocessorDirective::*;
+	use preprocessor::*;
 	use PreprocessorQuotationStyle::*;
 	use Token::*;
 
@@ -185,8 +186,16 @@ fn real_p4() {
 
 #[test]
 fn preprocessor_parser() {
-	use PreprocessorExpression::*;
+	use preprocessor::*;
 	use PreprocessorBinOp::*;
+	use PreprocessorExpression::*;
 
-	assert_eq!(parse_pp_expression(" 2 == 3".to_string()), Some(BinOp(Equals, Box::new(IntLiteral(2)), Box::new(IntLiteral(3)))));
+	assert_eq!(
+		parse_pp_expression("2".to_string()),
+		Some(BinOp(
+			Equals,
+			Box::new(IntLiteral(2)),
+			Box::new(IntLiteral(3))
+		))
+	);
 }

@@ -233,13 +233,18 @@ fn criterion_benchmark(c: &mut Criterion) {
 	VSS(TopParser(),
 		TopPipe(),
 		TopDeparser()) main;
-	"##.to_string();
+	"##
+	.to_string();
 	let input = input.repeat(1000);
 
 	let mut group = c.benchmark_group("lex 200k lines of P4");
 
-	group.bench_function("baseline", |b| b.iter(|| baseline(black_box(input.clone()))));
-	group.bench_function("basic lexing", |b| b.iter(|| basic(black_box(input.clone()))));
+	group.bench_function("baseline", |b| {
+		b.iter(|| baseline(black_box(input.clone())))
+	});
+	group.bench_function("basic lexing", |b| {
+		b.iter(|| basic(black_box(input.clone())))
+	});
 
 	group.finish()
 }
