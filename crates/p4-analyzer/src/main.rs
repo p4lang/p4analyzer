@@ -2,27 +2,25 @@ mod cli;
 mod commands;
 mod stdio;
 
+use cancellation::{CancellationToken, CancellationTokenSource};
+use cli::flags::{P4Analyzer, P4AnalyzerCmd};
+use commands::lsp_server::LspServerCommand;
+use commands::{Command, CommandInvocationError};
 use std::{
 	process,
 	sync::{
+		atomic::{AtomicU8, Ordering},
 		Arc,
-		atomic::{AtomicU8, Ordering}
-	}
+	},
 };
-use cancellation::{CancellationToken, CancellationTokenSource};
-use commands::{Command, CommandInvocationError};
-use commands::lsp_server::LspServerCommand;
-use cli::flags::{P4Analyzer, P4AnalyzerCmd};
 
 /// Entry point for the P4 Analyzer.
 #[tokio::main]
 pub async fn main() {
 	match P4Analyzer::from_env() {
-		Ok(cmd) => {
-			match cmd.subcommand {
-				P4AnalyzerCmd::Server(_) => {
-					run_cancellable_command(&LspServerCommand::new()).await;
-				}
+		Ok(cmd) => match cmd.subcommand {
+			P4AnalyzerCmd::Server(config) => {
+				run_cancellable_command(&LspServerCommand::new(config)).await;
 			}
 		},
 		Err(err) => {
@@ -55,7 +53,8 @@ async fn run_cancellable_command(cmd: &dyn Command) {
 		if prev_count > 0 {
 			process::exit(-1);
 		}
-	}).expect("'Ctrl-C' handling is not available for this platform.");
+	})
+	.expect("'Ctrl-C' handling is not available for this platform.");
 
 	run_command_with_cancel_token(cmd, &cts).await;
 }
@@ -73,12 +72,10 @@ async fn run_command(cmd: &dyn Command) {
 /// The supplied command can also be cancelled via the supplied [`CancellationToken`].
 async fn run_command_with_cancel_token(cmd: &dyn Command, cancel_token: &CancellationToken) {
 	match cmd.run(cancel_token).await {
-		Ok(_) => { }
-		Err(err) => {
-			match err {
-				CommandInvocationError::Cancelled => println!("{}", err),
-				_ => eprintln!("{}", err)
-			}
-		}
+		Ok(_) => {}
+		Err(err) => match err {
+			CommandInvocationError::Cancelled => println!("{}", err),
+			_ => eprintln!("{}", err),
+		},
 	}
 }

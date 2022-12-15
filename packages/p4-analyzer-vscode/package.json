@@ -1,0 +1,71 @@
+{
+	"name": "p4-analyzer-vscode",
+	"version": "0.0.0",
+	"displayName": "P4 Analyzer",
+	"description": "P4 language support for Visual Studio Code",
+	"private": true,
+	"scripts": {
+		"vscode:prepublish": "npm run build-base -- --minify",
+		"bundle-wasm-analyzer": "mkdir -p ./node_modules/p4-analyzer && cp -R ../p4-analyzer/package.json ../p4-analyzer/lib ./node_modules/p4-analyzer",
+		"build-base": "esbuild ./src/index.ts --bundle --outfile=lib/index.js --external:vscode --format=cjs --platform=node",
+		"prebuild-base": "npm run bundle-wasm-analyzer",
+		"build": "npm run build-base -- --sourcemap",
+		"build-watch": "npm run build-base -- --sourcemap --watch",
+		"package": "npx vsce package"
+	},
+	"icon": "p4.png",
+	"releaseTag": null,
+	"publisher": "P4.org",
+	"repository": {
+		"url": "https://github.com/p4lang/p4analyzer.git",
+		"type": "git"
+	},
+	"homepage": "https://www.p4.org",
+	"license": "Apache-2.0",
+	"keywords": [
+		"p4"
+	],
+	"categories": [
+		"Programming Languages"
+	],
+	"engines": {
+		"vscode": "^1.73.0"
+	},
+	"main": "./lib/index.js",
+	"activationEvents": [
+		"onLanguage:p4"
+	],
+	"contributes": {
+		"configuration": [
+			{
+				"title": "P4 Analyzer",
+				"properties": {
+					"p4-analyzer.server.absoluteServerPath": {
+						"type": "string",
+						"default": null,
+						"markdownDescription": "Specifies the absolute path to a P4 Analyzer server executable.\n\nIf a path is not specified, then the integrated WebAssembly based server is used by default."
+					}
+				}
+			}
+		],
+		"languages": [
+			{
+				"id": "p4",
+				"aliases": [
+					"P4"
+				],
+				"extensions": [
+					".p4"
+				],
+				"configuration": "./p4.json"
+			}
+		],
+		"grammars": [
+			{
+				"language": "p4",
+				"scopeName": "source.p4",
+				"path": "./p4.tmLanguage"
+			}
+		]
+	}
+}

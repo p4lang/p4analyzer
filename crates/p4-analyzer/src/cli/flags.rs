@@ -15,31 +15,31 @@ xflags::xflags! {
 // Run `env UPDATE_XFLAGS=1 cargo build` to regenerate.
 #[derive(Debug)]
 pub struct P4Analyzer {
-    pub subcommand: P4AnalyzerCmd,
+	pub subcommand: P4AnalyzerCmd,
 }
 
 #[derive(Debug)]
 pub enum P4AnalyzerCmd {
-    Server(Server),
+	Server(Server),
 }
 
 #[derive(Debug)]
 pub struct Server;
 
 impl P4Analyzer {
-    #[allow(dead_code)]
-    pub fn from_env_or_exit() -> Self {
-        Self::from_env_or_exit_()
-    }
+	#[allow(dead_code)]
+	pub fn from_env_or_exit() -> Self {
+		Self::from_env_or_exit_()
+	}
 
-    #[allow(dead_code)]
-    pub fn from_env() -> xflags::Result<Self> {
-        Self::from_env_()
-    }
+	#[allow(dead_code)]
+	pub fn from_env() -> xflags::Result<Self> {
+		Self::from_env_()
+	}
 
-    #[allow(dead_code)]
-    pub fn from_vec(args: Vec<std::ffi::OsString>) -> xflags::Result<Self> {
-        Self::from_vec_(args)
-    }
+	#[allow(dead_code)]
+	pub fn from_vec(args: Vec<std::ffi::OsString>) -> xflags::Result<Self> {
+		Self::from_vec_(args)
+	}
 }
 // generated end

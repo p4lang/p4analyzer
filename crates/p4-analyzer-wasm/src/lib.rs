@@ -1,50 +1,146 @@
-use analyzer_abstractions::{Logger, lsp_types::request};
+mod buffer;
+
+extern crate console_error_panic_hook;
+
+use analyzer_abstractions::{tracing::subscriber, Logger};
 use analyzer_host::{
+	json_rpc::message::*,
+	tracing::{
+		tracing_subscriber::{prelude::*, Registry},
+		LspTracingLayer,
+	},
 	AnalyzerHost, MessageChannel,
-	json_rpc::message::*
 };
+use buffer::{to_buffer, to_u8_vec, Buffer};
+use cancellation::{CancellationTokenSource, OperationCanceled};
+use futures::future::join;
+use js_sys::Error;
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::spawn_local;
 
 #[wasm_bindgen]
-extern {
+pub struct LspServer {
+	on_response_callback: js_sys::Function,
+	request_channel: MessageChannel,
+	response_channel: MessageChannel,
+	cts: CancellationTokenSource,
+}
+
+#[wasm_bindgen]
+impl LspServer {
+	/// Initializes a new [`LspServer`] instance.
+	#[wasm_bindgen(constructor)]
+	pub fn new(on_response_callback: js_sys::Function) -> Self {
+		console_error_panic_hook::set_once();
+
+		Self {
+			on_response_callback,
+			request_channel: async_channel::unbounded::<Message>(),
+			response_channel: async_channel::unbounded::<Message>(),
+			cts: CancellationTokenSource::new(),
+		}
+	}
+
+	/// Starts the LSP server by creating and starting an underlying [`AnalyzerHost`].
+	pub async fn start(&self) -> Result<JsValue, JsValue> {
+		let host = AnalyzerHost::new(self.get_message_channel(), &ConsoleLogger {});
+		let subscriber = Registry::default().with(LspTracingLayer::new(self.get_message_channel()));
+
+		subscriber::set_global_default(subscriber)
+			.expect("Unable to set global tracing subscriber.");
+
+		match join(host.start(&self.cts), self.on_receive()).await {
+			(Ok(_), Ok(_)) => Ok(JsValue::UNDEFINED),
+			_ => Err(JsValue::from(Error::new("The server was stopped."))),
+		}
+	}
+
+	/// Reads a request message from a given `Buffer`, and sends it to the underlying request channel for processing
+	/// by the [`AnalyzerHost`].
+	#[wasm_bindgen(js_name = "sendRequest")]
+	pub async fn send_request(&self, request_buffer: Buffer) -> Result<JsValue, JsValue> {
+		match serde_json::from_slice::<Message>(to_u8_vec(&request_buffer).as_slice()) {
+			Ok(message) => {
+				let (sender, _) = self.request_channel.clone();
+
+				if sender.send(message).await.is_err() {
+					return Err(JsValue::from(Error::new(
+						"Unexpected error writing request message to request channel.",
+					)));
+				}
+
+				Ok(JsValue::UNDEFINED)
+			}
+			Err(err) => Err(JsValue::from(Error::new(&format!(
+				"Unexpected error reading request message: {}",
+				err.to_string()
+			)))),
+		}
+	}
+
+	/// Stops the LSP server by cancelling all of its underlying operations.
+	pub fn stop(&self) {
+		self.cts.cancel();
+
+		let (sender, receiver) = self.get_message_channel();
+
+		sender.close();
+		receiver.close();
+	}
+
+	/// Asynchronously receives response messages from the response channel, converts them to a `Buffer`, and
+	/// then invokes the receiver callback provided by the JavaScript host.
+	async fn on_receive(&self) -> Result<(), OperationCanceled> {
+		#[derive(Serialize)]
+		struct JsonRpcEnvelope {
+			jsonrpc: &'static str,
+
+			#[serde(flatten)]
+			msg: Message,
+		}
+
+		let (_, receiver) = self.response_channel.clone();
+
+		while let Ok(message) = receiver.recv().await {
+			let message_text = serde_json::to_string(&JsonRpcEnvelope {
+				jsonrpc: "2.0",
+				msg: message,
+			})
+			.unwrap();
+
+			self.on_response_callback
+				.call1(&JsValue::NULL, &to_buffer(message_text.as_bytes()))
+				.unwrap();
+		}
+
+		Ok(())
+	}
+
+	fn get_message_channel(&self) -> MessageChannel {
+		let (sender, _) = self.response_channel.clone();
+		let (_, receiver) = self.request_channel.clone();
+
+		(sender, receiver)
+	}
+}
+
+#[wasm_bindgen]
+extern "C" {
 	#[wasm_bindgen(js_namespace = console)]
 	fn log(s: &str);
+
+	#[wasm_bindgen(js_namespace = console)]
+	fn error(s: &str);
 }
 
-#[wasm_bindgen]
-pub fn run() {
-	spawn_local(async move {
-		try_run().await;
-
-		log("The host has completed.");
-	});
-}
-
-async fn try_run() {
-	let cts = cancellation::CancellationTokenSource::new();
-	let request_channel: MessageChannel = async_channel::unbounded::<Message>();
-	let response_channel: MessageChannel = async_channel::unbounded::<Message>();
-	// let host = AnalyzerHost::new(request_channel, response_channel, &ConsoleLogger { });
-
-	// TODO: Add handler for Ctrl-C that calls `cts.cancel()`
-	// cts.cancel_after(std::time::Duration::from_millis(500));
-	// cts.cancel();
-
-	// match host.start(&cts).await {
-	// 	Ok(_) => { }
-	// 	Err(err) => log(&format!("{}", err))
-	// }
-}
-
-struct ConsoleLogger { }
+struct ConsoleLogger {}
 
 impl Logger for ConsoleLogger {
-    fn log_message(&self, msg: &str) {
-			log(msg);
-    }
+	fn log_message(&self, msg: &str) {
+		log(msg);
+	}
 
-    fn log_error(&self, msg: &str) {
-      log(msg);
-    }
+	fn log_error(&self, msg: &str) {
+		log(msg);
+	}
 }

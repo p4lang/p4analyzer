@@ -8,3 +8,4 @@ edition = "2021"
 
 [dependencies]
 lsp-types = "0.93.1"
+tracing = "0.1.37"

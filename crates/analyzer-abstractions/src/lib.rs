@@ -1,5 +1,6 @@
 // Export the Language Server Protocol types.
 pub use lsp_types;
+pub use tracing;
 
 pub trait Logger {
 	fn log_message(&self, msg: &str);

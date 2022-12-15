@@ -1,0 +1,27 @@
+{
+	"name": "p4-analyzer",
+	"version": "0.0.0",
+	"description": "A WebAssembly based LSP compliant P4 analyzer.",
+	"scripts": {
+		"prebuild": "mkdir -p ./lib/wasm && cp ../../crates/p4-analyzer-wasm/pkg/p4_analyzer_wasm.* ../../crates/p4-analyzer-wasm/pkg/*.wasm ./lib/wasm",
+		"build": "tsc"
+	},
+	"main": "./lib/index.js",
+	"bin": {
+		"p4analyzer": "./bin/p4analyzer.js"
+	},
+	"exports": {
+		".": "./lib/index.js",
+		"./server": "./lib/server/index.js"
+	},
+	"typesVersions": {
+		"*": {
+			".": [
+				"./typings/index.d.ts"
+			],
+			"server": [
+				"./typings/server/index.d.ts"
+			]
+		}
+	}
+}

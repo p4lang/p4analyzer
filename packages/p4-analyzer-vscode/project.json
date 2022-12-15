@@ -1,0 +1,7 @@
+{
+  "root": "p4-analyzer-vscode",
+  "projectType": "library",
+	"implicitDependencies": [
+		"p4-analyzer"
+	]
+}

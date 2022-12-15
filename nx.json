@@ -1,0 +1,39 @@
+{
+	"affected": {
+		"defaultBase": "main"
+	},
+	"implicitDependencies": {
+		"package.json": {
+			"dependencies": "*",
+			"devDependencies": "*"
+		},
+		".eslintrc.json": "*"
+	},
+	"tasksRunnerOptions": {
+		"default": {
+			"runner": "@nrwl/workspace/tasks-runners/default",
+			"options": {
+				"cacheableOperations": [
+					"build"
+				]
+			}
+		}
+	},
+	"targetDependencies": {
+		"package": [
+			{
+				"target": "build",
+				"projects": "self"
+			}
+		],
+		"build": [
+			{
+				"target": "build",
+				"projects": "dependencies"
+			}
+		]
+	},
+	"cli": {
+		"defaultCollection": "@nrwl/workspace"
+	}
+}
