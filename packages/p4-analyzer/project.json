@@ -1,4 +1,23 @@
 {
-  "root": "p4-analyzer",
-  "projectType": "library"
+	"$schema": "../../node_modules/nx/schemas/project-schema.json",
+	"name": "p4-analyzer",
+  "projectType": "library",
+	"targets": {
+		"build": {
+			"inputs": [
+				"default",
+				{
+					"runtime": "stat -c %Z crates/p4-analyzer-wasm/pkg/*"
+				}
+			],
+			"executor": "nx:run-commands",
+			"options": {
+				"commands": [
+					"mkdir -p ./lib/wasm && cp ../../crates/p4-analyzer-wasm/pkg/p4_analyzer_wasm.* ../../crates/p4-analyzer-wasm/pkg/*.wasm ./lib/wasm",
+					"tsc"
+				],
+				"cwd": "packages/p4-analyzer"
+			}
+		}
+	}
 }

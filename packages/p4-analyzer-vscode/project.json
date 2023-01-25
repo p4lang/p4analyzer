@@ -1,7 +1,9 @@
 {
-  "root": "p4-analyzer-vscode",
+	"$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "p4-analyzer-vscode",
   "projectType": "library",
 	"implicitDependencies": [
 		"p4-analyzer"
-	]
+	],
+	"includedScripts": ["build", "package"]
 }

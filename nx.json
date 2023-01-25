@@ -1,13 +1,7 @@
 {
+	"$schema": "./node_modules/nx/schemas/nx-schema.json",
 	"affected": {
 		"defaultBase": "main"
-	},
-	"implicitDependencies": {
-		"package.json": {
-			"dependencies": "*",
-			"devDependencies": "*"
-		},
-		".eslintrc.json": "*"
 	},
 	"tasksRunnerOptions": {
 		"default": {
@@ -19,19 +13,27 @@
 			}
 		}
 	},
-	"targetDependencies": {
-		"package": [
-			{
-				"target": "build",
-				"projects": "self"
-			}
-		],
-		"build": [
-			{
-				"target": "build",
-				"projects": "dependencies"
-			}
+  "namedInputs": {
+    "workspace": [
+      "{workspaceRoot}/package.json"
+    ],
+    "default": [
+			"workspace",
+			"{projectRoot}/tsconfig.json",
+			"{projectRoot}/src/**/*"
 		]
+  },
+	"targetDefaults": {
+    "build": {
+      "inputs": ["default"],
+			"outputs": ["{projectRoot}/lib"],
+			"dependsOn": ["^build"]
+    },
+    "package": {
+      "inputs": ["default"],
+			"outputs": ["{projectRoot}/lib"],
+			"dependsOn": ["build"]
+    }
 	},
 	"cli": {
 		"defaultCollection": "@nrwl/workspace"
