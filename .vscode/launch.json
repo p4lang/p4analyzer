@@ -17,6 +17,12 @@
 				"${workspaceFolder}/packages/p4-analyzer/lib/**/*.js",
 			],
 			"sourceMaps": true
+		},
+		{
+			"name": "Attach to Rust Process",
+			"type": "lldb",
+			"request": "attach",
+			"pid": "${command:pickMyProcess}"
 		}
   ]
 }
