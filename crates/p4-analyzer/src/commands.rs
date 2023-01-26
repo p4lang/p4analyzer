@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use cancellation::CancellationToken;
 use thiserror::Error;
@@ -20,5 +22,5 @@ pub enum CommandInvocationError {
 #[async_trait]
 pub(crate) trait Command {
 	/// Runs the command.
-	async fn run(&self, cancel_token: &CancellationToken) -> Result<(), CommandInvocationError>;
+	async fn run(&self, cancel_token: Arc<CancellationToken>) -> Result<(), CommandInvocationError>;
 }

@@ -1,0 +1,22 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+		{
+			"name": "Debug VSCode Extension",
+			"type": "extensionHost",
+			"request": "launch",
+			"runtimeExecutable": "${execPath}",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceFolder}/packages/p4-analyzer-vscode"
+			],
+			"outFiles": [
+				"${workspaceFolder}/packages/p4-analyzer-vscode/lib/**/*.js",
+				"${workspaceFolder}/packages/p4-analyzer/lib/**/*.js",
+			],
+			"sourceMaps": true
+		}
+  ]
+}

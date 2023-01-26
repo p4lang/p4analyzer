@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use crate::cli::flags::Server;
 use crate::stdio::ConsoleDriver;
 use crate::{Command, CommandInvocationError};
+use analyzer_abstractions::tracing::{Subscriber, Level};
 use analyzer_abstractions::{tracing::subscriber, Logger};
 use analyzer_host::tracing::{
-	tracing_subscriber::{fmt::layer, prelude::*, Registry},
+	tracing_subscriber::{fmt::layer, filter, prelude::*, Registry},
 	LspTracingLayer,
 };
 use analyzer_host::AnalyzerHost;
@@ -26,12 +29,12 @@ impl LspServerCommand {
 #[async_trait]
 impl Command for LspServerCommand {
 	/// Runs the command by delegating to a P4 Analyzer Host.
-	async fn run(&self, cancel_token: &CancellationToken) -> Result<(), CommandInvocationError> {
+	async fn run(&self, cancel_token: Arc<CancellationToken>) -> Result<(), CommandInvocationError> {
 		let console = ConsoleDriver::new();
 		// TODO: Configure the rolling file appender layer using command configuration.
 		let trace_appender = RollingFileAppender::new(Rotation::NEVER, ".", "p4-analyzer.log");
 		let (non_blocking, _guard) = tracing_appender::non_blocking(trace_appender);
-		let layer = layer().with_writer(non_blocking);
+		let layer = layer().with_writer(non_blocking.with_max_level(Level::DEBUG));
 
 		let subscriber = Registry::default()
 			.with(layer)
@@ -42,7 +45,7 @@ impl Command for LspServerCommand {
 
 		let host = AnalyzerHost::new(console.get_message_channel(), &ConsoleLogger {});
 
-		match tokio::join!(host.start(cancel_token), console.start(cancel_token)) {
+		match tokio::join!(host.start(cancel_token.clone()), console.start(cancel_token.clone())) {
 			(Ok(_), Ok(_)) => Ok(()),
 			_ => Err(CommandInvocationError::Cancelled),
 		}

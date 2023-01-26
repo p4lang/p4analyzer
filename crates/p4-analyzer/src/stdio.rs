@@ -1,6 +1,7 @@
 use analyzer_host::{json_rpc::message::Message, MessageChannel};
 use cancellation::{CancellationToken, OperationCanceled};
-use std::io::{stdin, stdout};
+use tokio::task;
+use std::{io::{stdin, stdout}, sync::Arc};
 
 /// Connects the `stdin` and `stdout` of the process to appropriate [`MessageChannel`] instances, and executes a sender and
 /// reader thread to marshal [`Message`] instances between them.
@@ -27,11 +28,7 @@ impl ConsoleDriver {
 	}
 
 	/// Starts executing the [`ConsoleDriver`] instance.
-	///
-	/// Although asynchronous calling this method will block the calling thread. As a consequence, when using an instance of
-	/// [`ConsoleDriver`] in conjunction with other asychronous operations, you should ensure that the [`ConsoleDriver`] instance is
-	/// scheduled to start last.
-	pub async fn start(&self, cancel_token: &CancellationToken) -> Result<(), OperationCanceled> {
+	pub async fn start(&self, cancel_token: Arc<CancellationToken>) -> Result<(), OperationCanceled> {
 		let (sender, _) = self.stdin_channel.clone();
 		let (_, receiver) = self.stdout_channel.clone();
 
@@ -60,22 +57,24 @@ impl ConsoleDriver {
 		let (sender, _) = self.stdin_channel.clone();
 		let (_, receiver) = self.stdout_channel.clone();
 
-		// Join on the receiver thread (blocking the current thread), closing the MessageChannel when the cancellation token
-		// become signalled.
-		cancel_token.run(
-			|| {
-				sender.close();
-				receiver.close();
-			},
-			|| {
-				receiver_task.join().unwrap();
-			},
-		);
+		// Joining to the `receiver_task` will block the current thread. Since this will likely be the main thread it will
+		// prevent the async Futures from being driven forward. `spawn_blocking` allows this blocking code to be taken into
+		// another thread and returns a `Future` that we can then await.
+		task::spawn_blocking(move || {
+			cancel_token.run(
+				|| {
+					sender.close();
+					receiver.close();
+				},
+				|| {
+					receiver_task.join().unwrap();
 
-		if cancel_token.is_canceled() {
-			return Err(OperationCanceled);
-		}
-
-		Ok(())
+					match cancel_token.is_canceled() {
+						true => Err(OperationCanceled),
+						_ => Ok(())
+					}
+				},
+			)
+		}).await.unwrap()
 	}
 }

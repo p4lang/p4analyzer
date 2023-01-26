@@ -37,8 +37,9 @@ pub async fn main() {
 /// it is supported by the platform).
 async fn run_cancellable_command(cmd: &dyn Command) {
 	let count = Arc::new(AtomicU8::new(0));
-	let cts = Arc::new(CancellationTokenSource::new());
-	let cts_clone = cts.clone();
+
+	let cancellation_source = CancellationTokenSource::new();
+	let cancellation_token = cancellation_source.token().clone();
 
 	ctrlc::set_handler(move || {
 		let prev_count = count.fetch_add(1, Ordering::Relaxed);
@@ -47,7 +48,7 @@ async fn run_cancellable_command(cmd: &dyn Command) {
 			eprintln!();
 			eprintln!("(To forcibly exit, press 'Ctrl+C' again)");
 
-			cts_clone.cancel();
+			cancellation_source.cancel();
 		}
 
 		if prev_count > 0 {
@@ -56,21 +57,13 @@ async fn run_cancellable_command(cmd: &dyn Command) {
 	})
 	.expect("'Ctrl-C' handling is not available for this platform.");
 
-	run_command_with_cancel_token(cmd, &cts).await;
-}
-
-/// Executes a command that will run to completion.
-///
-/// The supplied command will be invoked with a [`CancellationToken`] that will never be cancelled.
-#[allow(dead_code)] // until futher commands are added.
-async fn run_command(cmd: &dyn Command) {
-	run_command_with_cancel_token(cmd, CancellationToken::none()).await;
+	run_command_with_cancel_token(cmd, cancellation_token).await;
 }
 
 /// Executes a command, writing any errors to the error console.
 ///
 /// The supplied command can also be cancelled via the supplied [`CancellationToken`].
-async fn run_command_with_cancel_token(cmd: &dyn Command, cancel_token: &CancellationToken) {
+async fn run_command_with_cancel_token(cmd: &dyn Command, cancel_token: Arc<CancellationToken>) {
 	match cmd.run(cancel_token).await {
 		Ok(_) => {}
 		Err(err) => match err {

@@ -2,6 +2,7 @@ mod fsm;
 pub mod json_rpc;
 pub mod tracing;
 
+use std::sync::Arc;
 use analyzer_abstractions::{tracing::*, LoggerImpl};
 use async_channel::{Receiver, Sender};
 use cancellation::{CancellationToken, OperationCanceled};
@@ -37,7 +38,7 @@ impl<'host> AnalyzerHost<'host> {
 	///
 	/// Once started, request messages will be received through the message channel, forwarded for processing to the internal
 	/// state machine, with response messages sent back through the message channel for the client to process.
-	pub async fn start(&self, cancel_token: &CancellationToken) -> Result<(), OperationCanceled> {
+	pub async fn start(&self, cancel_token: Arc<CancellationToken>) -> Result<(), OperationCanceled> {
 		info!(lsp_event = true, "AnalyzerHost is starting.");
 
 		let mut protocol_machine = ProtocolMachine::new(self.logger);

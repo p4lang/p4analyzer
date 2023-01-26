@@ -7,6 +7,8 @@ xflags::xflags! {
 	cmd p4-analyzer {
 		/// Starts executing the LSP server. Default command.
 		default cmd server {
+			/// Use JSON-RPC over 'stdio' transport.
+			optional --stdio
 		}
 	}
 }
@@ -24,7 +26,9 @@ pub enum P4AnalyzerCmd {
 }
 
 #[derive(Debug)]
-pub struct Server;
+pub struct Server {
+	pub stdio: bool,
+}
 
 impl P4Analyzer {
 	#[allow(dead_code)]
