@@ -63,8 +63,8 @@ pub(crate) type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 's
 ///
 /// A request handler receives some deserialized parameters, and returns a [`HandlerRequest`]. During execution, the
 /// request handler can also mutate an instance of [`TState`].
-#[clonable]
-pub(crate) trait AsyncRequestHandlerFn<TState, TParams, TResult>: Clone
+// #[clonable]
+pub(crate) trait AsyncRequestHandlerFn<TState, TParams, TResult>
 where
 	TState: Send + Sync
 {
@@ -98,7 +98,7 @@ pub(crate) type AnyAsyncRequestHandlerFn<TState, TParams, TResult> =
 	Box<dyn (AsyncRequestHandlerFn<TState, TParams, TResult>) + Send + Sync>;
 
 /// Processes a message that represents a request.
-#[derive(Clone)]
+// #[derive(Clone)]
 pub(crate) struct RequestDispatchTarget<TState, TParams, TResult>
 where
 	TState: Send + Sync
@@ -132,7 +132,7 @@ where
 #[async_trait]
 impl<TState, TParams, TResult> DispatchTarget<TState> for RequestDispatchTarget<TState, TParams, TResult>
 where
-	TState: Clone + Send + Sync + 'static,
+	TState: Send + Sync + 'static,
 	TParams: DeserializeOwned + Clone + Send + fmt::Debug + 'static,
 	TResult: Serialize + Clone + Send + 'static,
 {
@@ -181,7 +181,7 @@ where
 }
 
 /// Processes a message that represents a notification.
-#[derive(Clone)]
+// #[derive(Clone)]
 pub(crate) struct NotificationDispatchTarget<TState, TParams>
 where
 	TState: Send + Sync
@@ -214,7 +214,7 @@ where
 #[async_trait]
 impl<TState, TParams> DispatchTarget<TState> for NotificationDispatchTarget<TState, TParams>
 where
-	TState: Clone + Send + Sync + 'static,
+	TState: Send + Sync + 'static,
 	TParams: DeserializeOwned + Clone + Send + fmt::Debug + 'static,
 {
 	async fn process_message(

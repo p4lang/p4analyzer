@@ -20,8 +20,8 @@ use dyn_clonable::*;
 
 /// Processes a [`Message`].
 #[async_trait]
-#[clonable]
-pub(crate) trait DispatchTarget<TState: Send + Sync>: Clone {
+// #[clonable]
+pub(crate) trait DispatchTarget<TState: Send + Sync> {
 	/// Processes a [`Message`] and returns a tuple of an optional response, and a target [`LspServerState`] from which
 	/// further messages should be processed.
 	///
@@ -42,8 +42,8 @@ pub(crate) type AnyDispatchTarget<TState> =
 
 /// Dispatches [`Message`] instances to underlying [`DispatchTarget`] implementations.
 #[async_trait]
-#[clonable]
-pub(crate) trait Dispatch<TState: Send + Sync>: Clone {
+// #[clonable]
+pub(crate) trait Dispatch<TState: Send + Sync> {
 	/// Processes a [`Message`] and returns a tuple of an optional response, and a target [`LspServerState`] from which
 	/// further messages should be processed.
 	///
@@ -56,11 +56,11 @@ pub(crate) trait Dispatch<TState: Send + Sync>: Clone {
 }
 
 /// Provides a default [`Dispatch`] implementation.
-#[derive(Clone)]
+// #[derive(Clone)]
 pub(crate) struct DefaultDispatch<TState: Send + Sync> {
 	state: LspServerState,
-	request_handlers: Arc<RwLock<HashMap<String, AnyDispatchTarget<TState>>>>,
-	notification_handlers: Arc<RwLock<HashMap<String, AnyDispatchTarget<TState>>>>,
+	request_handlers: Arc<RwLock<HashMap<String, Arc<AnyDispatchTarget<TState>>>>>,
+	notification_handlers: Arc<RwLock<HashMap<String, Arc<AnyDispatchTarget<TState>>>>>,
 	missing_handler_error: Option<(ErrorCode, &'static str)>,
 }
 
@@ -69,8 +69,8 @@ impl<TState: Send + Sync> DefaultDispatch<TState> {
 	/// implementations to consider when processing messages.
 	pub fn new(
 		state: LspServerState,
-		request_handlers: Arc<RwLock<HashMap<String, AnyDispatchTarget<TState>>>>,
-		notification_handlers: Arc<RwLock<HashMap<String, AnyDispatchTarget<TState>>>>,
+		request_handlers: Arc<RwLock<HashMap<String, Arc<AnyDispatchTarget<TState>>>>>,
+		notification_handlers: Arc<RwLock<HashMap<String, Arc<AnyDispatchTarget<TState>>>>>,
 		missing_handler_error: Option<(ErrorCode, &'static str)>,
 	) -> Self {
 		Self {
@@ -84,7 +84,7 @@ impl<TState: Send + Sync> DefaultDispatch<TState> {
 	/// Retrieves the [`DispatchTarget`] that is registered to process the given message.
 	///
 	/// Returns `None` if no handler was registered.
-	fn get_handler(&self, message: &Message) -> Option<AnyDispatchTarget<TState>> {
+	fn get_handler(&self, message: &Message) -> Option<Arc<AnyDispatchTarget<TState>>> {
 		let handlers = match message {
 			Message::Request(request) => {
 				Some((self.request_handlers.read().unwrap(), &request.method))
@@ -97,14 +97,16 @@ impl<TState: Send + Sync> DefaultDispatch<TState> {
 		};
 
 		match handlers {
-			Some((handlers, method)) => handlers.get(method).cloned(),
+			Some((handlers, method)) => {
+				handlers.get(method).cloned()
+			},
 			None => None,
 		}
 	}
 }
 
 #[async_trait]
-impl<TState: Clone + Send + Sync + 'static> Dispatch<TState> for DefaultDispatch<TState> {
+impl<TState: Send + Sync + 'static> Dispatch<TState> for DefaultDispatch<TState> {
 	/// Processes a [`Message`] and returns a tuple of an optional response, and a target [`LspServerState`] from which
 	/// further messages should be processed.
 	///

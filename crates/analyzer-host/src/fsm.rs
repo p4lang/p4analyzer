@@ -1,5 +1,6 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use async_rwlock::RwLock as AsyncRwLock;
 
 use crate::json_rpc::message::Message;
@@ -23,8 +24,8 @@ type LspServerStateDispatcher = Box<dyn (Dispatch<State>) + Send + Sync>;
 /// transitioning itself through states based on the requests received, and then processed on behalf of the client. If
 /// the server is in an invalid state for a given request, then the client will receive an appropriate error response.
 pub(crate) struct LspProtocolMachine {
-	dispatchers: HashMap<LspServerState, LspServerStateDispatcher>,
-	current: (LspServerState, LspServerStateDispatcher),
+	dispatchers: Arc<RwLock<HashMap<LspServerState, Arc<LspServerStateDispatcher>>>>,
+	current_state: LspServerState,
 	state: Arc<AsyncRwLock<State>>,
 }
 
@@ -32,15 +33,11 @@ impl LspProtocolMachine {
 	#[allow(clippy::needless_update)] // TODO: Remove this when new fields are added to the  `State` type.
 	/// Initializes a new [`LspProtocolMachine`] that will start in its initial state.
 	pub fn new(trace_value: Option<TraceValueAccessor>) -> Self {
-		let dispatchers = LspProtocolMachine::create_dispatchers();
-		let current = dispatchers.get(&LSP_STARTING_STATE).map_or_else(
-			|| LspProtocolMachine::default_dispatcher(LSP_STARTING_STATE),
-			|v| v.clone(),
-		);
+		let dispatchers = Arc::new(RwLock::new(LspProtocolMachine::create_dispatchers()));
 
 		Self {
 			dispatchers,
-			current: (LSP_STARTING_STATE, current),
+			current_state: LSP_STARTING_STATE,
 			state: Arc::new(AsyncRwLock::new(State {
 				trace_value,
 				..Default::default()
@@ -50,9 +47,7 @@ impl LspProtocolMachine {
 
 	/// Returns `true` if the current [`LspProtocolMachine`] is in an active state; otherwise `false`.
 	pub fn is_active(&self) -> bool {
-		let (current_state, _) = self.current;
-
-		current_state != LspServerState::Stopped
+		self.current_state != LspServerState::Stopped
 	}
 
 	/// Processes a [`Message`] for the current [`LspProtocolMachine`], and returns an optional [`Message`] that represents
@@ -61,21 +56,14 @@ impl LspProtocolMachine {
 		&mut self,
 		message: &Message,
 	) -> Result<Option<Message>, LspProtocolError> {
-		let (current_state, current_dispatcher) = &self.current;
+		// let mut dispatchers = self.dispatchers;
 
-		match current_dispatcher
-			.dispatch(message, self.state.clone())
-			.await
-		{
+		let current_state = self.current_state;
+		let current_dispatcher = self.get_dispatcher(current_state); //self.dispatchers.entry(current_state).or_insert_with(|| LspProtocolMachine::default_dispatcher(current_state));
+
+		match current_dispatcher.dispatch(message, self.state.clone()).await {
 			Ok((response, next_state)) => {
-				if *current_state != next_state {
-					let next_dispatcher = self.dispatchers.get(&next_state).map_or_else(
-						|| LspProtocolMachine::default_dispatcher(next_state),
-						|v| v.clone(),
-					);
-
-					self.current = (next_state, next_dispatcher);
-				}
+				self.current_state = next_state;
 
 				Ok(response)
 			}
@@ -83,24 +71,32 @@ impl LspProtocolMachine {
 		}
 	}
 
-	fn create_dispatchers() -> HashMap<LspServerState, LspServerStateDispatcher> {
+	fn create_dispatchers() -> HashMap<LspServerState, Arc<LspServerStateDispatcher>> {
 		[
-			(LspServerState::ActiveUninitialized, create_dispatcher_active_uninitialized()),
-			(LspServerState::Initializing, create_dispatcher_initializing()),
-			(LspServerState::ActiveInitialized, create_dispatcher_active_initialized()),
-			(LspServerState::ShuttingDown, create_dispatcher_shutting_down()),
-			(LspServerState::Stopped, create_dispatcher_stopped()),
+			(LspServerState::ActiveUninitialized, Arc::new(create_dispatcher_active_uninitialized())),
+			(LspServerState::Initializing, Arc::new(create_dispatcher_initializing())),
+			(LspServerState::ActiveInitialized, Arc::new(create_dispatcher_active_initialized())),
+			(LspServerState::ShuttingDown, Arc::new(create_dispatcher_shutting_down())),
+			(LspServerState::Stopped, Arc::new(create_dispatcher_stopped())),
 		].into()
 	}
 
-	fn default_dispatcher(state: LspServerState) -> LspServerStateDispatcher {
-		Box::new(
+	fn get_dispatcher(&self, state: LspServerState) -> Arc<LspServerStateDispatcher> {
+		let mut dispatchers = self.dispatchers.write().unwrap();
+
+		let a = dispatchers.entry(state).or_insert_with(|| LspProtocolMachine::default_dispatcher(state));
+
+		a.clone()
+	}
+
+	fn default_dispatcher(state: LspServerState) -> Arc<LspServerStateDispatcher> {
+		Arc::new(Box::new(
 			DispatchBuilder::new(state)
 				.for_unhandled_requests((
 					ErrorCode::InternalError,
 					"The server is in an unsupported state.",
 				))
 				.build(),
-		)
+		))
 	}
 }

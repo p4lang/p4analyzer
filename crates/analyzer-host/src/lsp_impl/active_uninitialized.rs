@@ -1,13 +1,14 @@
 use std::sync::Arc;
 use async_rwlock::RwLock as AsyncRwLock;
 
-use analyzer_abstractions::lsp_types::{
+use analyzer_abstractions::{lsp_types::{
 	notification::Exit, request::Initialize, CompletionOptions, DeclarationCapability,
 	HoverProviderCapability, ImplementationProviderCapability, InitializeParams, InitializeResult,
 	OneOf, ServerCapabilities, ServerInfo, SignatureHelpOptions, TextDocumentSyncCapability,
 	TextDocumentSyncKind, TypeDefinitionProviderCapability, WorkDoneProgressOptions,
 	TextDocumentSyncSaveOptions, TextDocumentSyncOptions, SaveOptions,
-};
+	TextDocumentSyncKind, TypeDefinitionProviderCapability, WorkDoneProgressOptions, WorkspaceServerCapabilities, WorkspaceFoldersServerCapabilities,
+}, tracing::info};
 
 use crate::{
 	json_rpc::ErrorCode,
@@ -37,9 +38,24 @@ pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'st
 /// the capabilities of the P4 Analyzer.
 async fn on_initialize(
 	_: LspServerState,
-	_: InitializeParams,
+	params: InitializeParams,
 	_: Arc<AsyncRwLock<State>>,
 ) -> HandlerResult<InitializeResult> {
+	match params.workspace_folders {
+		Some(folders) => {
+			info!("Initialized with 1 or more workspace folders");
+			for folder in folders.into_iter() {
+				info!("{:?}", folder);
+			}
+		},
+		None => info!("Initialized with no workspace folders.")
+	};
+
+	match params.capabilities.workspace {
+		Some(capabilities) => info!("Client capabilities: {:?}", capabilities),
+		None => info!("No workspace client capabilities supplied.")
+	};
+
 	let result = InitializeResult {
 		capabilities: ServerCapabilities {
 			text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
@@ -50,6 +66,16 @@ async fn on_initialize(
 				change: Some(TextDocumentSyncKind::INCREMENTAL),
 				..Default::default()
 			})),
+			workspace: Some(WorkspaceServerCapabilities {
+				workspace_folders: Some(WorkspaceFoldersServerCapabilities {
+					supported: Some(true),
+					change_notifications: Some(OneOf::Left(true))
+				}),
+				..Default::default()
+			}),
+			text_document_sync: Some(TextDocumentSyncCapability::Kind(
+				TextDocumentSyncKind::INCREMENTAL,
+			)),
 			completion_provider: Some(CompletionOptions {
 				resolve_provider: Some(true),
 				trigger_characters: Some(vec!["(".to_string(), "<".to_string(), ".".to_string()]),

@@ -3,16 +3,14 @@ use analyzer_abstractions::{
 	tracing::error,
 };
 use serde::{de::DeserializeOwned, Serialize};
+use thiserror::Error;
 use std::{
 	collections::HashMap,
 	fmt,
 	sync::{Arc, RwLock},
 };
-use thiserror::Error;
 
-use crate::json_rpc::{
-	DeserializeError, ErrorCode,
-};
+use crate::json_rpc::{DeserializeError, ErrorCode};
 
 use self::{state::{LspServerState}, fluent::state::TransitionBuilder, dispatch::{DefaultDispatch, AnyDispatchTarget, Dispatch}, dispatch_target::{AsyncRequestHandlerFn, RequestDispatchTarget, NotificationDispatchTarget}};
 
@@ -36,17 +34,17 @@ pub enum LspProtocolError {
 /// Provides a fluent API for building [`Dispatch`] implementations.
 pub(crate) struct DispatchBuilder<TState>
 where
-	TState: Clone + Send + Sync
+	TState: Send + Sync
 {
 	state: LspServerState,
-	request_handlers: Arc<RwLock<HashMap<String, AnyDispatchTarget<TState>>>>,
-	notification_handlers: Arc<RwLock<HashMap<String, AnyDispatchTarget<TState>>>>,
+	request_handlers: Arc<RwLock<HashMap<String, Arc<AnyDispatchTarget<TState>>>>>,
+	notification_handlers: Arc<RwLock<HashMap<String, Arc<AnyDispatchTarget<TState>>>>>,
 	missing_handler_error: Option<(ErrorCode, &'static str)>,
 }
 
 impl<TState> DispatchBuilder<TState>
 where
-	TState: Clone + Send + Sync + 'static
+	TState: Send + Sync + 'static
 {
 	/// Initializes a new [`DispatchBuilder`] for a given [`LspServerState`].
 	pub fn new(state: LspServerState) -> Self {
@@ -70,7 +68,7 @@ where
 
 		// target.handler_fn = Some(Box::new(handler));
 
-		self.request_handlers.write().unwrap().insert(String::from(T::METHOD), Box::new(target));
+		self.request_handlers.write().unwrap().insert(String::from(T::METHOD), Arc::new(Box::new(target)));
 
 		self
 	}
@@ -89,7 +87,7 @@ where
 		// target.handler_fn = Some(Box::new(handler));
 		request_builder(TransitionBuilder::new(&mut target));
 
-		self.request_handlers.write().unwrap().insert(String::from(T::METHOD), Box::new(target));
+		self.request_handlers.write().unwrap().insert(String::from(T::METHOD), Arc::new(Box::new(target)));
 
 		self
 	}
@@ -111,7 +109,7 @@ where
 
 		// target.handler_fn = Some(Box::new(handler));
 
-		self.notification_handlers.write().unwrap().insert(String::from(T::METHOD), Box::new(target));
+		self.notification_handlers.write().unwrap().insert(String::from(T::METHOD), Arc::new(Box::new(target)));
 
 		self
 	}
@@ -129,7 +127,7 @@ where
 		// target.handler_fn = Some(Box::new(handler));
 		request_builder(TransitionBuilder::new(&mut target));
 
-		self.notification_handlers.write().unwrap().insert(String::from(T::METHOD), Box::new(target));
+		self.notification_handlers.write().unwrap().insert(String::from(T::METHOD), Arc::new(Box::new(target)));
 
 		self
 	}
