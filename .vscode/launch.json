@@ -19,7 +19,15 @@
 			"sourceMaps": true
 		},
 		{
-			"name": "Attach to Rust Process",
+			"name": "Debug Analyzer (Rust)",
+			"type": "lldb",
+			"request": "launch",
+			"program": "${workspaceFolder}/target/debug/p4analyzer",
+			"args": ["--logpath", "${workspaceFolder}"],
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"name": "Attach to Process (Rust)",
 			"type": "lldb",
 			"request": "attach",
 			"pid": "${command:pickMyProcess}"

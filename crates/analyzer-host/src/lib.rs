@@ -3,34 +3,36 @@ pub mod json_rpc;
 pub mod tracing;
 
 use std::sync::Arc;
-use analyzer_abstractions::{tracing::*, LoggerImpl};
+use analyzer_abstractions::{tracing::*};
 use async_channel::{Receiver, Sender};
 use cancellation::{CancellationToken, OperationCanceled};
 use fsm::ProtocolMachine;
 use json_rpc::message::Message;
+use tracing::TraceValueAccessor;
 
 /// A tuple type that represents both a sender and a receiver of [`Message`] instances.
 pub type MessageChannel = (Sender<Message>, Receiver<Message>);
 
 /// Provides a runtime environment for the P4 Analyzer, utilizing services that are provided by the host process.
-pub struct AnalyzerHost<'host> {
+pub struct AnalyzerHost {
 	sender: Sender<Message>,
 	receiver: Receiver<Message>,
-
-	/// A logger that the `AnalyzerHost` will use to output log messages.
-	logger: &'host LoggerImpl,
+	trace_value: Option<TraceValueAccessor>
 }
 
-impl<'host> AnalyzerHost<'host> {
+impl AnalyzerHost {
 	/// Initializes a new [`AnalyzerHost`] instance with a [`MessageChannel`] to send and receive Language Server Protocol (LSP)
-	/// messages over, and a specified logger.
-	pub fn new(request_channel: MessageChannel, logger: &'host LoggerImpl) -> Self {
+	/// messages over, and an optional [`TraceValueAccessor`] that can be used to set the LSP tracing value.
+	///
+	/// If available, `trace_value` will be used on receipt of a `'$/setTrace'` notification from the LSP client to set
+	/// the required logging level.
+	pub fn new(request_channel: MessageChannel, trace_value: Option<TraceValueAccessor>) -> Self {
 		let (sender, receiver) = request_channel;
 
 		AnalyzerHost {
 			sender,
 			receiver,
-			logger,
+			trace_value
 		}
 	}
 
@@ -39,9 +41,9 @@ impl<'host> AnalyzerHost<'host> {
 	/// Once started, request messages will be received through the message channel, forwarded for processing to the internal
 	/// state machine, with response messages sent back through the message channel for the client to process.
 	pub async fn start(&self, cancel_token: Arc<CancellationToken>) -> Result<(), OperationCanceled> {
-		info!(lsp_event = true, "AnalyzerHost is starting.");
+		info!(lsp = true, "AnalyzerHost is starting.");
 
-		let mut protocol_machine = ProtocolMachine::new(self.logger);
+		let mut protocol_machine = ProtocolMachine::new(self.trace_value.clone());
 
 		while protocol_machine.is_active() && !cancel_token.is_canceled() {
 			let request_message = self.receiver.recv().await;
@@ -80,7 +82,7 @@ impl<'host> AnalyzerHost<'host> {
 			}
 		}
 
-		info!(lsp_event = true, "AnalyzerHost is stopping.");
+		info!(lsp = true, "AnalyzerHost is stopping.");
 
 		if protocol_machine.is_active() {
 			return Err(OperationCanceled);

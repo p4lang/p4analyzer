@@ -2,7 +2,7 @@ mod buffer;
 
 extern crate console_error_panic_hook;
 
-use analyzer_abstractions::{tracing::subscriber, Logger};
+use analyzer_abstractions::{tracing::subscriber};
 use analyzer_host::{
 	json_rpc::message::*,
 	tracing::{
@@ -43,8 +43,9 @@ impl LspServer {
 
 	/// Starts the LSP server by creating and starting an underlying [`AnalyzerHost`].
 	pub async fn start(&self) -> Result<JsValue, JsValue> {
-		let host = AnalyzerHost::new(self.get_message_channel(), &ConsoleLogger {});
-		let subscriber = Registry::default().with(LspTracingLayer::new(self.get_message_channel()));
+		let layer = LspTracingLayer::new(self.get_message_channel());
+		let host = AnalyzerHost::new(self.get_message_channel(), Some(layer.trace_value()));
+		let subscriber = Registry::default().with(layer);
 
 		subscriber::set_global_default(subscriber)
 			.expect("Unable to set global tracing subscriber.");
@@ -131,16 +132,4 @@ extern "C" {
 
 	#[wasm_bindgen(js_namespace = console)]
 	fn error(s: &str);
-}
-
-struct ConsoleLogger {}
-
-impl Logger for ConsoleLogger {
-	fn log_message(&self, msg: &str) {
-		log(msg);
-	}
-
-	fn log_error(&self, msg: &str) {
-		log(msg);
-	}
 }

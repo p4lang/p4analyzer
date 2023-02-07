@@ -39,7 +39,7 @@ async function onTryActivate(context: ExtensionContext): Promise<void> {
 	const serverOptions: ServerOptions = {
 		// If we have a server path then launch that executable, otherwise use the integrated Node.js/WASM server.
 		...absoluteServerPath
-			? { command: absoluteServerPath }
+			? { command: absoluteServerPath, args: getServerArguments() }
 			: { module: require.resolve("p4-analyzer", { paths: [context.extensionPath] }) },
 		transport: TransportKind.stdio
 	}
@@ -54,4 +54,13 @@ async function onTryActivate(context: ExtensionContext): Promise<void> {
 	client = new LanguageClient("p4-analyzer", "P4 Analyzer Language Server", serverOptions, clientOptions);
 	client.setTrace(Trace.Messages);
 	client.start();
+}
+
+function getServerArguments(): string[] {
+	const serverConfiguration = getServerConfiguration();
+	const logPath = serverConfiguration.get<string | null>("logPath");
+
+	return logPath
+		? ["--logpath", logPath, "--loglevel", serverConfiguration.get<string>("logLevel")]
+		: []
 }

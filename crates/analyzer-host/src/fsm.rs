@@ -1,13 +1,14 @@
 use crate::json_rpc::{from_json, message::*, DeserializeError, ErrorCode};
+use crate::tracing::TraceValueAccessor;
 use analyzer_abstractions::lsp_types::{
 	CompletionOptions, DeclarationCapability, DidChangeTextDocumentParams,
 	DidCloseTextDocumentParams, DidOpenTextDocumentParams, HoverProviderCapability,
 	ImplementationProviderCapability, InitializeResult, OneOf, ServerCapabilities, ServerInfo,
 	SignatureHelpOptions, TextDocumentSyncCapability, TextDocumentSyncKind, TraceValue,
-	TypeDefinitionProviderCapability, WorkDoneProgressOptions, CompletionParams, CompletionResponse, CompletionList, CompletionItem, HoverParams, Hover, HoverContents, MarkupContent, MarkupKind, CompletionItemKind,
+	TypeDefinitionProviderCapability, WorkDoneProgressOptions, CompletionParams, CompletionResponse, CompletionList, CompletionItem, HoverParams, Hover, HoverContents, MarkupContent, MarkupKind, CompletionItemKind, SetTraceParams,
 };
 use analyzer_abstractions::tracing::{error, info};
-use analyzer_abstractions::{lsp_types::InitializeParams, LoggerImpl};
+use analyzer_abstractions::{lsp_types::InitializeParams};
 use thiserror::Error;
 
 /// Represents the valid states of a [`ProtocolMachine`].
@@ -45,21 +46,19 @@ pub enum ProtocolError {
 /// that is managed fully by the client. [`ProtocolMachine`] ensures that the server responds accordingly by
 /// transitioning itself through states based on the requests received, and then processed on behalf of the client. If
 /// the server is in an invalid state for a given request, then the client will receive an appropriate error response.
-#[derive(Copy, Clone)]
-pub(crate) struct ProtocolMachine<'machine> {
-	/// A logger that the [`ProtocolMachine`] will use to output log messages.
-	logger: &'machine LoggerImpl,
-
+#[derive(Clone)]
+pub(crate) struct ProtocolMachine {
 	/// The current [`ProtocolState`].
 	pub(crate) current_state: ProtocolState,
+	trace_value: Option<TraceValueAccessor>,
 }
 
-impl<'machine> ProtocolMachine<'machine> {
+impl ProtocolMachine {
 	/// Initializes a new [`ProtocolMachine`] that will start in the [`ProtocolState::ActiveUninitialized`] state.
-	pub fn new(logger: &'machine LoggerImpl) -> Self {
+	pub fn new(trace_value: Option<TraceValueAccessor>) -> Self {
 		ProtocolMachine {
-			logger,
 			current_state: ProtocolState::ActiveUninitialized,
+			trace_value
 		}
 	}
 
@@ -265,6 +264,16 @@ impl<'machine> ProtocolMachine<'machine> {
 					request.id,
 					serde_json::Value::Null,
 				))))
+			}
+
+			Message::Notification(notification) if notification.is("$/setTrace") => {
+				if let Some(trace_value) = &self.trace_value {
+					let params = from_json::<SetTraceParams>("SetTraceParams", &notification.params)?;
+
+					trace_value.set(params.value);
+				}
+
+				Ok(None)
 			}
 
 			Message::Notification(notification) if notification.is("textDocument/didOpen") => {

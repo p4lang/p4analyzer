@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 xflags::xflags! {
 	src "./src/cli/flags.rs"
 
@@ -5,9 +7,15 @@ xflags::xflags! {
 	/// language (see https://p4.org).
 	///
 	cmd p4-analyzer {
-		/// Starts executing the LSP server. Default command.
+		/// Optional path to a folder where a log file will be written.
+		optional --logpath path: PathBuf
+
+		/// Optional log level to apply when writing to the log file. Defaults to 'debug'.
+		optional --loglevel level: String
+
+		/// Starts executing the LSP server (default command).
 		default cmd server {
-			/// Use JSON-RPC over 'stdio' transport.
+			/// Use the 'stdio' transport (default).
 			optional --stdio
 		}
 	}
@@ -17,6 +25,8 @@ xflags::xflags! {
 // Run `env UPDATE_XFLAGS=1 cargo build` to regenerate.
 #[derive(Debug)]
 pub struct P4Analyzer {
+	pub logpath: Option<PathBuf>,
+	pub loglevel: Option<String>,
 	pub subcommand: P4AnalyzerCmd,
 }
 

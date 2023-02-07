@@ -1,65 +1,74 @@
-use std::sync::Arc;
-
 use crate::cli::flags::Server;
 use crate::stdio::ConsoleDriver;
 use crate::{Command, CommandInvocationError};
-use analyzer_abstractions::tracing::{Subscriber, Level};
-use analyzer_abstractions::{tracing::subscriber, Logger};
+use analyzer_abstractions::tracing::{Subscriber};
+use analyzer_host::tracing::TraceValueAccessor;
+use analyzer_host::tracing::tracing_subscriber::registry::LookupSpan;
 use analyzer_host::tracing::{
-	tracing_subscriber::{fmt::layer, filter, prelude::*, Registry},
+	tracing_subscriber::{Layer},
 	LspTracingLayer,
 };
 use analyzer_host::AnalyzerHost;
 use async_trait::async_trait;
 use cancellation::CancellationToken;
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use std::sync::{Arc, Mutex};
 
 /// A P4 Analyzer command that starts the Language Server Protocol (LSP) server implementation.
 pub struct LspServerCommand {
 	config: Server,
+	console_driver: ConsoleDriver,
+	trace_value: Mutex<Option<TraceValueAccessor>>
 }
 
 impl LspServerCommand {
 	/// Initializes a new [`LspServerCommand`] instance.
 	pub fn new(config: Server) -> Self {
-		LspServerCommand { config }
+		LspServerCommand {
+			config,
+			console_driver: ConsoleDriver::new(),
+			trace_value: Mutex::new(None)
+		}
+	}
+
+	fn trace_value(&self) -> Option<TraceValueAccessor> {
+		let trace_value = self.trace_value.lock().unwrap();
+
+		trace_value.clone()
 	}
 }
 
 #[async_trait]
 impl Command for LspServerCommand {
+	/// Overrides the default [`Command::logging_layers()`] function to provide a '`Tracing`' logging layer that writes
+	/// trace events to the LSP client.
+	fn logging_layers<S>(&self) -> Vec<Box<dyn Layer<S> + Send + Sync + 'static>>
+	where
+		S: Subscriber,
+		for<'a> S: LookupSpan<'a>,
+	{
+		// Create a new `LspTracingLayer` and capture the `TraceValueAccessor` from it before returning
+		// its ownership to the caller.
+		let layer = LspTracingLayer::new(self.console_driver.get_message_channel());
+		let mut trace_value = self.trace_value.lock().unwrap();
+
+		trace_value.replace(layer.trace_value());
+
+		vec![Box::new(layer)]
+	}
+
 	/// Runs the command by delegating to a P4 Analyzer Host.
-	async fn run(&self, cancel_token: Arc<CancellationToken>) -> Result<(), CommandInvocationError> {
-		let console = ConsoleDriver::new();
-		// TODO: Configure the rolling file appender layer using command configuration.
-		let trace_appender = RollingFileAppender::new(Rotation::NEVER, ".", "p4-analyzer.log");
-		let (non_blocking, _guard) = tracing_appender::non_blocking(trace_appender);
-		let layer = layer().with_writer(non_blocking.with_max_level(Level::DEBUG));
+	async fn run(
+		&self,
+		cancel_token: Arc<CancellationToken>,
+	) -> Result<(), CommandInvocationError> {
+		let host = AnalyzerHost::new(self.console_driver.get_message_channel(), self.trace_value());
 
-		let subscriber = Registry::default()
-			.with(layer)
-			.with(LspTracingLayer::new(console.get_message_channel()));
-
-		subscriber::set_global_default(subscriber)
-			.expect("Unable to set global tracing subscriber.");
-
-		let host = AnalyzerHost::new(console.get_message_channel(), &ConsoleLogger {});
-
-		match tokio::join!(host.start(cancel_token.clone()), console.start(cancel_token.clone())) {
+		match tokio::join!(
+			host.start(cancel_token.clone()),
+			self.console_driver.start(cancel_token.clone())
+		) {
 			(Ok(_), Ok(_)) => Ok(()),
 			_ => Err(CommandInvocationError::Cancelled),
 		}
-	}
-}
-
-struct ConsoleLogger {}
-
-impl Logger for ConsoleLogger {
-	fn log_message(&self, msg: &str) {
-		println!("{}", msg);
-	}
-
-	fn log_error(&self, msg: &str) {
-		eprintln!("{}", msg);
 	}
 }

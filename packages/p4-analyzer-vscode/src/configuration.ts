@@ -17,6 +17,13 @@ const CONFIG_BASE = "p4-analyzer";
 }
 
 /**
+ * Defines a logging level.
+ *
+ * @internal
+ */
+export type LogLevel = "trace" | "debug" | "info" | "warn" | "error";
+
+/**
  * Defines the configuration properties that are available under the `'server'` section.
  *
  * @internal
@@ -31,6 +38,19 @@ export interface ServerConfiguration {
 	 *
 	 */
 	absoluteServerPath: string | null;
+
+	/**
+	 * Gets the optional log path folder to supply to the configured P4 Analyzer Server via the `--logpath` argument.
+	 */
+	logPath: string | null;
+
+	/**
+	 * Gets the log level value to supply to the configured P4 Analyzer Server via the `--loglevel` argument.
+	 *
+	 * @remarks
+	 * The extension configuration defaults this to `'warn'`.
+	 */
+	logLevel: LogLevel;
 }
 
 /**
@@ -38,6 +58,8 @@ export interface ServerConfiguration {
  *
  * @param scope An optional scope for which the configuration is required for.
  * @returns A typed `WorkspaceConfiguration` object that can access the {@link ServerConfiguration}.
+ *
+ * @internal
  */
 export function getServerConfiguration(scope?: ConfigurationScope): WorkspaceConfigurationAccessor<ServerConfiguration> {
 	return workspace.getConfiguration(`${CONFIG_BASE}.server`, scope);
