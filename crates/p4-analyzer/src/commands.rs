@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use analyzer_abstractions::tracing::Subscriber;
+use analyzer_abstractions::{async_trait::async_trait, tracing::Subscriber};
 use analyzer_host::tracing::tracing_subscriber::{Layer, registry::LookupSpan};
-use async_trait::async_trait;
 use cancellation::CancellationToken;
 use thiserror::Error;
 

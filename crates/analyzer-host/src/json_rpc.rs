@@ -42,9 +42,12 @@ impl fmt::Display for RequestId {
 	}
 }
 
+#[derive(Clone, Copy)]
 pub enum ErrorCode {
 	ServerNotInitialized = -32002,
 	InvalidRequest = -32600,
+	InvalidParams = -32602,
+	InternalError = -32603
 }
 
 impl Message {
@@ -83,9 +86,9 @@ impl Message {
 impl Display for Message {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			Message::Request(req) => write!(f, "{} ('{}')", req.id, req.method)?,
-			Message::Notification(notification) => write!(f, "('{}')", notification.method)?,
-			Message::Response(resp) => write!(f, "{}", resp.id)?,
+			Message::Request(req) => write!(f, "{}:{}", req.method, req.id)?,
+			Message::Notification(notification) => write!(f, "{}", notification.method)?,
+			Message::Response(resp) => write!(f, ":{}", resp.id)?,
 		}
 
 		Ok(())
@@ -140,22 +143,6 @@ fn write_msg_text(out: &mut dyn Write, msg: &str) -> io::Result<()> {
 	Ok(())
 }
 
-impl Request {
-	/// Returns `true` if the current request is the `'initialize'` request.
-	pub(crate) fn is_initialize(&self) -> bool {
-		self.method == "initialize"
-	}
-
-	/// Returns `true` if the current request is the `'shutdown'` request.
-	pub(crate) fn is_shutdown(&self) -> bool {
-		self.method == "shutdown"
-	}
-
-	pub(crate) fn is(&self, method_type: &'static str) -> bool {
-		self.method == method_type
-	}
-}
-
 impl Response {
 	/// Create a new [`Response`] based on given data.
 	pub fn new<TResult: Serialize>(id: RequestId, data: TResult) -> Self {
@@ -187,20 +174,6 @@ impl Notification {
 			params: serde_json::to_value(data).unwrap(),
 		}
 	}
-
-	/// Returns `true` if the current notification is the `'exit'` notification.
-	pub(crate) fn is_exit(&self) -> bool {
-		self.method == "exit"
-	}
-
-	/// Returns `true` if the current notification is the `'initialized'` notification.
-	pub(crate) fn is_initialized(&self) -> bool {
-		self.method == "initialized"
-	}
-
-	pub(crate) fn is(&self, method_type: &'static str) -> bool {
-		self.method == method_type
-	}
 }
 
 /// An error that is the result of a failed attempt to deserialize a JSON object.
@@ -208,7 +181,7 @@ pub type DeserializeError = Box<dyn std::error::Error + Send + Sync>;
 
 /// Deserializes a JSON value.
 pub fn from_json<T: DeserializeOwned>(
-	what: &'static str,
+	what: &str,
 	json: &serde_json::Value,
 ) -> Result<T, DeserializeError> {
 	let res = serde_json::from_value(json.clone())

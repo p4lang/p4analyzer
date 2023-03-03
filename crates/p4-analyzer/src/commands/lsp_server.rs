@@ -1,7 +1,7 @@
 use crate::cli::flags::Server;
 use crate::stdio::ConsoleDriver;
 use crate::{Command, CommandInvocationError};
-use analyzer_abstractions::tracing::{Subscriber};
+use analyzer_abstractions::{async_trait::async_trait, tracing::{Subscriber}};
 use analyzer_host::tracing::TraceValueAccessor;
 use analyzer_host::tracing::tracing_subscriber::registry::LookupSpan;
 use analyzer_host::tracing::{
@@ -9,7 +9,6 @@ use analyzer_host::tracing::{
 	LspTracingLayer,
 };
 use analyzer_host::AnalyzerHost;
-use async_trait::async_trait;
 use cancellation::CancellationToken;
 use std::sync::{Arc, Mutex};
 

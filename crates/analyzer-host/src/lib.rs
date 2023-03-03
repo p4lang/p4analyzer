@@ -1,4 +1,6 @@
 mod fsm;
+mod lsp;
+mod lsp_impl;
 pub mod json_rpc;
 pub mod tracing;
 
@@ -6,7 +8,7 @@ use std::sync::Arc;
 use analyzer_abstractions::{tracing::*};
 use async_channel::{Receiver, Sender};
 use cancellation::{CancellationToken, OperationCanceled};
-use fsm::ProtocolMachine;
+use fsm::LspProtocolMachine;
 use json_rpc::message::Message;
 use tracing::TraceValueAccessor;
 
@@ -41,9 +43,9 @@ impl AnalyzerHost {
 	/// Once started, request messages will be received through the message channel, forwarded for processing to the internal
 	/// state machine, with response messages sent back through the message channel for the client to process.
 	pub async fn start(&self, cancel_token: Arc<CancellationToken>) -> Result<(), OperationCanceled> {
-		info!(lsp = true, "AnalyzerHost is starting.");
+		info!("AnalyzerHost is starting.");
 
-		let mut protocol_machine = ProtocolMachine::new(self.trace_value.clone());
+		let mut protocol_machine = LspProtocolMachine::new(self.trace_value.clone());
 
 		while protocol_machine.is_active() && !cancel_token.is_canceled() {
 			let request_message = self.receiver.recv().await;
@@ -54,16 +56,13 @@ impl AnalyzerHost {
 
 			match request_message {
 				Ok(message) => {
-					let request_message_span =
-						info_span!("[Request Message]", message = format!("{}", message));
+					let request_message_span =info_span!("[Message]", message = format!("{}", message));
 
 					async {
-						let response_message = protocol_machine.process_message(message).await;
-
-						match response_message {
-							Ok(message) => {
-								if let Some(Message::Response(_)) = &message {
-									self.sender.send(message.unwrap()).await.unwrap();
+						match protocol_machine.process_message(&message).await {
+							Ok(response_message) => {
+								if let Some(Message::Response(_)) = &response_message {
+									self.sender.send(response_message.unwrap()).await.unwrap();
 								}
 							}
 							Err(err) => {
@@ -82,7 +81,7 @@ impl AnalyzerHost {
 			}
 		}
 
-		info!(lsp = true, "AnalyzerHost is stopping.");
+		info!("AnalyzerHost is stopping.");
 
 		if protocol_machine.is_active() {
 			return Err(OperationCanceled);

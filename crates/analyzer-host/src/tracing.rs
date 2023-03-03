@@ -5,7 +5,7 @@ use crate::{
 	MessageChannel,
 };
 use analyzer_abstractions::{
-	lsp_types::{LogMessageParams, LogTraceParams, MessageType, TraceValue},
+	lsp_types::{LogTraceParams, TraceValue},
 	tracing::{field::Field, Event, Subscriber},
 };
 use async_channel::Sender;
