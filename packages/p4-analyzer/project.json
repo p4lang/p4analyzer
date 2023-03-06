@@ -3,7 +3,7 @@
 	"name": "p4-analyzer",
   "projectType": "library",
 	"targets": {
-		"build": {
+		"build-nix": {
 			"inputs": [
 				"default",
 				{
@@ -17,6 +17,23 @@
 					"tsc"
 				],
 				"cwd": "packages/p4-analyzer"
+			}
+		},
+		"build-windows": {
+			"inputs": [
+				"default",
+				{
+					"runtime": "FOR %? IN (\".\\crates\\p4-analyzer-wasm\\pkg\\*\") DO echo %~t?"
+				}
+			],
+			"executor": "nx:run-commands",
+			"options": {
+				"parallel": false,
+				"cwd": "packages/p4-analyzer",
+				"commands": [
+					".\\win_script.bat",
+					"tsc"
+				]
 			}
 		}
 	}

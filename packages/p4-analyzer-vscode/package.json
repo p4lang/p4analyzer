@@ -6,10 +6,14 @@
 	"private": true,
 	"scripts": {
 		"vscode:prepublish": "npm run build-base -- --minify",
-		"bundle-wasm-analyzer": "mkdir -p ./node_modules/p4-analyzer && cp -R ../p4-analyzer/package.json ../p4-analyzer/lib ./node_modules/p4-analyzer",
+		"bundle-wasm-analyzer": "run-script-os",
+		"bundle-wasm-analyzer:nix": "mkdir -p ./node_modules/p4-analyzer && cp -R ../p4-analyzer/package.json ../p4-analyzer/lib ./node_modules/p4-analyzer",
+		"bundle-wasm-analyzer:windows": "if not exist \".\\node_modules\\p4-analyzer\" mkdir \".\\node_modules\\p4-analyzer\" && xcopy ..\\p4-analyzer\\package.json  .\\node_modules\\p4-analyzer /d /y && xcopy ..\\p4-analyzer\\lib .\\node_modules\\p4-analyzer /s /e /h /y /d",
 		"build-base": "esbuild ./src/index.ts --bundle --outfile=lib/index.js --external:vscode --format=cjs --platform=node",
 		"prebuild-base": "npm run bundle-wasm-analyzer",
 		"build": "npm run build-base -- --sourcemap",
+		"build-windows": "npm run build-base -- --sourcemap",
+		"build-nix": "npm run build-base -- --sourcemap",
 		"build-watch": "npm run build-base -- --sourcemap --watch",
 		"package": "npx vsce package"
 	},
