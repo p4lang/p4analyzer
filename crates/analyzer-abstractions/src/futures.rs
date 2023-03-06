@@ -1,4 +1,4 @@
-use std::{result::Result, cell::UnsafeCell, sync::atomic::{AtomicBool, Ordering, AtomicUsize}};
+use std::{result::Result, cell::RefCell, sync::{atomic::{AtomicBool, Ordering, AtomicUsize}, Arc}};
 use event_listener::Event;
 use thiserror::Error;
 
@@ -18,21 +18,17 @@ pub struct FutureCompletionSource<T, TError> {
 	completed: AtomicBool,
 	on_completed: Event,
 	awaiting_count: AtomicUsize,
-	value: UnsafeCell<Option<Result<T, TError>>>,
+	value: Arc<RefCell<Option<Result<T, TError>>>>,
 }
 
-impl<T, TError> FutureCompletionSource<T, TError>
-where
-	T: Copy,
-	TError: Copy
-{
+impl<T: Clone, TError: Clone> FutureCompletionSource<T, TError> {
 	/// Initializes a new [`FutureCompletionSource`].
 	pub fn new() -> Self {
 		Self {
 			completed: AtomicBool::new(false),
 			on_completed: Event::new(),
 			awaiting_count: AtomicUsize::new(0),
-			value: UnsafeCell::new(None)
+			value: Arc::new(RefCell::new(None))
 		}
 	}
 
@@ -45,7 +41,7 @@ where
 			completed: AtomicBool::new(true),
 			on_completed: Event::new(),
 			awaiting_count: AtomicUsize::new(0),
-			value: UnsafeCell::new(Some(Ok(value)))
+			value: Arc::new(RefCell::new(Some(Ok(value))))
 		}
 	}
 
@@ -69,14 +65,14 @@ where
 
 		// If we have already completed, then simply return the set result.
 		if completed {
-			return unsafe { (&*self.value.get()).unwrap() };
+			return self.value.borrow().as_ref().unwrap().clone();
 		}
 
 		// Otherwise, await for an on-completed event before returning the set result.
-		self.awaiting_count.fetch_add(1, Ordering::Relaxed);
-		self.on_completed.listen().await;
+		self.awaiting_count.fetch_add(1, Ordering::Relaxed); // Increment the awaiting count.
+		self.on_completed.listen().await; // Asynchronously wait for the on-completed event.
 
-		unsafe { (&*self.value.get()).unwrap() }
+		return self.value.borrow().as_ref().unwrap().clone()
 	}
 
 	fn set_inner_value(&self, result: Result<T, TError>) -> FutureCompletionSourceResult<()> {
@@ -88,7 +84,7 @@ where
 
 		// Store the result, set the `completed` state to true and then notify all those that are currently
 		// awaiting to resolve their 'Future'.
-		unsafe { (*self.value.get()).replace(result) };
+		self.value.borrow_mut().replace(result);
 		self.completed.store(true, Ordering::Relaxed);
 		self.on_completed.notify(self.awaiting_count.load(Ordering::Relaxed));
 
