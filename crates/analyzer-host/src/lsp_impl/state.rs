@@ -1,9 +1,4 @@
-use std::{fmt, sync::{Arc, atomic::AtomicI32}, collections::HashMap, cell::RefCell};
-
-use analyzer_abstractions::lsp_types::request::Request;
-use serde::{de::DeserializeOwned, Serialize};
-
-use crate::{tracing::TraceValueAccessor, json_rpc::{message::Message, RequestId}};
+use crate::{tracing::TraceValueAccessor, lsp::request::RequestManager};
 
 pub(crate) struct AnalyzerWrapper(std::cell::RefCell<analyzer_core::Analyzer>);
 
@@ -17,16 +12,17 @@ impl AnalyzerWrapper {
 }
 
 /// Represents the active state of the P4 Analyzer.
-// #[derive(Clone)]
+#[derive(Clone)]
 pub(crate) struct State {
 	/// The optional [`TraceValueAccessor`] that can be used to set the trace value used in the LSP tracing layer.
 	pub trace_value: Option<TraceValueAccessor>,
 	pub analyzer: std::sync::Arc<AnalyzerWrapper>,
 
+	/// The [`RequestManager`] instance to use when managing server to client requests.
 	pub request_manager: RequestManager,
 }
 
-impl Default for State {
+impl State {
 	/// Initializes a new default [`State`] instance.
 	fn default() -> Self {
 		Self {
@@ -56,9 +52,10 @@ impl RequestManager {
 
 impl Default for RequestManager {
 	fn default() -> Self {
+	pub fn new(trace_value: Option<TraceValueAccessor>, request_manager: RequestManager) -> Self {
 		Self {
-			// request_id: AtomicI32::new(0),
-			active_requests: Arc::new(HashMap::new())
+			trace_value,
+			request_manager,
 		}
 	}
 }

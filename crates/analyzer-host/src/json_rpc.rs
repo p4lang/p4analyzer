@@ -143,6 +143,16 @@ fn write_msg_text(out: &mut dyn Write, msg: &str) -> io::Result<()> {
 	Ok(())
 }
 
+impl Request {
+	pub fn new<TParams: Serialize>(id: RequestId, method: String, params: TParams) -> Self {
+		Request {
+			id,
+			method,
+			params: serde_json::to_value(params).unwrap()
+		}
+	}
+}
+
 impl Response {
 	/// Create a new [`Response`] based on given data.
 	pub fn new<TResult: Serialize>(id: RequestId, data: TResult) -> Self {
@@ -176,16 +186,36 @@ impl Notification {
 	}
 }
 
-/// An error that is the result of a failed attempt to deserialize a JSON object.
-pub type DeserializeError = Box<dyn std::error::Error + Send + Sync>;
+/// An error that is the result of a failed attempt to serialize an object into a JSON value.
+#[derive(thiserror::Error, Clone, Copy, Debug)]
+pub struct SerializeError;
 
-/// Deserializes a JSON value.
-pub fn from_json<T: DeserializeOwned>(
-	what: &str,
-	json: &serde_json::Value,
-) -> Result<T, DeserializeError> {
-	let res = serde_json::from_value(json.clone())
-		.map_err(|e| format!("Error deserializing '{}': {}; {}", what, e, json))?;
+impl std::fmt::Display for SerializeError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "Failed to serialize object into JSON.")
+	}
+}
+
+/// An error that is the result of a failed attempt to deserialize a JSON value.
+#[derive(thiserror::Error, Clone, Copy, Debug)]
+pub struct DeserializeError;
+
+impl std::fmt::Display for DeserializeError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "Failed to deserialize object from JSON.")
+	}
+}
+
+/// Serializes an object into a JSON value.
+pub fn to_json<T: Serialize>(item: T) -> Result<serde_json::Value, SerializeError> {
+	let value = serde_json::to_value(item).map_err(|_| SerializeError)?;
+
+	Ok(value)
+}
+
+/// Deserializes a JSON value to an object.
+pub fn from_json<T: DeserializeOwned>(json: &serde_json::Value) -> Result<T, DeserializeError> {
+	let res = serde_json::from_value(json.clone()).map_err(|_| DeserializeError)?;
 
 	Ok(res)
 }

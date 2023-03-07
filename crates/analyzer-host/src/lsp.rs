@@ -2,6 +2,7 @@ use analyzer_abstractions::{
 	lsp_types::{notification::Notification, request::Request},
 	tracing::error,
 };
+use async_channel::SendError;
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 use std::{
@@ -10,7 +11,7 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
-use crate::json_rpc::{DeserializeError, ErrorCode};
+use crate::json_rpc::{DeserializeError, ErrorCode, message::Message};
 
 use self::{state::{LspServerState}, fluent::state::TransitionBuilder, dispatch::{DefaultDispatch, AnyDispatchTarget, Dispatch}, dispatch_target::{AsyncRequestHandlerFn, RequestDispatchTarget, NotificationDispatchTarget}};
 
@@ -18,17 +19,24 @@ pub(crate) mod fluent;
 pub(crate) mod state;
 pub(crate) mod dispatch;
 pub(crate) mod dispatch_target;
+pub(crate) mod request;
 
 /// Represents an error in protocol while processing a received client message.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, Copy)]
 pub enum LspProtocolError {
 	/// The received request was not expected.
 	#[error("The received request was not expected.")]
 	UnexpectedRequest,
 
-	/// The received request was was malformed or invalid
-	#[error("The received request was was malformed or invalid.")]
+	#[error("The received repsonse was not expected.")]
+	UnexpectedResponse,
+
+	/// The message was malformed or invalid.
+	#[error("The message was malformed or invalid.")]
 	BadRequest(#[from] DeserializeError),
+
+	#[error("There was an error sending or receiving a message.")]
+	TransportError,
 }
 
 /// Provides a fluent API for building [`Dispatch`] implementations.

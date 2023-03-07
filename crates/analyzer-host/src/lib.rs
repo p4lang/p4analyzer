@@ -5,12 +5,14 @@ pub mod json_rpc;
 pub mod tracing;
 
 use std::sync::Arc;
-use analyzer_abstractions::{tracing::*};
+use analyzer_abstractions::{tracing::*, lsp_types::request::Request};
 use async_channel::{Receiver, Sender};
 use cancellation::{CancellationToken, OperationCanceled};
 use fsm::LspProtocolMachine;
 use json_rpc::message::Message;
 use tracing::TraceValueAccessor;
+
+use crate::lsp::request::RequestManager;
 
 /// A tuple type that represents both a sender and a receiver of [`Message`] instances.
 pub type MessageChannel = (Sender<Message>, Receiver<Message>);
@@ -45,7 +47,7 @@ impl AnalyzerHost {
 	pub async fn start(&self, cancel_token: Arc<CancellationToken>) -> Result<(), OperationCanceled> {
 		info!("AnalyzerHost is starting.");
 
-		let mut protocol_machine = LspProtocolMachine::new(self.trace_value.clone());
+		let mut protocol_machine = LspProtocolMachine::new(self.trace_value.clone(), RequestManager::new(self.sender.clone()));
 
 		while protocol_machine.is_active() && !cancel_token.is_canceled() {
 			let request_message = self.receiver.recv().await;
@@ -56,10 +58,10 @@ impl AnalyzerHost {
 
 			match request_message {
 				Ok(message) => {
-					let request_message_span =info_span!("[Message]", message = format!("{}", message));
+					let request_message_span = info_span!("[Message]", message = format!("{}", message));
 
 					async {
-						match protocol_machine.process_message(&message).await {
+						match protocol_machine.process_message(Arc::new(message)).await {
 							Ok(response_message) => {
 								if let Some(Message::Response(_)) = &response_message {
 									self.sender.send(response_message.unwrap()).await.unwrap();

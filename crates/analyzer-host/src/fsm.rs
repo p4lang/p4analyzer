@@ -1,11 +1,12 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use analyzer_abstractions::tracing::info;
 use async_rwlock::RwLock as AsyncRwLock;
 
 use crate::json_rpc::message::Message;
 use crate::json_rpc::ErrorCode;
 use crate::lsp::dispatch::Dispatch;
+use crate::lsp::request::RequestManager;
 use crate::lsp::{DispatchBuilder, LspProtocolError};
 use crate::lsp_impl::active_initialized::create_dispatcher as create_dispatcher_active_initialized;
 use crate::lsp_impl::active_uninitialized::create_dispatcher as create_dispatcher_active_uninitialized;
@@ -30,18 +31,14 @@ pub(crate) struct LspProtocolMachine {
 }
 
 impl LspProtocolMachine {
-	#[allow(clippy::needless_update)] // TODO: Remove this when new fields are added to the  `State` type.
 	/// Initializes a new [`LspProtocolMachine`] that will start in its initial state.
-	pub fn new(trace_value: Option<TraceValueAccessor>) -> Self {
+	pub fn new(trace_value: Option<TraceValueAccessor>, request_manager: RequestManager) -> Self {
 		let dispatchers = Arc::new(RwLock::new(LspProtocolMachine::create_dispatchers()));
 
 		Self {
 			dispatchers,
 			current_state: LSP_STARTING_STATE,
-			state: Arc::new(AsyncRwLock::new(State {
-				trace_value,
-				..Default::default()
-			})),
+			state: Arc::new(AsyncRwLock::new(State::new(trace_value, request_manager))),
 		}
 	}
 
@@ -52,18 +49,27 @@ impl LspProtocolMachine {
 
 	/// Processes a [`Message`] for the current [`LspProtocolMachine`], and returns an optional [`Message`] that represents
 	/// its response.
-	pub async fn process_message(
-		&mut self,
-		message: &Message,
-	) -> Result<Option<Message>, LspProtocolError> {
-		// let mut dispatchers = self.dispatchers;
+	pub async fn process_message(&mut self, message: Arc<Message>) -> Result<Option<Message>, LspProtocolError> {
+		if let Message::Response(_) = *message {
+			// Forward any received Response messages to the RequestManager.
+			let state = self.state.read().await;
 
+			state.request_manager.process_response(message).await?;
+
+			return Ok(None);
+		}
+
+		// Dispatch any received Request or Notification messages to the current Dispatcher.
 		let current_state = self.current_state;
-		let current_dispatcher = self.get_dispatcher(current_state); //self.dispatchers.entry(current_state).or_insert_with(|| LspProtocolMachine::default_dispatcher(current_state));
+		let current_dispatcher = self.get_dispatcher(current_state);
 
 		match current_dispatcher.dispatch(message, self.state.clone()).await {
 			Ok((response, next_state)) => {
-				self.current_state = next_state;
+				if self.current_state != next_state {
+					info!(current = format!("{:?}", self.current_state), next = format!("{:?}", next_state), "LspProtocolMachine state transition.");
+
+					self.current_state = next_state;
+				}
 
 				Ok(response)
 			}

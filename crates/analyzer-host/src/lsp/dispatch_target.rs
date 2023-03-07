@@ -139,13 +139,13 @@ where
 	async fn process_message(
 		&self,
 		current_state: LspServerState,
-		message: &Message,
+		message: Arc<Message>,
 		state: Arc<AsyncRwLock<TState>>,
 	) -> Result<(Option<Message>, LspServerState), LspProtocolError> {
-		match message {
+		match &*message {
 			Message::Request(request) => {
 				let method = request.method.as_str();
-				let params = from_json::<TParams>(method, &request.params)?;
+				let params = from_json::<TParams>(&request.params)?;
 				let (response, next_state) =
 					match self.handler_fn.call(current_state, params, state).await {
 						Ok(result) => (
@@ -220,13 +220,13 @@ where
 	async fn process_message(
 		&self,
 		current_state: LspServerState,
-		message: &Message,
+		message: Arc<Message>,
 		state: Arc<AsyncRwLock<TState>>,
 	) -> Result<(Option<Message>, LspServerState), LspProtocolError> {
-		match message {
+		match &*message {
 			Message::Notification(request) => {
 				let method = request.method.as_str();
-				let params = from_json::<TParams>(method, &request.params)?;
+				let params = from_json::<TParams>(&request.params)?;
 
 				if let Err(err) = self.handler_fn.call(current_state, params, state).await {
 					error!(

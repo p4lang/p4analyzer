@@ -7,13 +7,15 @@ use analyzer_abstractions::{lsp_types::{
 	OneOf, ServerCapabilities, ServerInfo, SignatureHelpOptions, TextDocumentSyncCapability,
 	TextDocumentSyncKind, TypeDefinitionProviderCapability, WorkDoneProgressOptions,
 	TextDocumentSyncSaveOptions, TextDocumentSyncOptions, SaveOptions,
-	TextDocumentSyncKind, TypeDefinitionProviderCapability, WorkDoneProgressOptions, WorkspaceServerCapabilities, WorkspaceFoldersServerCapabilities,
+	TextDocumentSyncKind, TypeDefinitionProviderCapability, WorkDoneProgressOptions, WorkspaceServerCapabilities,
+	WorkspaceFoldersServerCapabilities, WorkspaceFileOperationsServerCapabilities, FileOperationRegistrationOptions, FileOperationFilter,
+	FileOperationPattern,
 }, tracing::info};
 
 use crate::{
 	json_rpc::ErrorCode,
 	lsp::{
-		dispatch::Dispatch, dispatch_target::HandlerResult, state::LspServerState, DispatchBuilder,
+		dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder,
 	},
 };
 
@@ -34,8 +36,11 @@ pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'st
 	)
 }
 
-/// Responds to an 'initialize' request from the LSP client returning a data structure that describes
+/// Responds to an 'initialize' request from the LSP client by returning a data structure that describes
 /// the capabilities of the P4 Analyzer.
+///
+/// If the client capabilities do not include support for workspace watched files, then an error is raised
+/// since the P4 Analyzer currently relies on the LSP client to watch for file changes in the workspaces.
 async fn on_initialize(
 	_: LspServerState,
 	params: InitializeParams,
@@ -52,11 +57,41 @@ async fn on_initialize(
 	};
 
 	match params.capabilities.workspace {
-		Some(capabilities) => info!("Client capabilities: {:?}", capabilities),
-		None => info!("No workspace client capabilities supplied.")
-	};
+		Some(capabilities) if capabilities.did_change_watched_files != None => {
+			let supports_workspace_folders = capabilities.workspace_folders.unwrap_or(false);
 
-	let result = InitializeResult {
+			Ok(create_initialize_result(supports_workspace_folders))
+		},
+		_ => Err(HandlerError::new("P4 Analyzer requires the Workspace Watched Files capability from the client."))
+	}
+}
+
+/// Responds to an 'exit' notification from the LSP client.
+async fn on_exit(_: LspServerState, _: (), _: Arc<AsyncRwLock<State>>) -> HandlerResult<()> {
+	Ok(())
+}
+
+/// Creates an initialized [`InitializeResult`] instance that describes the capabilities of the P4 Analyzer.
+fn create_initialize_result(supports_workspace_folders: bool) -> InitializeResult {
+	let workspace =
+		if supports_workspace_folders {
+			Some(WorkspaceServerCapabilities {
+				workspace_folders: Some(WorkspaceFoldersServerCapabilities {
+					supported: Some(true),
+					change_notifications: Some(OneOf::Left(true))
+				}),
+				// file_operations: Some(WorkspaceFileOperationsServerCapabilities {
+				// 	did_create: Some(FileOperationRegistrationOptions { filters: vec![ FileOperationFilter {pattern: FileOperationPattern { glob: "**/*.rs".to_string() } } ] }),
+				// 	..Default::default()
+				// }),
+				..Default::default()
+			})
+		}
+		else {
+			None
+		};
+
+	InitializeResult {
 		capabilities: ServerCapabilities {
 			text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
 				save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
@@ -66,13 +101,7 @@ async fn on_initialize(
 				change: Some(TextDocumentSyncKind::INCREMENTAL),
 				..Default::default()
 			})),
-			workspace: Some(WorkspaceServerCapabilities {
-				workspace_folders: Some(WorkspaceFoldersServerCapabilities {
-					supported: Some(true),
-					change_notifications: Some(OneOf::Left(true))
-				}),
-				..Default::default()
-			}),
+			workspace,
 			text_document_sync: Some(TextDocumentSyncCapability::Kind(
 				TextDocumentSyncKind::INCREMENTAL,
 			)),
@@ -103,12 +132,5 @@ async fn on_initialize(
 			name: String::from("p4-analyzer"),
 			version: Some(String::from("0.0.0")),
 		}),
-	};
-
-	Ok(result)
-}
-
-/// Responds to an 'exit' notification from the LSP client.
-async fn on_exit(_: LspServerState, _: (), _: Arc<AsyncRwLock<State>>) -> HandlerResult<()> {
-	Ok(())
+	}
 }
