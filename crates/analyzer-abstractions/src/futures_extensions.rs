@@ -1,7 +1,6 @@
-use std::{result::Result, sync::{atomic::{AtomicBool, Ordering, AtomicUsize}, Arc}};
+use std::{result::Result, sync::{atomic::{AtomicBool, Ordering}, Arc, RwLock}};
 use event_listener::Event;
 use thiserror::Error;
-use async_rwlock::RwLock as AsyncRwLock;
 
 /// Represents an error that can occur when completing a [`FutureCompletionSource`].
 #[derive(Error, Debug, PartialEq, Eq)]
@@ -18,13 +17,12 @@ type FutureCompletionSourceResult<T> = Result<T, FutureCompletionSourceError>;
 pub struct FutureCompletionSource<T, TError> {
 	completed: AtomicBool,
 	on_completed: Event,
-	awaiting_count: AtomicUsize,
-	value: Arc<AsyncRwLock<Option<Result<T, TError>>>>,
+	value: Arc<RwLock<Option<Result<T, TError>>>>,
 }
 
 impl<T, TError> FutureCompletionSource<T, TError>
 where
-	T: Clone,
+	T: Clone + core::fmt::Debug,
 	TError: Copy + core::fmt::Debug
 {
 	/// Initializes a new [`FutureCompletionSource`].
@@ -32,8 +30,7 @@ where
 		Self {
 			completed: AtomicBool::new(false),
 			on_completed: Event::new(),
-			awaiting_count: AtomicUsize::new(0),
-			value: Arc::new(AsyncRwLock::new(None))
+			value: Arc::new(RwLock::new(None))
 		}
 	}
 
@@ -45,8 +42,7 @@ where
 		Self {
 			completed: AtomicBool::new(true),
 			on_completed: Event::new(),
-			awaiting_count: AtomicUsize::new(0),
-			value: Arc::new(AsyncRwLock::new(Some(Ok(value))))
+			value: Arc::new(RwLock::new(Some(Ok(value))))
 		}
 	}
 
@@ -74,25 +70,23 @@ where
 		}
 
 		// Otherwise, await for an on-completed event before returning the set result.
-		self.awaiting_count.fetch_add(1, Ordering::Relaxed); // Increment the awaiting count.
 		self.on_completed.listen().await; // Asynchronously wait for the on-completed event.
-
 		self.get_inner_value().await
 	}
 
+	#[inline(always)]
 	async fn get_inner_value(&self) -> Result<T, TError> {
-		let reader = self.value.read().await;
+		let reader = self.value.read().unwrap();
 
-		let a = reader.as_ref().unwrap();
+		let result = reader.as_ref().unwrap();
 
-		match a {
-			Ok(o) => Ok(o.clone()),
-			Err(e) => Err(*e)
+		match result {
+			Ok(value) => Ok(value.clone()),
+			Err(err) => Err(*err)
 		}
-
-		// return reader.as_ref().unwrap().clone();
 	}
 
+	#[inline(always)]
 	async fn set_inner_value(&self, result: Result<T, TError>) -> FutureCompletionSourceResult<()> {
 		let completed = self.completed.load(Ordering::Relaxed);
 
@@ -102,11 +96,11 @@ where
 
 		// Store the result, set the `completed` state to true and then notify all those that are currently
 		// awaiting to resolve their 'Future'.
-		let mut writer = self.value.write().await;
+		let mut writer = self.value.write().unwrap();
 
 		writer.replace(result);
 		self.completed.store(true, Ordering::Relaxed);
-		self.on_completed.notify(self.awaiting_count.load(Ordering::Relaxed));
+		self.on_completed.notify(usize::MAX); // Notify all awaiting.
 
 		Ok(())
 	}

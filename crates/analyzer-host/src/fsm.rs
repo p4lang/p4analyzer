@@ -50,15 +50,6 @@ impl LspProtocolMachine {
 	/// Processes a [`Message`] for the current [`LspProtocolMachine`], and returns an optional [`Message`] that represents
 	/// its response.
 	pub async fn process_message(&mut self, message: Arc<Message>) -> Result<Option<Message>, LspProtocolError> {
-		if let Message::Response(_) = *message {
-			// Forward any received Response messages to the RequestManager.
-			let state = self.state.read().await;
-
-			state.request_manager.process_response(message).await?;
-
-			return Ok(None);
-		}
-
 		// Dispatch any received Request or Notification messages to the current Dispatcher.
 		let current_state = self.current_state;
 		let current_dispatcher = self.get_dispatcher(current_state);

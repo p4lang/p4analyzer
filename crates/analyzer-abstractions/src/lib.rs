@@ -2,8 +2,9 @@
 pub use lsp_types;
 pub use tracing;
 pub use async_trait;
+pub use futures;
 
-pub mod futures;
+pub mod futures_extensions;
 
 // Unit test fixtures.
 #[cfg(test)]

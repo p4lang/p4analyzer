@@ -74,8 +74,6 @@ where
 	{
 		let target = RequestDispatchTarget::<TState, T::Params, T::Result>::new(Box::new(handler));
 
-		// target.handler_fn = Some(Box::new(handler));
-
 		self.request_handlers.write().unwrap().insert(String::from(T::METHOD), Arc::new(Box::new(target)));
 
 		self
@@ -92,7 +90,6 @@ where
 	{
 		let mut target = RequestDispatchTarget::<TState, T::Params, T::Result>::new(Box::new(handler));
 
-		// target.handler_fn = Some(Box::new(handler));
 		request_builder(TransitionBuilder::new(&mut target));
 
 		self.request_handlers.write().unwrap().insert(String::from(T::METHOD), Arc::new(Box::new(target)));
@@ -115,8 +112,6 @@ where
 	{
 		let target = NotificationDispatchTarget::<TState, T::Params>::new(Box::new(handler));
 
-		// target.handler_fn = Some(Box::new(handler));
-
 		self.notification_handlers.write().unwrap().insert(String::from(T::METHOD), Arc::new(Box::new(target)));
 
 		self
@@ -132,7 +127,6 @@ where
 	{
 		let mut target = NotificationDispatchTarget::<TState, T::Params>::new(Box::new(handler));
 
-		// target.handler_fn = Some(Box::new(handler));
 		request_builder(TransitionBuilder::new(&mut target));
 
 		self.notification_handlers.write().unwrap().insert(String::from(T::METHOD), Arc::new(Box::new(target)));

@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use async_rwlock::RwLock as AsyncRwLock;
 
-use analyzer_abstractions::lsp_types::{
+use analyzer_abstractions::{lsp_types::{
 	notification::{Exit, Initialized},
 	InitializedParams, request::RegisterCapability, RegistrationParams, Registration, DidChangeWatchedFilesRegistrationOptions, FileSystemWatcher,
-};
+}};
 
 use crate::{lsp::{
 	dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder,
@@ -57,9 +57,9 @@ async fn on_client_initialized(
 		]
 	};
 
-	// if let Err(_) = s.request_manager.send::<RegisterCapability>(registration_params).await {
-	// 	return Err(HandlerError::new("Error registering dynamic capability for 'workspace/didChangeWatchedFiles'."));
-	// }
+	if let Err(_) = s.request_manager.send::<RegisterCapability>(registration_params).await {
+		return Err(HandlerError::new("Error registering dynamic capability for 'workspace/didChangeWatchedFiles'."));
+	}
 
 	Ok(())
 }

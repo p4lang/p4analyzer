@@ -18,7 +18,7 @@ pub(crate) struct State {
 	pub trace_value: Option<TraceValueAccessor>,
 	pub analyzer: std::sync::Arc<AnalyzerWrapper>,
 
-	/// The [`RequestManager`] instance to use when managing server to client requests.
+	/// The [`RequestManager`] instance to use when sending LSP client requests.
 	pub request_manager: RequestManager,
 }
 

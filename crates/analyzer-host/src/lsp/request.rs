@@ -1,47 +1,100 @@
 use std::{collections::HashMap, sync::{Arc, atomic::{AtomicI32, Ordering}}};
 use async_rwlock::RwLock as AsyncRwLock;
-use analyzer_abstractions::{futures::FutureCompletionSource, tracing::error};
-use async_channel::Sender;
+use analyzer_abstractions::{futures_extensions::FutureCompletionSource, tracing::{error, info}};
+use async_channel::{Sender, Receiver};
+use cancellation::{OperationCanceled, CancellationToken};
 
-use crate::json_rpc::{message::{Message, Request}, RequestId, from_json};
+use crate::{json_rpc::{message::{Message, Request}, RequestId, from_json}, MessageChannel};
 use serde::{de::DeserializeOwned, Serialize};
 
 use super::LspProtocolError;
 
 type AnyFutureCompletionSource = FutureCompletionSource<Arc<Message>, LspProtocolError>;
 
+/// Manages server side requests over a given [`MessageChannel`]. Requests will be sent via the
+/// [`Sender`] element of the message channel, and responses will be awaited for over its [`Receiver`].
 pub(crate) struct RequestManager {
-	sender: Sender<Message>,
+	requests: Sender<Message>,
+	responses: Receiver<Message>,
 	request_id: AtomicI32,
-	active_requests: Arc<AsyncRwLock<HashMap<RequestId, Arc<AnyFutureCompletionSource>>>>,
+	awaiting_requests: Arc<AsyncRwLock<HashMap<RequestId, Arc<AnyFutureCompletionSource>>>>,
 }
 
 impl RequestManager {
-	pub fn new(sender: Sender<Message>) -> Self {
+	/// Initializes a new [`RequestManager`] instance for a given message channel.
+	pub fn new(message_channel: MessageChannel) -> Self {
+		let (sender, receiver) = message_channel;
+
 		Self {
-			sender,
+			requests: sender,
+			responses: receiver,
 			request_id: AtomicI32::new(0),
-			active_requests: Arc::new(AsyncRwLock::new(HashMap::new())),
+			awaiting_requests: Arc::new(AsyncRwLock::new(HashMap::new())),
 		}
 	}
 
+	/// Starts executing the [`RequestManager`] instance.
+	///
+	/// Once started, requests sent via the [`RequestManager::send`] method will be forwarded to the LSP client via
+	/// the [`Sender`] element of the underlying message channel. Responses will then be read from the associated
+	/// [`Receiver`] and matched with any awaiting requests.
+	pub async fn start(&self, cancel_token: Arc<CancellationToken>) -> Result<(), OperationCanceled> {
+		while !cancel_token.is_canceled() {
+			match self.responses.recv().await {
+				Ok(message) => {
+					if cancel_token.is_canceled() {
+						break;
+					}
+
+					if let Message::Response(ref response) = message {
+						let id = response.id.clone();
+
+						if let Some(active_request) = self.take_awaiting_request(&response.id).await {
+							if let Err(_) = active_request.set_value(Arc::new(message)).await {
+								panic!("received Response (with request id {}) but failed to resolve the Request", id);
+							}
+
+							continue;
+						}
+
+						error!("Received Response (with request id {}) that had no associated Request.", id);
+
+						continue;
+					}
+
+					panic!("expected message to be a 'Response' variant");
+				},
+				Err(err) => {
+					error!("Unexpected error receiving response: {:?}", err);
+				}
+			}
+		}
+
+		if cancel_token.is_canceled() {
+			return Err(OperationCanceled);
+		}
+
+		Ok(())
+	}
+
+	/// Sends a typed request to the LSP client and returns a `Future` that will yield its response.
 	pub async fn send<T>(&self, params: T::Params) -> Result<T::Result, LspProtocolError>
 	where
 		T: analyzer_abstractions::lsp_types::request::Request + 'static,
 		T::Params: Clone + Serialize + Send + std::fmt::Debug,
-		T::Result: Clone + DeserializeOwned + Send,
+		T::Result: Clone + DeserializeOwned + Send + From<()>,
 	{
 		let id = RequestId::from(self.request_id.fetch_add(1, Ordering::Relaxed));
 		let request = Request::new(id.clone(), T::METHOD.to_string(), params);
-		let active_request = self.create_active_request(&id).await;
+		let awaiting_request = self.create_active_request(&id).await;
 
-		if let Err(_) = self.sender.send(Message::Request(request)).await {
-			self.take_active_request(&id).await; // Take the active_request if we couldn't send the request.
+		if let Err(_) = self.requests.send(Message::Request(request)).await {
+			self.take_awaiting_request(&id).await; // Take the awaiting_request if we couldn't send the request.
 
 			return Err(LspProtocolError::TransportError);
 		}
 
-		let response_message = active_request.future().await?; // Wait for the active request to complete.
+		let response_message = awaiting_request.future().await?; // Wait for the request to complete.
 
 		match &*response_message {
 			Message::Response(response) => {
@@ -51,56 +104,38 @@ impl RequestManager {
 					return Err(LspProtocolError::UnexpectedResponse);
 				}
 
-				Ok(from_json::<T::Result>(&response.result.as_ref().unwrap())?)
+				match response.result.as_ref() {
+					Some(value) => Ok(from_json::<T::Result>(value)?),
+					None => Ok(<T::Result as From<()>>::from(()))
+				}
 			},
 			_ => Err(LspProtocolError::UnexpectedResponse)
 		}
 	}
 
-	pub async fn process_response(&self, message: Arc<Message>) -> Result<(), LspProtocolError> {
-		if let Message::Response(ref response) = *message {
-			let id = response.id.clone();
-
-			if let Some(active_request) = self.take_active_request(&response.id).await {
-				return match active_request.set_value(message.clone()).await {
-					Ok(r) => Ok(r),
-					Err(_) => {
-						error!("Received Response (with request id {}) but could not set it for the Request.", id);
-
-						Err(LspProtocolError::UnexpectedResponse)
-					}
-				}
-			}
-
-			error!("Received Response (with request id {}) that had no matching request.", id);
-
-			return Err(LspProtocolError::UnexpectedResponse);
-		}
-
-		panic!("expected message to be a 'Response' variant");
-	}
-
 	async fn create_active_request(&self, id: &RequestId) -> Arc<AnyFutureCompletionSource> {
-		let mut active_requests = self.active_requests.write().await;
+		let mut awaiting_requests = self.awaiting_requests.write().await;
 
-		active_requests.insert(id.clone(), Arc::new(FutureCompletionSource::<Arc<Message>, LspProtocolError>::new()));
+		awaiting_requests.insert(id.clone(), Arc::new(FutureCompletionSource::<Arc<Message>, LspProtocolError>::new()));
 
-		active_requests.get(&id).unwrap().clone()
+		awaiting_requests.get(&id).unwrap().clone()
 	}
 
-	async fn take_active_request(&self, id: &RequestId) -> Option<Arc<AnyFutureCompletionSource>> {
-		let mut active_requests = self.active_requests.write().await;
+	async fn take_awaiting_request(&self, id: &RequestId) -> Option<Arc<AnyFutureCompletionSource>> {
+		let mut awating_requests = self.awaiting_requests.write().await;
 
-		active_requests.remove(&id)
+		awating_requests.remove(&id)
 	}
 }
 
 impl Clone for RequestManager {
+	/// Returns a copy of the [`RequestManager`].
 	fn clone(&self) -> Self {
 		Self {
-			sender: self.sender.clone(),
+			requests: self.requests.clone(),
+			responses: self.responses.clone(),
 			request_id: AtomicI32::new(self.request_id.load(Ordering::Relaxed)),
-			active_requests: self.active_requests.clone()
+			awaiting_requests: self.awaiting_requests.clone()
 		}
 	}
 }

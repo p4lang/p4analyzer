@@ -1,7 +1,7 @@
 /// Provides test fixtures for the [`FutureCompletionSource::set_value()`] method.
 mod set_value {
 	// use async_std::prelude::*;
-	use crate::futures::{FutureCompletionSource, FutureCompletionSourceError};
+	use crate::futures_extensions::{FutureCompletionSource, FutureCompletionSourceError};
 
 	/// Ensures that [`FutureCompletionSource::set_value()`] fails if the [`FutureCompletionSource`] is already
 	/// complete.
@@ -33,7 +33,7 @@ mod set_value {
 
 /// Provides test fixtures for the [`FutureCompletionSource::set_err()`] method.
 mod set_err {
-	use crate::futures::{FutureCompletionSource, FutureCompletionSourceError};
+	use crate::futures_extensions::{FutureCompletionSource, FutureCompletionSourceError};
 
 	/// Ensures that [`FutureCompletionSource::set_err()`] fails if the [`FutureCompletionSource`] is already
 	/// complete.
@@ -67,7 +67,7 @@ mod future {
 	use futures::join;
 	use thiserror::Error;
 	use std::{time::Duration, sync::atomic::{AtomicUsize, Ordering}};
-	use crate::futures::{FutureCompletionSource};
+	use crate::futures_extensions::FutureCompletionSource;
 
 	#[derive(Error, Clone, Copy, Debug, PartialEq, Eq)]
 	enum MockError {

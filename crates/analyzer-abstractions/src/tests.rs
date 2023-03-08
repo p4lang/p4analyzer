@@ -1,1 +1,1 @@
-pub(crate) mod futures;
+pub(crate) mod futures_extensions;
