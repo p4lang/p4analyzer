@@ -5,8 +5,6 @@ use std::{
 	sync::Arc,
 };
 use async_rwlock::RwLock as AsyncRwLock;
-use dyn_clonable::*;
-
 use analyzer_abstractions::{async_trait::async_trait, tracing::error};
 use serde::{de::DeserializeOwned, Serialize};
 

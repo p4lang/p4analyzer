@@ -1,4 +1,8 @@
-use crate::{tracing::TraceValueAccessor, lsp::request::RequestManager};
+use std::sync::Arc;
+
+use analyzer_abstractions::{lsp_types::TraceValue, fs::AnyEnumerableFileSystem};
+
+use crate::{tracing::TraceValueAccessor, lsp::{request::RequestManager, workspace::WorkspaceManager}};
 
 pub(crate) struct AnalyzerWrapper(std::cell::RefCell<analyzer_core::Analyzer>);
 
@@ -18,44 +22,56 @@ pub(crate) struct State {
 	pub trace_value: Option<TraceValueAccessor>,
 	pub analyzer: std::sync::Arc<AnalyzerWrapper>,
 
+	/// The file system that can be used to enumerate folders and retrieve file contents.
+	pub file_system: Arc<AnyEnumerableFileSystem>,
+
 	/// The [`RequestManager`] instance to use when sending LSP client requests.
 	pub request_manager: RequestManager,
+
+	/// A [`WorkspaceManager`] that can be used to coordinate workspace and file operations.
+	workspace_manager: Option<WorkspaceManager>,
 }
 
 impl State {
-	/// Initializes a new default [`State`] instance.
-	fn default() -> Self {
-		Self {
-			trace_value: None,
-			analyzer: AnalyzerWrapper(Default::default()).into(),
-			request_manager: RequestManager::default(),
-		}
-	}
-}
-
-// #[derive(Clone)]
-pub(crate) struct RequestManager {
-	// request_id: AtomicI32,
-	active_requests: Arc<HashMap<RequestId, Message>>
-}
-
-impl RequestManager {
-	pub async fn send<T>(&self, params: T::Params) -> ()
-	where
-		T: Request + 'static,
-		T::Params: Clone + DeserializeOwned + Send + fmt::Debug,
-		T::Result: Clone + Serialize + Send,
-	{
-
-	}
-}
-
-impl Default for RequestManager {
-	fn default() -> Self {
-	pub fn new(trace_value: Option<TraceValueAccessor>, request_manager: RequestManager) -> Self {
+	/// Initializes a new [`State`] instance.
+	pub fn new(trace_value: Option<TraceValueAccessor>, request_manager: RequestManager, file_system: Arc<AnyEnumerableFileSystem>) -> Self {
 		Self {
 			trace_value,
+			analyzer: AnalyzerWrapper(Default::default()).into(),
+			file_system,
 			request_manager,
+			workspace_manager: None
 		}
+	}
+
+	/// If available, sets the supplied [`TraceValue`] on the [`TraceValueAccessor`] thereby modifying the trace
+	/// value used by the LSP tracing layer.
+	pub fn set_trace_value(&self, value: TraceValue) {
+		if let Some(trace_value) = &self.trace_value {
+			trace_value.set(value);
+		}
+	}
+
+	/// Returns `true` if the current P4 Analyzer instance has been started in the context of a workspace.
+	pub fn has_workspaces(&self) -> bool {
+		self.workspaces().has_workspaces()
+	}
+
+	/// Returns a reference to the current [`WorkspaceManager`].
+	pub fn workspaces(&self) -> &WorkspaceManager {
+		if let None = self.workspace_manager {
+			unreachable!("the WorkspaceManager was not initialized"); // A WorkspaceManager should be set during processing of the `'initialize'` request.
+		}
+
+		self.workspace_manager.as_ref().unwrap()
+	}
+
+	/// Sets the current [`WorkspaceManager`] for the current instance of the P4 Analyzer.
+	///
+	/// This method should be invoked when processing the
+	/// [`'initialize'`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#initialize)
+	/// request from the LSP client.
+	pub(crate) fn set_workspaces(&mut self, workspace_manager: WorkspaceManager) {
+		self.workspace_manager = Some(workspace_manager);
 	}
 }

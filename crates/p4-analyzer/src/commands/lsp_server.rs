@@ -60,7 +60,8 @@ impl Command for LspServerCommand {
 		&self,
 		cancel_token: Arc<CancellationToken>,
 	) -> Result<(), CommandInvocationError> {
-		let host = AnalyzerHost::new(self.console_driver.get_message_channel(), self.trace_value());
+		// Passing `None` as the `file_system`. This will
+		let host = AnalyzerHost::new(self.console_driver.get_message_channel(), self.trace_value(), None);
 
 		match tokio::join!(
 			host.start(cancel_token.clone()),

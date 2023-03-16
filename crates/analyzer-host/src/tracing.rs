@@ -78,14 +78,6 @@ where
 			},
 		);
 
-		// let notification = Notification::new(
-		// 	"window/logMessage",
-		// 	LogMessageParams {
-		// 		message: visitor.message,
-		// 		typ: MessageType::LOG,
-		// 	},
-		// );
-
 		self.sender
 			.send_blocking(Message::Notification(notification))
 			.unwrap_or_default(); // Ignore errors.

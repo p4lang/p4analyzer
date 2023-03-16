@@ -15,7 +15,7 @@ use analyzer_abstractions::{lsp_types::{
 use crate::{
 	json_rpc::ErrorCode,
 	lsp::{
-		dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder,
+		dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder, workspace::WorkspaceManager,
 	},
 };
 
@@ -44,25 +44,34 @@ pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'st
 async fn on_initialize(
 	_: LspServerState,
 	params: InitializeParams,
-	_: Arc<AsyncRwLock<State>>,
+	state: Arc<AsyncRwLock<State>>,
 ) -> HandlerResult<InitializeResult> {
-	match params.workspace_folders {
-		Some(folders) => {
-			info!("Initialized with 1 or more workspace folders");
-			for folder in folders.into_iter() {
-				info!("{:?}", folder);
-			}
-		},
-		None => info!("Initialized with no workspace folders.")
-	};
+	initialize_workspace(state.clone(), params.workspace_folders).await;
 
+	let state = state.read().await;
+
+	// If the server is being initialized with a trace value, then set use to set the current LSP tracing layer.
+	if let Some(trace_value) = params.trace {
+		state.set_trace_value(trace_value);
+	}
+
+	// If the server has been started without any workspace context, then simply return our 'default' capability.
+	if !state.has_workspaces() {
+		return Ok(create_initialize_result(false));
+	}
+
+	// With a workspace context in place, the P4 Analyzer depends on the LSP client to notify it of external file changes.
+	// If the client supports that capability, then start indexing
 	match params.capabilities.workspace {
 		Some(capabilities) if capabilities.did_change_watched_files != None => {
-			let supports_workspace_folders = capabilities.workspace_folders.unwrap_or(false);
-
-			Ok(create_initialize_result(supports_workspace_folders))
+			// TODO: Index the workspaces.
+			Ok(create_initialize_result(true))
 		},
-		_ => Err(HandlerError::new("P4 Analyzer requires the Workspace Watched Files capability from the client."))
+		_ => {
+			Err(
+				HandlerError::new(
+					"P4 Analyzer requires the Watched Files ('workspace.didChangeWatchedFiles') capability from the LSP client."))
+		}
 	}
 }
 
@@ -71,10 +80,18 @@ async fn on_exit(_: LspServerState, _: (), _: Arc<AsyncRwLock<State>>) -> Handle
 	Ok(())
 }
 
+/// Initializes and stores in state a new [`WorkspaceManager`] configured for a given collection of workspace folders.
+async fn initialize_workspace(state: Arc<AsyncRwLock<State>>, workspace_folders: Option<Vec<WorkspaceFolder>>) {
+	let mut state = state.write().await;
+	let file_system = state.file_system.clone();
+
+	state.set_workspaces(WorkspaceManager::new(file_system, workspace_folders));
+}
+
 /// Creates an initialized [`InitializeResult`] instance that describes the capabilities of the P4 Analyzer.
-fn create_initialize_result(supports_workspace_folders: bool) -> InitializeResult {
+fn create_initialize_result(include_workspace_folders: bool) -> InitializeResult {
 	let workspace =
-		if supports_workspace_folders {
+		if include_workspace_folders {
 			Some(WorkspaceServerCapabilities {
 				workspace_folders: Some(WorkspaceFoldersServerCapabilities {
 					supported: Some(true),

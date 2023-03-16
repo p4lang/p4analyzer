@@ -1,4 +1,4 @@
-use std::{result::Result, sync::{atomic::{AtomicBool, Ordering}, Arc, RwLock}};
+use std::{result::Result, sync::{atomic::{AtomicBool, Ordering}, Arc, RwLock}, task::Poll};
 use event_listener::Event;
 use thiserror::Error;
 
@@ -10,14 +10,11 @@ pub enum FutureCompletionSourceError {
 	Invalid
 }
 
-type FutureCompletionSourceResult<T> = Result<T, FutureCompletionSourceError>;
-
 /// Represents the producer side of a `Future` unbound to any function, providing access to the
 /// consumer side through the [`FutureCompletionSource::future()`] method.
+#[derive(Clone)]
 pub struct FutureCompletionSource<T, TError> {
-	completed: AtomicBool,
-	on_completed: Event,
-	value: Arc<RwLock<Option<Result<T, TError>>>>,
+	state: Arc<State<T, TError>>
 }
 
 impl<T, TError> FutureCompletionSource<T, TError>
@@ -28,9 +25,12 @@ where
 	/// Initializes a new [`FutureCompletionSource`].
 	pub fn new() -> Self {
 		Self {
-			completed: AtomicBool::new(false),
-			on_completed: Event::new(),
-			value: Arc::new(RwLock::new(None))
+			state: Arc::new(
+				State {
+					completed: AtomicBool::new(false),
+					on_completed: Event::new(),
+					value: Arc::new(RwLock::new(None))
+				})
 		}
 	}
 
@@ -40,20 +40,23 @@ where
 	/// method will complete synchronously returning `value`.
 	pub fn new_with_value(value: T) -> Self {
 		Self {
-			completed: AtomicBool::new(true),
-			on_completed: Event::new(),
-			value: Arc::new(RwLock::new(Some(Ok(value))))
+			state: Arc::new(
+				State {
+					completed: AtomicBool::new(true),
+					on_completed: Event::new(),
+					value: Arc::new(RwLock::new(Some(Ok(value))))
+				})
 		}
 	}
 
 	/// Resolves the underlying `Future` with a given value.
-	pub async fn set_value(&self, value: T) -> FutureCompletionSourceResult<()> {
-		self.set_inner_value(Ok(value)).await
+	pub fn set_value(&self, value: T) -> FutureCompletionSourceResult<()> {
+		self.set_inner_value(Ok(value))
 	}
 
 	/// Completes the underlying `Future` with a given error.
-	pub async fn set_err(&self, err: TError) ->  FutureCompletionSourceResult<()> {
-		self.set_inner_value(Err(err)).await
+	pub fn set_err(&self, err: TError) ->  FutureCompletionSourceResult<()> {
+		self.set_inner_value(Err(err))
 	}
 
 	/// Returns the underlying `Future` created by the current [`FutureCompletionSource`].
@@ -62,33 +65,42 @@ where
 	/// supplied by the producer when it calls the [`FutureCompletionSource::set_value()`] method;
 	/// or complete with an error when called with [`FutureCompletionSource::set_err()`].
 	pub async fn future(&self) -> Result<T, TError> {
-		let completed = self.completed.load(Ordering::Relaxed);
-
-		// If we have already completed, then simply return the set result.
-		if completed {
-			return self.get_inner_value().await;
+		if let Poll::Ready(value) = self.state() {
+			return value;
 		}
 
 		// Otherwise, await for an on-completed event before returning the set result.
-		self.on_completed.listen().await; // Asynchronously wait for the on-completed event.
-		self.get_inner_value().await
+		self.state.on_completed.listen().await; // Asynchronously wait for the on-completed event.
+
+		if let Poll::Ready(value) = self.state() {
+			return value;
+		}
+
+		unreachable!()
 	}
 
-	#[inline(always)]
-	async fn get_inner_value(&self) -> Result<T, TError> {
-		let reader = self.value.read().unwrap();
+	/// Retrieves the state of the current [`FutureCompletionSource`].
+	///
+	/// If [`Poll::Pending`] is returned then the producing side of the Future has not yet set a value or an error.
+	pub fn state(&self) -> Poll<Result<T, TError>> {
+		match self.state.completed.load(Ordering::Relaxed) {
+			true => {
+				let reader = self.state.value.read().unwrap();
+				let result = reader.as_ref().unwrap();
 
-		let result = reader.as_ref().unwrap();
-
-		match result {
-			Ok(value) => Ok(value.clone()),
-			Err(err) => Err(*err)
+				Poll::Ready(
+					match result {
+						Ok(value) => Ok(value.clone()),
+						Err(err) => Err(*err)
+					})
+			},
+			false => Poll::Pending
 		}
 	}
 
 	#[inline(always)]
-	async fn set_inner_value(&self, result: Result<T, TError>) -> FutureCompletionSourceResult<()> {
-		let completed = self.completed.load(Ordering::Relaxed);
+	fn set_inner_value(&self, result: Result<T, TError>) -> FutureCompletionSourceResult<()> {
+		let completed = self.state.completed.load(Ordering::Relaxed);
 
 		if completed {
 			return Err(FutureCompletionSourceError::Invalid);
@@ -96,12 +108,23 @@ where
 
 		// Store the result, set the `completed` state to true and then notify all those that are currently
 		// awaiting to resolve their 'Future'.
-		let mut writer = self.value.write().unwrap();
+		let mut writer = self.state.value.write().unwrap();
 
 		writer.replace(result);
-		self.completed.store(true, Ordering::Relaxed);
-		self.on_completed.notify(usize::MAX); // Notify all awaiting.
+		self.state.completed.store(true, Ordering::Relaxed);
+		self.state.on_completed.notify(usize::MAX); // Notify all awaiting.
 
 		Ok(())
 	}
+}
+
+type FutureCompletionSourceResult<T> = Result<T, FutureCompletionSourceError>;
+
+/// Encapsulates the internal (clonable) state of a [`FutureCompletionSource`].
+///
+/// (private)
+struct State<T, TError> {
+	completed: AtomicBool,
+	on_completed: Event,
+	value: Arc<RwLock<Option<Result<T, TError>>>>,
 }

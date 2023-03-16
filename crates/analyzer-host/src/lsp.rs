@@ -20,6 +20,7 @@ pub(crate) mod state;
 pub(crate) mod dispatch;
 pub(crate) mod dispatch_target;
 pub(crate) mod request;
+pub(crate) mod workspace;
 
 /// Represents an error in protocol while processing a received client message.
 #[derive(Error, Debug, Clone, Copy)]

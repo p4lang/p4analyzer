@@ -5,19 +5,19 @@ mod set_value {
 
 	/// Ensures that [`FutureCompletionSource::set_value()`] fails if the [`FutureCompletionSource`] is already
 	/// complete.
-	#[async_std::test]
-	async fn returns_err_when_already_complete() {
+	#[test]
+	fn returns_err_when_already_complete() {
 		let fcs = FutureCompletionSource::<usize, ()>::new_with_value(100);
 
-		assert_eq!(fcs.set_value(200).await, Err(FutureCompletionSourceError::Invalid));
+		assert_eq!(fcs.set_value(200), Err(FutureCompletionSourceError::Invalid));
 	}
 
 	/// Ensures that [`FutureCompletionSource::set_value()`] does not fail when the [`FutureCompletionSource`] is not complete.
-	#[async_std::test]
-	async fn accepts_value_when_not_complete() {
+	#[test]
+	fn accepts_value_when_not_complete() {
 		let fcs = FutureCompletionSource::<usize, ()>::new();
 
-		assert_eq!(fcs.set_value(100).await, Ok(()));
+		assert_eq!(fcs.set_value(100), Ok(()));
 	}
 
 	/// Ensures that the value set via calling [`FutureCompletionSource::set_value)`] is returned to any awaiting future.
@@ -25,7 +25,7 @@ mod set_value {
 	async fn returns_set_value() {
 		let fcs = FutureCompletionSource::<usize, ()>::new();
 
-		assert_eq!(fcs.set_value(100).await, Ok(()));
+		assert_eq!(fcs.set_value(100), Ok(()));
 		assert_eq!(fcs.future().await, Ok(100));
 	}
 }
@@ -37,19 +37,19 @@ mod set_err {
 
 	/// Ensures that [`FutureCompletionSource::set_err()`] fails if the [`FutureCompletionSource`] is already
 	/// complete.
-	#[async_std::test]
-	async fn returns_err_when_already_complete() {
+	#[test]
+	fn returns_err_when_already_complete() {
 		let fcs = FutureCompletionSource::<(), usize>::new_with_value(());
 
-		assert_eq!(fcs.set_err(200).await, Err(FutureCompletionSourceError::Invalid));
+		assert_eq!(fcs.set_err(200), Err(FutureCompletionSourceError::Invalid));
 	}
 
 	/// Ensures that [`FutureCompletionSource::set_err()`] does not fail when the [`FutureCompletionSource`] is not complete.
-	#[async_std::test]
-	async fn accepts_err_when_not_complete() {
+	#[test]
+	fn accepts_err_when_not_complete() {
 		let fcs = FutureCompletionSource::<(), usize>::new();
 
-		assert_eq!(fcs.set_err(100).await, Ok(()));
+		assert_eq!(fcs.set_err(100), Ok(()));
 	}
 
 	/// Ensures that the error reported via calling [`FutureCompletionSource::set_err()`] is returned to any awaiting future.
@@ -57,7 +57,7 @@ mod set_err {
 	async fn returns_set_err() {
 		let fcs = FutureCompletionSource::<(), usize>::new();
 
-		assert_eq!(fcs.set_err(100).await, Ok(()));
+		assert_eq!(fcs.set_err(100), Ok(()));
 		assert_eq!(fcs.future().await, Err(100));
 	}
 }
@@ -88,7 +88,7 @@ mod future {
 		let set = async {
 			async_std::future::timeout(Duration::from_millis(500), async_std::future::pending::<()>()).await.unwrap_err();
 
-			fcs.set_value(EXPECTED_VALUE).await.unwrap();
+			fcs.set_value(EXPECTED_VALUE).unwrap();
 		};
 
 		join!(assert, set);
@@ -113,7 +113,7 @@ mod future {
 		let set = async {
 			async_std::future::timeout(Duration::from_millis(500), async_std::future::pending::<()>()).await.unwrap_err();
 
-			fcs.set_value(EXPECTED_VALUE).await.unwrap();
+			fcs.set_value(EXPECTED_VALUE).unwrap();
 		};
 
 		join!(assert1, assert2, set);

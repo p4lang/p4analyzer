@@ -13,7 +13,7 @@ type AnyFutureCompletionSource = FutureCompletionSource<Arc<Message>, LspProtoco
 
 /// Manages server side requests over a given [`MessageChannel`]. Requests will be sent via the
 /// [`Sender`] element of the message channel, and responses will be awaited for over its [`Receiver`].
-pub(crate) struct RequestManager {
+pub struct RequestManager {
 	requests: Sender<Message>,
 	responses: Receiver<Message>,
 	request_id: AtomicI32,
@@ -50,7 +50,7 @@ impl RequestManager {
 						let id = response.id.clone();
 
 						if let Some(active_request) = self.take_awaiting_request(&response.id).await {
-							if let Err(_) = active_request.set_value(Arc::new(message)).await {
+							if let Err(_) = active_request.set_value(Arc::new(message)) {
 								panic!("received Response (with request id {}) but failed to resolve the Request", id);
 							}
 

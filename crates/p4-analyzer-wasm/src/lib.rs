@@ -44,7 +44,7 @@ impl LspServer {
 	/// Starts the LSP server by creating and starting an underlying [`AnalyzerHost`].
 	pub async fn start(&self) -> Result<JsValue, JsValue> {
 		let layer = LspTracingLayer::new(self.get_message_channel());
-		let host = AnalyzerHost::new(self.get_message_channel(), Some(layer.trace_value()));
+		let host = AnalyzerHost::new(self.get_message_channel(), Some(layer.trace_value()), None);
 		let subscriber = Registry::default().with(layer);
 
 		subscriber::set_global_default(subscriber)

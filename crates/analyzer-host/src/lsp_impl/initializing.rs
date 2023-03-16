@@ -4,7 +4,7 @@ use async_rwlock::RwLock as AsyncRwLock;
 use analyzer_abstractions::{lsp_types::{
 	notification::{Exit, Initialized},
 	InitializedParams, request::RegisterCapability, RegistrationParams, Registration, DidChangeWatchedFilesRegistrationOptions, FileSystemWatcher,
-}};
+}, tracing::{event_enabled, Level, info}};
 
 use crate::{lsp::{
 	dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder,
@@ -28,9 +28,9 @@ pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'st
 	)
 }
 
-/// Responds to a 'initialized' notification from the LSP client.
+/// Responds to an `'initialized'` notification from the LSP client.
 ///
-/// Once the client and server are initialized, the server will dynamically register for watched `.p4` files in the
+/// Once the client and server are initialized, the server will dynamically register for watched `.p4` files in any
 /// opened workspaces.
 async fn on_client_initialized(
 	_: LspServerState,
@@ -38,7 +38,12 @@ async fn on_client_initialized(
 	state: Arc<AsyncRwLock<State>>
 ) -> HandlerResult<()>
 {
-	let s = state.read().await;
+	let state = state.read().await;
+
+	// If the server has been started without any workspace context, then simply return.
+	if !state.has_workspaces() {
+		return Ok(());
+	}
 
 	let registration_params = RegistrationParams {
 		registrations: vec![
@@ -57,8 +62,14 @@ async fn on_client_initialized(
 		]
 	};
 
-	if let Err(_) = s.request_manager.send::<RegisterCapability>(registration_params).await {
+	if let Err(_) = state.request_manager.send::<RegisterCapability>(registration_params).await {
 		return Err(HandlerError::new("Error registering dynamic capability for 'workspace/didChangeWatchedFiles'."));
+	}
+
+	if event_enabled!(Level::INFO) {
+		let workspaces: Vec<String> = state.workspaces().into_iter().map(|(_, workspace)| { format!("{}", *workspace) }).collect();
+
+		info!(workspaces = workspaces.join(", "), "Registered for workspace file changes.");
 	}
 
 	Ok(())

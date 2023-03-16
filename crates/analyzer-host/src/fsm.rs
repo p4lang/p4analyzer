@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use analyzer_abstractions::fs::{EnumerableFileSystem, AnyEnumerableFileSystem};
 use analyzer_abstractions::tracing::info;
 use async_rwlock::RwLock as AsyncRwLock;
 
@@ -32,13 +33,13 @@ pub(crate) struct LspProtocolMachine {
 
 impl LspProtocolMachine {
 	/// Initializes a new [`LspProtocolMachine`] that will start in its initial state.
-	pub fn new(trace_value: Option<TraceValueAccessor>, request_manager: RequestManager) -> Self {
+	pub fn new(trace_value: Option<TraceValueAccessor>, request_manager: RequestManager, file_system: Arc<AnyEnumerableFileSystem>) -> Self {
 		let dispatchers = Arc::new(RwLock::new(LspProtocolMachine::create_dispatchers()));
 
 		Self {
 			dispatchers,
 			current_state: LSP_STARTING_STATE,
-			state: Arc::new(AsyncRwLock::new(State::new(trace_value, request_manager))),
+			state: Arc::new(AsyncRwLock::new(State::new(trace_value, request_manager, file_system))),
 		}
 	}
 

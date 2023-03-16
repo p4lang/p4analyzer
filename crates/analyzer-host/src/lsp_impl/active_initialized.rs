@@ -4,10 +4,10 @@ use async_rwlock::RwLock as AsyncRwLock;
 
 use analyzer_abstractions::{
 	lsp_types::{
-		notification::{Exit, Notification, SetTrace, DidOpenTextDocument, DidChangeTextDocument, DidCloseTextDocument, DidSaveTextDocument},
+		notification::{Exit, Notification, SetTrace, DidChangeWatchedFiles},
 		request::{Completion, HoverRequest, Shutdown},
 		CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
-		Hover, HoverContents, HoverParams, MarkupContent, MarkupKind, Position, SetTraceParams, DidOpenTextDocumentParams, DidChangeTextDocumentParams,
+		Hover, HoverContents, HoverParams, MarkupContent, MarkupKind, SetTraceParams, DidChangeWatchedFilesParams,
 		DidCloseTextDocumentParams, DidSaveTextDocumentParams,
 	},
 	tracing::info,
@@ -33,6 +33,7 @@ pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'st
 			.for_notification::<DidOpenTextDocument, _>(on_text_document_did_open)
 			.for_notification::<DidSaveTextDocument, _>(on_text_document_did_save)
 			.for_notification::<SetTrace, _>(on_set_trace)
+			.for_notification::<DidChangeWatchedFiles, _>(on_watched_file_change)
 			.for_notification_with_options::<Exit, _>(on_exit, |mut options| {
 				options.transition_to(LspServerState::Stopped)
 			})
@@ -206,18 +207,22 @@ async fn on_set_trace(
 	params: SetTraceParams,
 	state: Arc<AsyncRwLock<State>>,
 ) -> HandlerResult<()> {
-	let read_state = state.read().await;
+	let state = state.read().await;
 
-	// If a trace value accessor is available, then set it using the trace value received in the
-	// parameters.
-	if let Some(tv) = &read_state.trace_value {
-		info!(
-			method = SetTrace::METHOD,
-			"Setting trace level to {:?}", params.value
-		);
+	state.set_trace_value(params.value);
 
-		tv.set(params.value);
-	}
+	Ok(())
+}
+
+async fn on_watched_file_change(
+	_: LspServerState,
+	params: DidChangeWatchedFilesParams,
+	state: Arc<AsyncRwLock<State>>,
+) -> HandlerResult<()> {
+
+	let file_changes: Vec<String> = params.changes.into_iter().map(|file_event| { format!("({:?} {})", file_event.typ, file_event.uri) }).collect();
+
+	info!(file_changes = file_changes.join(", "), "Watched file changes.");
 
 	Ok(())
 }

@@ -3,7 +3,6 @@ use std::{
 	sync::{Arc, RwLock}
 };
 use async_rwlock::RwLock as AsyncRwLock;
-
 use analyzer_abstractions::{async_trait::async_trait, tracing::info};
 
 use crate::json_rpc::{
@@ -15,8 +14,6 @@ use super::{
 	state::{LspServerState, LspTransitionTarget},
 	LspProtocolError,
 };
-
-use dyn_clonable::*;
 
 /// Processes a [`Message`].
 #[async_trait]
@@ -37,8 +34,7 @@ pub(crate) trait DispatchTarget<TState: Send + Sync> {
 	fn set_transition_target(&mut self, target: LspTransitionTarget);
 }
 
-pub(crate) type AnyDispatchTarget<TState> =
-	Box<dyn (DispatchTarget<TState>) + Send + Sync>;
+pub(crate) type AnyDispatchTarget<TState> = Box<dyn DispatchTarget<TState> + Send + Sync>;
 
 /// Dispatches [`Message`] instances to underlying [`DispatchTarget`] implementations.
 #[async_trait]
