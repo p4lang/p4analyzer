@@ -4,7 +4,7 @@ use async_rwlock::RwLock as AsyncRwLock;
 
 use analyzer_abstractions::{
 	lsp_types::{
-		notification::{Exit, Notification, SetTrace, DidChangeWatchedFiles},
+		notification::{Exit, Notification, SetTrace, DidChangeWatchedFiles, DidOpenTextDocument, DidCloseTextDocument, DidChangeTextDocument},
 		request::{Completion, HoverRequest, Shutdown},
 		CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
 		Hover, HoverContents, HoverParams, MarkupContent, MarkupKind, SetTraceParams, DidChangeWatchedFilesParams,
@@ -34,6 +34,9 @@ pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'st
 			.for_notification::<DidSaveTextDocument, _>(on_text_document_did_save)
 			.for_notification::<SetTrace, _>(on_set_trace)
 			.for_notification::<DidChangeWatchedFiles, _>(on_watched_file_change)
+			.for_notification::<DidOpenTextDocument, _>(on_did_open_text_document)
+			.for_notification::<DidChangeTextDocument, _>(on_did_change_text_document)
+			.for_notification::<DidCloseTextDocument, _>(on_did_close_text_document)
 			.for_notification_with_options::<Exit, _>(on_exit, |mut options| {
 				options.transition_to(LspServerState::Stopped)
 			})
@@ -218,11 +221,55 @@ async fn on_watched_file_change(
 	_: LspServerState,
 	params: DidChangeWatchedFilesParams,
 	state: Arc<AsyncRwLock<State>>,
-) -> HandlerResult<()> {
-
+) -> HandlerResult<()>
+{
 	let file_changes: Vec<String> = params.changes.into_iter().map(|file_event| { format!("({:?} {})", file_event.typ, file_event.uri) }).collect();
 
 	info!(file_changes = file_changes.join(", "), "Watched file changes.");
+
+	Ok(())
+}
+
+async fn on_did_open_text_document(
+	_: LspServerState,
+	params: DidOpenTextDocumentParams,
+	state: Arc<AsyncRwLock<State>>,
+) -> HandlerResult<()>
+{
+	let state = state.read().await;
+	let file = state.workspaces().get_file(params.text_document.uri);
+
+	file.open_or_change_buffer(params.text_document.text, ());
+
+	Ok(())
+}
+
+async fn on_did_change_text_document(
+	_: LspServerState,
+	params: DidChangeTextDocumentParams,
+	state: Arc<AsyncRwLock<State>>,
+) -> HandlerResult<()>
+{
+	let state = state.read().await;
+	let file = state.workspaces().get_file(params.text_document.uri);
+
+	// TODO: Apply changes and apply changes to the file.
+
+	file.open_or_change_buffer(file.current_buffer().unwrap(), ());
+
+	Ok(())
+}
+
+async fn on_did_close_text_document(
+	_: LspServerState,
+	params: DidCloseTextDocumentParams,
+	state: Arc<AsyncRwLock<State>>,
+) -> HandlerResult<()>
+{
+	let state = state.read().await;
+	let file = state.workspaces().get_file(params.text_document.uri);
+
+	file.close_buffer();
 
 	Ok(())
 }

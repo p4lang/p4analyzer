@@ -17,7 +17,6 @@ use super::{
 
 /// Processes a [`Message`].
 #[async_trait]
-// #[clonable]
 pub(crate) trait DispatchTarget<TState: Send + Sync> {
 	/// Processes a [`Message`] and returns a tuple of an optional response, and a target [`LspServerState`] from which
 	/// further messages should be processed.
@@ -38,7 +37,6 @@ pub(crate) type AnyDispatchTarget<TState> = Box<dyn DispatchTarget<TState> + Sen
 
 /// Dispatches [`Message`] instances to underlying [`DispatchTarget`] implementations.
 #[async_trait]
-// #[clonable]
 pub(crate) trait Dispatch<TState: Send + Sync> {
 	/// Processes a [`Message`] and returns a tuple of an optional response, and a target [`LspServerState`] from which
 	/// further messages should be processed.

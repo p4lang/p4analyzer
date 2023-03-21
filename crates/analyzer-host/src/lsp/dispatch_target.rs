@@ -61,7 +61,6 @@ pub(crate) type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 's
 ///
 /// A request handler receives some deserialized parameters, and returns a [`HandlerRequest`]. During execution, the
 /// request handler can also mutate an instance of [`TState`].
-// #[clonable]
 pub(crate) trait AsyncRequestHandlerFn<TState, TParams, TResult>
 where
 	TState: Send + Sync

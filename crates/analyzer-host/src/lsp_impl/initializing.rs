@@ -4,7 +4,7 @@ use async_rwlock::RwLock as AsyncRwLock;
 use analyzer_abstractions::{lsp_types::{
 	notification::{Exit, Initialized},
 	InitializedParams, request::RegisterCapability, RegistrationParams, Registration, DidChangeWatchedFilesRegistrationOptions, FileSystemWatcher,
-}, tracing::{event_enabled, Level, info}};
+}};
 
 use crate::{lsp::{
 	dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder,
@@ -20,7 +20,7 @@ pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'st
 				on_client_initialized,
 				|mut options| options.transition_to(LspServerState::ActiveInitialized),
 			)
-			.for_unhandled_requests((ErrorCode::ServerNotInitialized, "The server is waiting on the client to send the 'initialized' notification."))
+			.for_unhandled_requests((ErrorCode::ServerNotInitialized, "The server is initializing."))
 			.for_notification_with_options::<Exit, _>(on_exit, |mut options| {
 				options.transition_to(LspServerState::Stopped)
 			})
@@ -66,11 +66,7 @@ async fn on_client_initialized(
 		return Err(HandlerError::new("Error registering dynamic capability for 'workspace/didChangeWatchedFiles'."));
 	}
 
-	if event_enabled!(Level::INFO) {
-		let workspaces: Vec<String> = state.workspaces().into_iter().map(|(_, workspace)| { format!("{}", *workspace) }).collect();
-
-		info!(workspaces = workspaces.join(", "), "Registered for workspace file changes.");
-	}
+	state.workspaces().index().await; // Index the workspace folders.
 
 	Ok(())
 }

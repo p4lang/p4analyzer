@@ -16,8 +16,8 @@ pub enum EntryType {
 
 #[derive(Clone)]
 pub struct FileSystemEntry {
-	pub entry_uri: Url,
-	pub entry_type: EntryType
+	pub uri: Url,
+	pub typ: EntryType
 }
 
 pub type AnyEnumerableFileSystem = Box<dyn EnumerableFileSystem + Send + Sync>;
