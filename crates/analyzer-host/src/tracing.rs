@@ -1,5 +1,6 @@
 pub use tracing_subscriber;
 
+use core::fmt::Debug;
 use crate::{
 	json_rpc::message::{Message, Notification},
 	MessageChannel,
@@ -113,7 +114,7 @@ impl Display for LspTraceMessageVisitor {
 }
 
 impl Visit for LspTraceMessageVisitor {
-	fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+	fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
 		if field.name() == "message" {
 			write!(self.message, "{:?}", value).unwrap();
 

@@ -1,5 +1,5 @@
+use core::fmt::Debug;
 use std::{
-	fmt,
 	future::Future,
 	pin::Pin,
 	sync::Arc,
@@ -107,7 +107,7 @@ where
 impl<TState, TParams, TResult> RequestDispatchTarget<TState, TParams, TResult>
 where
 	TState: Send + Sync,
-	TParams: DeserializeOwned + Send + fmt::Debug,
+	TParams: DeserializeOwned + Send + Debug,
 	TResult: Serialize + Send,
 {
 	/// Initializes a new [`RequestDispatchTarget`] for a given handler function.
@@ -130,7 +130,7 @@ where
 impl<TState, TParams, TResult> DispatchTarget<TState> for RequestDispatchTarget<TState, TParams, TResult>
 where
 	TState: Send + Sync + 'static,
-	TParams: DeserializeOwned + Clone + Send + fmt::Debug + 'static,
+	TParams: DeserializeOwned + Clone + Send + Debug + 'static,
 	TResult: Serialize + Clone + Send + 'static,
 {
 	async fn process_message(
@@ -190,7 +190,7 @@ where
 impl<TState, TParams> NotificationDispatchTarget<TState, TParams>
 where
 	TState: Send + Sync,
-	TParams: DeserializeOwned + Send + fmt::Debug,
+	TParams: DeserializeOwned + Send + Debug,
 {
 	/// Initializes a new [`NotificationDispatchTarget`] for a given handler function.
 	pub fn new(handler_fn: Box<dyn (AsyncRequestHandlerFn<TState, TParams, ()>) + Send + Sync>) -> Self {
@@ -212,7 +212,7 @@ where
 impl<TState, TParams> DispatchTarget<TState> for NotificationDispatchTarget<TState, TParams>
 where
 	TState: Send + Sync + 'static,
-	TParams: DeserializeOwned + Clone + Send + fmt::Debug + 'static,
+	TParams: DeserializeOwned + Clone + Send + Debug + 'static,
 {
 	async fn process_message(
 		&self,

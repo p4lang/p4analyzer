@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use std::{collections::HashMap, sync::{Arc, atomic::{AtomicI32, Ordering}}};
 use async_rwlock::RwLock as AsyncRwLock;
 use analyzer_abstractions::{futures_extensions::FutureCompletionSource, tracing::{error, info}};
@@ -81,7 +82,7 @@ impl RequestManager {
 	pub async fn send<T>(&self, params: T::Params) -> Result<T::Result, LspProtocolError>
 	where
 		T: analyzer_abstractions::lsp_types::request::Request + 'static,
-		T::Params: Clone + Serialize + Send + std::fmt::Debug,
+		T::Params: Clone + Serialize + Send + Debug,
 		T::Result: Clone + DeserializeOwned + Send + From<()>,
 	{
 		let id = RequestId::from(self.request_id.fetch_add(1, Ordering::Relaxed));

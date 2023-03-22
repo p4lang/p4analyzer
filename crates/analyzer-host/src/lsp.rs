@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use analyzer_abstractions::{
 	lsp_types::{notification::Notification, request::Request},
 	tracing::error,
@@ -7,7 +8,6 @@ use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 use std::{
 	collections::HashMap,
-	fmt,
 	sync::{Arc, RwLock},
 };
 
@@ -69,7 +69,7 @@ where
 	pub fn for_request<T, THandler>(&mut self, handler: THandler) -> &mut Self
 	where
 		T: Request + 'static,
-		T::Params: Clone + DeserializeOwned + Send + fmt::Debug,
+		T::Params: Clone + DeserializeOwned + Send + Debug,
 		T::Result: Clone + Serialize + Send,
 		THandler: AsyncRequestHandlerFn<TState, T::Params, T::Result> + Send + Sync + 'static
 	{
@@ -85,7 +85,7 @@ where
 	pub fn for_request_with_options<T, THandler>(&mut self, handler: THandler, request_builder: fn(TransitionBuilder<TState>) -> ()) -> &mut Self
 	where
 		T: Request + 'static,
-		T::Params: Clone + DeserializeOwned + Send + fmt::Debug,
+		T::Params: Clone + DeserializeOwned + Send + Debug,
 		T::Result: Clone + Serialize + Send,
 		THandler: AsyncRequestHandlerFn<TState, T::Params, T::Result> + Send + Sync + 'static
 	{
@@ -108,7 +108,7 @@ where
 	pub fn for_notification<T, THandler>(&mut self, handler: THandler) -> &mut Self
 	where
 		T: Notification + 'static,
-		T::Params: Clone + DeserializeOwned + Send + fmt::Debug,
+		T::Params: Clone + DeserializeOwned + Send + Debug,
 		THandler: AsyncRequestHandlerFn<TState, T::Params, ()> + Send + Sync + 'static
 	{
 		let target = NotificationDispatchTarget::<TState, T::Params>::new(Box::new(handler));
@@ -123,7 +123,7 @@ where
 	pub fn for_notification_with_options<T, THandler>(&mut self, handler: THandler, request_builder: fn(TransitionBuilder<TState>) -> ()) -> &mut Self
 	where
 		T: Notification + 'static,
-		T::Params: Clone + DeserializeOwned + Send + fmt::Debug,
+		T::Params: Clone + DeserializeOwned + Send + Debug,
 		THandler: AsyncRequestHandlerFn<TState, T::Params, ()> + Send + Sync + 'static
 	{
 		let mut target = NotificationDispatchTarget::<TState, T::Params>::new(Box::new(handler));

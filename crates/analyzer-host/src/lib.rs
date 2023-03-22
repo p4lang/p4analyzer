@@ -5,8 +5,8 @@ pub mod json_rpc;
 pub mod tracing;
 pub mod fs;
 
-use std::{sync::Arc, pin::Pin};
-use analyzer_abstractions::{tracing::*, futures::{Future, future::join3 as join_all}, fs::{AnyEnumerableFileSystem, EnumerableFileSystem}};
+use std::sync::Arc;
+use analyzer_abstractions::{tracing::*, futures::{future::join3 as join_all}, fs::AnyEnumerableFileSystem};
 use async_channel::{Receiver, Sender};
 use cancellation::{CancellationToken, OperationCanceled};
 use fs::LspEnumerableFileSystem;
@@ -18,8 +18,6 @@ use crate::lsp::request::RequestManager;
 
 /// A tuple type that represents both a sender and a receiver of [`Message`] instances.
 pub type MessageChannel = (Sender<Message>, Receiver<Message>);
-
-// type AnyAsyncOperation = Pin<Box<dyn Future<Output = Result<(), OperationCanceled>> + 'static>>;
 
 /// Provides a runtime environment for the P4 Analyzer, utilizing services that are provided by the host process.
 pub struct AnalyzerHost {

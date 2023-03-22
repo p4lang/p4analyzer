@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use std::{result::Result, sync::{atomic::{AtomicBool, Ordering}, Arc, RwLock}, task::Poll};
 use event_listener::Event;
 use thiserror::Error;
@@ -19,8 +20,8 @@ pub struct FutureCompletionSource<T, TError> {
 
 impl<T, TError> FutureCompletionSource<T, TError>
 where
-	T: Clone + core::fmt::Debug,
-	TError: Copy + core::fmt::Debug
+	T: Clone + Debug,
+	TError: Copy + Debug
 {
 	/// Initializes a new [`FutureCompletionSource`].
 	pub fn new() -> Self {

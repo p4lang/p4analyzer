@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use std::{sync::{Arc, RwLock}, collections::{HashMap, hash_map::{Iter, IntoIter, Entry}}, fmt::{Formatter, Display, Result as FmtResult}, task::Poll};
 
 use analyzer_abstractions::{lsp_types::{WorkspaceFolder, Url}, fs::{AnyEnumerableFileSystem, FileSystemEntry, EntryType}, tracing::{error, info}};
@@ -14,13 +15,13 @@ pub(crate) struct WorkspaceManager<T: Clone = ()> {
 
 impl<T> WorkspaceManager<T>
 where
-	T: Clone + core::fmt::Debug
+	T: Clone + Debug
 {
 	/// Initializes a new [`WorkspaceManager`] instance.
 	///
 	/// If `workspace_folders` is [`None`], then a root workspace folder will be used by default.
 	pub fn new(file_system: Arc<AnyEnumerableFileSystem>, workspace_folders: Option<Vec<WorkspaceFolder>>) -> Self {
-		fn to_workspace<T: Clone + core::fmt::Debug>(file_system: Arc<AnyEnumerableFileSystem>, workspace_folder: WorkspaceFolder) -> (Url, Arc<Workspace<T>>) {
+		fn to_workspace<T: Clone + Debug>(file_system: Arc<AnyEnumerableFileSystem>, workspace_folder: WorkspaceFolder) -> (Url, Arc<Workspace<T>>) {
 			(workspace_folder.uri.clone(), Arc::new(Workspace::new(file_system, workspace_folder)))
 		}
 
@@ -112,8 +113,9 @@ pub(crate) struct Workspace<T: Clone> {
 
 impl<T> Workspace<T>
 where
-	T: Clone + core::fmt::Debug
+	T: Clone + Debug
 {
+	/// Initializes a new [`Workspace`].
 	pub fn new(file_system: Arc<AnyEnumerableFileSystem>, workspace_folder: WorkspaceFolder) -> Self {
 		Self {
 			file_system,
@@ -122,15 +124,17 @@ where
 		}
 	}
 
+	/// Gets the URL of the current [`Workspace`].
 	pub fn uri(&self) -> Url {
 		self.workspace_folder.uri.clone()
 	}
 
+	/// Gets the name of the current [`Workspace`].
 	pub fn name(&self) -> &str {
 		self.workspace_folder.name.as_str()
 	}
 
-	/// Retrieves a file from the workspace.
+	/// Look up and retrieve a file from the workspace.
 	///
 	/// The [`File`] will be created if it is not present in the current workspace.
 	pub fn get_file(&self, uri: Url) -> Arc<File<T>> {
@@ -188,7 +192,7 @@ pub(crate) struct File<T: Clone> {
 
 impl<T> File<T>
 where
-	T: Clone + core::fmt::Debug
+	T: Clone + Debug
 {
 	pub fn new(file_entry: FileSystemEntry) -> Self {
 		Self {
