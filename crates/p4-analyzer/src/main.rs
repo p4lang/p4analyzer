@@ -2,6 +2,8 @@ mod cli;
 mod commands;
 mod stdio;
 
+use analyzer_abstractions::event_listener::Event;
+use analyzer_abstractions::futures_extensions::async_extensions::AsyncPool;
 use analyzer_abstractions::tracing::{subscriber, Level, Subscriber};
 use analyzer_host::tracing::tracing_subscriber::fmt::layer;
 use analyzer_host::tracing::tracing_subscriber::fmt::writer::MakeWriterExt;
@@ -31,7 +33,8 @@ pub async fn main() {
 			let default_logging_layer = create_default_logging_layer::<Registry>(&cmd);
 			let mut layers = if let Some((layer, _)) = default_logging_layer {
 				vec![layer]
-			} else {
+			}
+			else {
 				vec![]
 			};
 			let cmd = match cmd.subcommand {
@@ -46,7 +49,12 @@ pub async fn main() {
 			subscriber::set_global_default(subscriber)
 				.expect("Unable to set global tracing subscriber.");
 
-			cmd.run().await;
+			let signal = Arc::new(Event::new());
+
+			// Run the entire asynchronous pipeline via an `AsyncPool`. The main thread will be blocked until `signal`
+			// becomes signalled, but asynchronous operations will run as expected via the underlying executor.
+			AsyncPool::run_as_task(cmd.run(signal.clone())).unwrap();
+			AsyncPool::block_run(signal.listen());
 		}
 		Err(err) => {
 			println!();
@@ -111,7 +119,7 @@ impl<C: Command> RunnableCommand<C> {
 	///
 	/// The supplied command will be invoked with a [`CancellationToken`] that is canceled upon receiving a 'Ctrl-C' signal (if
 	/// it is supported by the platform).
-	async fn run(self) {
+	async fn run(self, signal: Arc<Event>) {
 		let Self(cmd) = self;
 
 		let count = Arc::new(AtomicU8::new(0));
@@ -141,7 +149,9 @@ impl<C: Command> RunnableCommand<C> {
 				CommandInvocationError::Cancelled => println!("{}", err),
 				_ => eprintln!("{}", err),
 			},
-		}
+		};
+
+		signal.notify(1); // Signal that the command has completed.
 	}
 
 	/// Retrieves any additional logging layers that have been configured by the underlying command.

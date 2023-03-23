@@ -3,6 +3,8 @@ use std::{result::Result, sync::{atomic::{AtomicBool, Ordering}, Arc, RwLock}, t
 use event_listener::Event;
 use thiserror::Error;
 
+pub mod async_extensions;
+
 /// Represents an error that can occur when completing a [`FutureCompletionSource`].
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum FutureCompletionSourceError {

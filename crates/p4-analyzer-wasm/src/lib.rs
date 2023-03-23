@@ -2,7 +2,7 @@ mod buffer;
 
 extern crate console_error_panic_hook;
 
-use analyzer_abstractions::{tracing::subscriber};
+use analyzer_abstractions::tracing::subscriber;
 use analyzer_host::{
 	json_rpc::message::*,
 	tracing::{

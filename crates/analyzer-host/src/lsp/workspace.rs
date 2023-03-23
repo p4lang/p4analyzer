@@ -1,7 +1,15 @@
 use core::fmt::Debug;
-use std::{sync::{Arc, RwLock}, collections::{HashMap, hash_map::{Iter, IntoIter, Entry}}, fmt::{Formatter, Display, Result as FmtResult}, task::Poll};
+use std::{
+	sync::{Arc, RwLock},
+	collections::{HashMap, hash_map::{Iter, IntoIter, Entry}}, fmt::{Formatter, Display, Result as FmtResult},
+	task::Poll
+};
 
-use analyzer_abstractions::{lsp_types::{WorkspaceFolder, Url}, fs::{AnyEnumerableFileSystem, FileSystemEntry, EntryType}, tracing::{error, info}};
+use analyzer_abstractions::{
+	lsp_types::{WorkspaceFolder, Url},
+	fs::{AnyEnumerableFileSystem, FileSystemEntry, EntryType},
+	tracing::{error, info}
+};
 use analyzer_abstractions::futures_extensions::FutureCompletionSource;
 use analyzer_abstractions::futures::future::join_all;
 use thiserror::Error;
