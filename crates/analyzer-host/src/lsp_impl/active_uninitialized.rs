@@ -6,6 +6,7 @@ use analyzer_abstractions::lsp_types::{
 	HoverProviderCapability, ImplementationProviderCapability, InitializeParams, InitializeResult,
 	OneOf, ServerCapabilities, ServerInfo, SignatureHelpOptions, TextDocumentSyncCapability,
 	TextDocumentSyncKind, TypeDefinitionProviderCapability, WorkDoneProgressOptions,
+	TextDocumentSyncSaveOptions, TextDocumentSyncOptions, SaveOptions,
 };
 
 use crate::{
@@ -41,9 +42,14 @@ async fn on_initialize(
 ) -> HandlerResult<InitializeResult> {
 	let result = InitializeResult {
 		capabilities: ServerCapabilities {
-			text_document_sync: Some(TextDocumentSyncCapability::Kind(
-				TextDocumentSyncKind::INCREMENTAL,
-			)),
+			text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
+				save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
+					// FIXME: temporary solution
+					include_text: Some(true)
+				})),
+				change: Some(TextDocumentSyncKind::INCREMENTAL),
+				..Default::default()
+			})),
 			completion_provider: Some(CompletionOptions {
 				resolve_provider: Some(true),
 				trigger_characters: Some(vec!["(".to_string(), "<".to_string(), ".".to_string()]),

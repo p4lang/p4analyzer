@@ -76,8 +76,8 @@ impl AnalyzerHost {
 				Err(err) => {
 					error!("Unexpected error receving request: {:?}", err);
 
-					continue
-				},
+					continue;
+				}
 			}
 		}
 

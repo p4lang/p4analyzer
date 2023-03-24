@@ -10,10 +10,10 @@ The language server plans to support:
 * Hover
 
 ## Building
-The repository supports building on unix & windows systems. 
+The repository supports building on unix & windows systems.
 
 ### Prerequisites
-* [Rust](https://www.rust-lang.org/tools/install) 
+* [Rust](https://www.rust-lang.org/tools/install)
 * [Wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)
 * [NodeJS](https://nodejs.org/en/download/)
 * `git clone` the repository
