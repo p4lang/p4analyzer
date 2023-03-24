@@ -5,7 +5,7 @@ use analyzer_abstractions::{futures_extensions::FutureCompletionSource, tracing:
 use async_channel::{Sender, Receiver};
 use cancellation::{OperationCanceled, CancellationToken};
 
-use crate::{json_rpc::{message::{Message, Request}, RequestId, from_json}, MessageChannel};
+use crate::{json_rpc::{message::{Message, Request, Notification}, RequestId, from_json}, MessageChannel};
 use serde::{de::DeserializeOwned, Serialize};
 
 use super::LspProtocolError;
@@ -78,12 +78,27 @@ impl RequestManager {
 		Ok(())
 	}
 
+	/// Sends a typed notification to the LSP client.
+	pub async fn send_notification<T>(&self, params: T::Params) -> Result<(), LspProtocolError>
+	where
+		T: analyzer_abstractions::lsp_types::notification::Notification + 'static,
+		T::Params: Clone + Serialize + Send + Debug
+	{
+		let request = Notification::new(T::METHOD, params);
+
+		if let Err(_) = self.requests.send(Message::Notification(request)).await {
+			return Err(LspProtocolError::TransportError);
+		}
+
+		Ok(())
+	}
+
 	/// Sends a typed request to the LSP client and returns a `Future` that will yield its response.
 	pub async fn send<T>(&self, params: T::Params) -> Result<T::Result, LspProtocolError>
 	where
 		T: analyzer_abstractions::lsp_types::request::Request + 'static,
 		T::Params: Clone + Serialize + Send + Debug,
-		T::Result: Clone + DeserializeOwned + Send + From<()>,
+		T::Result: Clone + DeserializeOwned + Send + From<()>
 	{
 		let id = RequestId::from(self.request_id.fetch_add(1, Ordering::Relaxed));
 		let request = Request::new(id.clone(), T::METHOD.to_string(), params);
