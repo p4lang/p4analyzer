@@ -3,7 +3,6 @@ use analyzer_abstractions::{
 	lsp_types::{notification::Notification, request::Request},
 	tracing::error,
 };
-use async_channel::SendError;
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 use std::{
@@ -11,7 +10,7 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
-use crate::json_rpc::{DeserializeError, ErrorCode, message::Message};
+use crate::json_rpc::{DeserializeError, ErrorCode};
 
 use self::{state::{LspServerState}, fluent::state::TransitionBuilder, dispatch::{DefaultDispatch, AnyDispatchTarget, Dispatch}, dispatch_target::{AsyncRequestHandlerFn, RequestDispatchTarget, NotificationDispatchTarget}};
 
@@ -21,6 +20,7 @@ pub(crate) mod dispatch;
 pub(crate) mod dispatch_target;
 pub(crate) mod request;
 pub(crate) mod workspace;
+pub(crate) mod progress;
 
 /// Represents an error in protocol while processing a received client message.
 #[derive(Error, Debug, Clone, Copy)]

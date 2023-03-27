@@ -11,8 +11,9 @@ use analyzer_abstractions::{
 	tracing::{error, info}
 };
 use analyzer_abstractions::futures_extensions::FutureCompletionSource;
-use analyzer_abstractions::futures::future::join_all;
 use thiserror::Error;
+
+use super::progress::ProgressManager;
 
 /// Manages a collection of workspaces opened by an LSP compliant host.
 #[derive(Clone)]
@@ -80,14 +81,20 @@ where
 	/// Asynchronously indexes the contents of each [`Workspace`].
 	///
 	/// Returns immediately if the the [`WorkspaceManager`] was not initialized with workspace folders.
-	pub async fn index(&self) {
+	pub async fn index(&self, progress: &ProgressManager) {
 		if !self.has_workspaces() {
 			return; // Do nothing if there are no workspace folders.
 		}
 
-		let index_operations = (&self.workspaces).into_iter().map(|(_, workspace)| { workspace.index() });
+		let progress = progress.begin("Indexing").await.unwrap();
 
-		join_all(index_operations).await;
+		for (_, workspace) in (&self.workspaces).into_iter() {
+			progress.report(&format!("{}", workspace.name())).await.unwrap();
+
+			workspace.index().await;
+		}
+
+		progress.end(None).await.unwrap();
 	}
 }
 

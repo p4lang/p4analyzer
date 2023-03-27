@@ -66,7 +66,7 @@ async fn on_client_initialized(
 		return Err(HandlerError::new("Error registering dynamic capability for 'workspace/didChangeWatchedFiles'."));
 	}
 
-	state.workspaces().index().await; // Index the workspace folders.
+	state.workspaces().index(state.progress_manager()).await; // Index the workspace folders.
 
 	Ok(())
 }

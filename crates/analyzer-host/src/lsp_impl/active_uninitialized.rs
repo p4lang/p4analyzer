@@ -15,7 +15,7 @@ use analyzer_abstractions::{lsp_types::{
 use crate::{
 	json_rpc::ErrorCode,
 	lsp::{
-		dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder, workspace::WorkspaceManager,
+		dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder, workspace::WorkspaceManager, progress::ProgressManager,
 	},
 };
 
@@ -46,7 +46,7 @@ async fn on_initialize(
 	params: InitializeParams,
 	state: Arc<AsyncRwLock<State>>,
 ) -> HandlerResult<InitializeResult> {
-	initialize_workspace(state.clone(), params.workspace_folders).await;
+	initialize_client_dependant_state(state.clone(), params.workspace_folders, params.capabilities.window).await;
 
 	let state = state.read().await;
 
@@ -63,10 +63,8 @@ async fn on_initialize(
 	// With a workspace context in place, the P4 Analyzer depends on the LSP client to notify it of external file changes.
 	// If the client supports that capability, then start indexing
 	match params.capabilities.workspace {
-		Some(capabilities) if capabilities.did_change_watched_files != None => {
-			// TODO: Index the workspaces.
-			Ok(create_initialize_result(true))
-		},
+		Some(capabilities)
+			if capabilities.did_change_watched_files != None => Ok(create_initialize_result(true)),
 		_ => {
 			Err(
 				HandlerError::new(
@@ -80,12 +78,23 @@ async fn on_exit(_: LspServerState, _: (), _: Arc<AsyncRwLock<State>>) -> Handle
 	Ok(())
 }
 
-/// Initializes and stores in state a new [`WorkspaceManager`] configured for a given collection of workspace folders.
-async fn initialize_workspace(state: Arc<AsyncRwLock<State>>, workspace_folders: Option<Vec<WorkspaceFolder>>) {
+/// Initializes and stores in state the instances that are based on the reported client capabilities.
+async fn initialize_client_dependant_state(
+	state: Arc<AsyncRwLock<State>>,
+	workspace_folders: Option<Vec<WorkspaceFolder>>,
+	window_capabilities: Option<WindowClientCapabilities>)
+{
 	let mut state = state.write().await;
 	let file_system = state.file_system.clone();
 
 	state.set_workspaces(WorkspaceManager::new(file_system, workspace_folders));
+
+	let request_manager = state.request_manager.clone();
+	let work_done_supported = window_capabilities.map_or(
+		false,
+		|value| value.work_done_progress.map_or(false, |value| value));
+
+	state.set_progress(ProgressManager::new(request_manager, work_done_supported));
 }
 
 /// Creates an initialized [`InitializeResult`] instance that describes the capabilities of the P4 Analyzer.

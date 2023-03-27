@@ -4,13 +4,12 @@ use crate::lsp::request::RequestManager;
 
 #[derive(Clone)]
 pub struct LspEnumerableFileSystem {
-	// request_manager: RequestManager
+	request_manager: RequestManager
 }
 
 impl LspEnumerableFileSystem {
 	pub fn new(request_manager: RequestManager) -> Self {
-		// Self { request_manager }
-		Self {}
+		Self { request_manager }
 	}
 }
 

@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{sync::Arc, hash::Hash};
 
-use analyzer_abstractions::{lsp_types::TraceValue, fs::AnyEnumerableFileSystem};
+use analyzer_abstractions::{lsp_types::{TraceValue, NumberOrString}, fs::AnyEnumerableFileSystem};
 
-use crate::{tracing::TraceValueAccessor, lsp::{request::RequestManager, workspace::WorkspaceManager}};
+use crate::{tracing::TraceValueAccessor, lsp::{request::RequestManager, workspace::WorkspaceManager, progress::{ProgressManager, Progress}, LspProtocolError}};
 
 pub(crate) struct AnalyzerWrapper(std::cell::RefCell<analyzer_core::Analyzer>);
 
@@ -28,6 +28,9 @@ pub(crate) struct State {
 	/// The [`RequestManager`] instance to use when sending LSP client requests.
 	pub request_manager: RequestManager,
 
+	/// A [`ProgressManager`] instance that can be used to to report work done progress to the LSP client.
+	progress_manager: Option<ProgressManager>,
+
 	/// A [`WorkspaceManager`] that can be used to coordinate workspace and file operations.
 	workspace_manager: Option<WorkspaceManager>,
 }
@@ -40,6 +43,7 @@ impl State {
 			analyzer: AnalyzerWrapper(Default::default()).into(),
 			file_system,
 			request_manager,
+			progress_manager: None,
 			workspace_manager: None
 		}
 	}
@@ -66,6 +70,21 @@ impl State {
 		self.workspace_manager.as_ref().unwrap()
 	}
 
+	/// Returns a reference to the current [`ProgressManager`].
+	pub fn progress_manager(&self) -> &ProgressManager {
+		if let None = self.progress_manager {
+			unreachable!("the ProgressManager was not initialized");
+		}
+
+		self.progress_manager.as_ref().unwrap()
+	}
+
+	/// Returns a [`Progress`] instance from the initialized Progress Manager that can be used to report
+	/// progress to the LSP client.
+	pub async fn begin_work_done_progress(&self, title: &str) -> Result<Progress, LspProtocolError> {
+		self.progress_manager().begin(title.into()).await
+	}
+
 	/// Sets the current [`WorkspaceManager`] for the current instance of the P4 Analyzer.
 	///
 	/// This method should be invoked when processing the
@@ -73,5 +92,14 @@ impl State {
 	/// request from the LSP client.
 	pub(crate) fn set_workspaces(&mut self, workspace_manager: WorkspaceManager) {
 		self.workspace_manager = Some(workspace_manager);
+	}
+
+	/// Sets the current [`ProgressManager`] for the current instance of the P4 Analyzer.
+	///
+	/// This method should be invoked when processing the
+	/// [`'initialize'`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#initialize)
+	/// request from the LSP client.
+	pub(crate) fn set_progress(&mut self, progress_manager: ProgressManager) {
+		self.progress_manager = Some(progress_manager);
 	}
 }
