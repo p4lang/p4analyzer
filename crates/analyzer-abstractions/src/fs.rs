@@ -1,4 +1,4 @@
-use lsp_types::Url;
+use lsp_types::{Url, TextDocumentIdentifier};
 use serde::{Deserialize, Serialize};
 
 use crate::BoxFuture;
@@ -16,32 +16,12 @@ pub trait EnumerableFileSystem {
 	// meantime, this trait and its implementations will explicitly return boxed futures rather than be made
 	// `async`.
 
-	/// Enumerates the contents of a given folder returning zero or more [`FileSystemEntry`] describing those
-	/// entries.
-	fn enumerate_folder<'a>(&'a self, folder_uri: Url) -> BoxFuture<'a, Vec<FileSystemEntry>>;
+	/// Enumerates the contents of a given folder and returns zero or more [`TextDocumentIdentifier`]'s identifying
+	/// its contained `'.p4'` entries.
+	fn enumerate_folder<'a>(&'a self, folder_uri: Url) -> BoxFuture<'a, Vec<TextDocumentIdentifier>>;
 
 	/// Retrieves the contents of a given file.
 	fn file_contents<'a>(&'a self, file_uri: Url) -> BoxFuture<'a, Option<String>>;
-}
-
-/// Defines a file system entry type (i.e., a folder or a file).
-#[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum EntryType {
-	Folder,
-	File
-}
-
-/// Describes an entry that is part of a folder on the file system.
-#[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FileSystemEntry {
-	/// The URI to the current entry.
-	pub uri: Url,
-
-	/// The type of the current entry (i.e., a folder or a file).
-	#[serde(rename = "type")]
-	pub typ: EntryType
 }
 
 pub type AnyEnumerableFileSystem = Box<dyn EnumerableFileSystem + Send + Sync + 'static>;

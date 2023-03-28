@@ -1,6 +1,7 @@
 import { window, ExtensionContext } from "vscode";
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind, Trace } from "vscode-languageclient/node";
 import { getServerConfiguration } from "./configuration";
+import "./extensions/LanguageClient";
 
 let client: LanguageClient | null = null;
 
@@ -53,8 +54,11 @@ async function onTryActivate(context: ExtensionContext): Promise<void> {
 
 	client = new LanguageClient("p4-analyzer", "P4 Analyzer Language Server", serverOptions, clientOptions);
 	client.setTrace(Trace.Messages);
+	client.setP4AnalyzerHandlers();
 	client.start();
 }
+
+
 
 function getServerArguments(): string[] {
 	const serverConfiguration = getServerConfiguration();

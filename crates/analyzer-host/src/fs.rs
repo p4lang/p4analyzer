@@ -1,4 +1,4 @@
-use analyzer_abstractions::{fs::{EnumerableFileSystem, FileSystemEntry}, lsp_types::{Url, request::Request, TextDocumentIdentifier}, async_trait::async_trait, tracing::error, BoxFuture};
+use analyzer_abstractions::{fs::EnumerableFileSystem, lsp_types::{Url, request::Request, TextDocumentIdentifier}, async_trait::async_trait, tracing::error, BoxFuture};
 use serde::{Deserialize, Serialize};
 
 use crate::lsp::request::RequestManager;
@@ -22,8 +22,8 @@ impl LspEnumerableFileSystem {
 
 // #[async_trait]
 impl EnumerableFileSystem for LspEnumerableFileSystem {
-	fn enumerate_folder<'a>(&'a self, file_uri: Url) -> BoxFuture<'a, Vec<FileSystemEntry>> {
-		async fn enumerate_folder(s: &LspEnumerableFileSystem, folder_uri: Url) -> Vec<FileSystemEntry> {
+	fn enumerate_folder<'a>(&'a self, file_uri: Url) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {
+		async fn enumerate_folder(s: &LspEnumerableFileSystem, folder_uri: Url) -> Vec<TextDocumentIdentifier> {
 			let params = FolderIdentifier { uri: folder_uri.clone() };
 
 			match s.request_manager.send_and_receive::<EnumerateFolderRequest>(params).await {
@@ -62,7 +62,7 @@ pub(crate) enum EnumerateFolderRequest {}
 
 impl Request for EnumerateFolderRequest {
 	type Params = FolderIdentifier;
-	type Result = Vec<FileSystemEntry>;
+	type Result = Vec<TextDocumentIdentifier>;
 	const METHOD: &'static str = "p4analyzer/enumerateFolder";
 }
 
