@@ -93,24 +93,14 @@ impl RequestManager {
 		Ok(())
 	}
 
-	/// Sends a typed request to the LSP client and returns a `Future` that will yield its response.
-	pub async fn send<T>(&self, params: T::Params) -> Result<T::Result, LspProtocolError>
+	/// Sends a typed request to the LSP client and returns a `Future` that will yield its response when it is complete.
+	pub async fn send_and_receive<T>(&self, params: T::Params) -> Result<T::Result, LspProtocolError>
 	where
 		T: analyzer_abstractions::lsp_types::request::Request + 'static,
 		T::Params: Clone + Serialize + Send + Debug,
-		T::Result: Clone + DeserializeOwned + Send + From<()>
+		T::Result: Clone + DeserializeOwned + Send
 	{
-		let id = RequestId::from(self.request_id.fetch_add(1, Ordering::Relaxed));
-		let request = Request::new(id.clone(), T::METHOD.to_string(), params);
-		let awaiting_request = self.create_active_request(&id).await;
-
-		if let Err(_) = self.requests.send(Message::Request(request)).await {
-			self.take_awaiting_request(&id).await; // Take the awaiting_request if we couldn't send the request.
-
-			return Err(LspProtocolError::TransportError);
-		}
-
-		let response_message = awaiting_request.future().await?; // Wait for the request to complete.
+		let response_message = self.send_request(T::METHOD, params).await?;
 
 		match &*response_message {
 			Message::Response(response) => {
@@ -122,11 +112,58 @@ impl RequestManager {
 
 				match response.result.as_ref() {
 					Some(value) => Ok(from_json::<T::Result>(value)?),
-					None => Ok(<T::Result as From<()>>::from(()))
+					None => {
+						error!(
+							method = T::METHOD,
+							"Expected a response for method. Perhaps the request yields no response and `send()` should be used instead?");
+
+						Err(LspProtocolError::UnexpectedResponse)
+					}
 				}
 			},
 			_ => Err(LspProtocolError::UnexpectedResponse)
 		}
+	}
+
+	/// Sends a typed request to the LSP client and returns a `Future` that will yield when complete.
+	///
+	///
+	pub async fn send<T>(&self, params: T::Params) -> Result<(), LspProtocolError>
+	where
+		T: analyzer_abstractions::lsp_types::request::Request + 'static,
+		T::Params: Clone + Serialize + Send + Debug
+	{
+		let response_message = self.send_request(T::METHOD, params).await?;
+
+		match &*response_message {
+			Message::Response(response) => {
+				if let Some(err) = &response.error {
+					error!(method = T::METHOD, "Error processing response for server request '{}': {}", T::METHOD, err.message);
+
+					return Err(LspProtocolError::UnexpectedResponse);
+				}
+
+				Ok(())
+			},
+			_ => Err(LspProtocolError::UnexpectedResponse)
+		}
+	}
+
+	async fn send_request<P>(&self, method: &str, params: P) -> Result<Arc<Message>, LspProtocolError>
+	where
+		P: Clone + Serialize + Send + Debug
+	{
+		let id = RequestId::from(self.request_id.fetch_add(1, Ordering::Relaxed));
+		let request = Request::new(id.clone(), method.into(), params);
+		let awaiting_request = self.create_active_request(&id).await;
+
+		if let Err(_) = self.requests.send(Message::Request(request)).await {
+			self.take_awaiting_request(&id).await; // Take the awaiting_request if we couldn't send the request.
+
+			return Err(LspProtocolError::TransportError);
+		}
+
+		Ok(awaiting_request.future().await?) // Wait for the request to complete.
 	}
 
 	async fn create_active_request(&self, id: &RequestId) -> Arc<AnyFutureCompletionSource> {

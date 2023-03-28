@@ -1,6 +1,6 @@
 use core::fmt::Debug;
 use std::{
-	sync::{Arc, RwLock},
+	sync::{Arc, RwLock, Mutex},
 	collections::{HashMap, hash_map::{Iter, IntoIter, Entry}}, fmt::{Formatter, Display, Result as FmtResult},
 	task::Poll
 };
@@ -89,7 +89,7 @@ where
 		let progress = progress.begin("Indexing").await.unwrap();
 
 		for (_, workspace) in (&self.workspaces).into_iter() {
-			progress.report(&format!("{}", workspace.name())).await.unwrap();
+			progress.report(&format!("{}", workspace)).await.unwrap();
 
 			workspace.index().await;
 		}
@@ -174,7 +174,9 @@ where
 	}
 
 	pub async fn index(&self) {
-		// TODO
+		let a = self.file_system.enumerate_folder(self.uri()).await;
+
+
 	}
 }
 
