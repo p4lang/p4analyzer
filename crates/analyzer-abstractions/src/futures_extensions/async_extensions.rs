@@ -1,47 +1,84 @@
-use std::{sync::Arc, cell::RefCell};
+use std::{sync::{Mutex, Arc}, task::Context, cell::RefCell};
 
-use futures::{executor::LocalPool, task::{SpawnExt, SpawnError}, Future};
+use async_channel::{Sender, Receiver};
+use cancellation::{CancellationToken, OperationCanceled};
+use futures::{Future, task::{ArcWake, waker_ref}};
+use crate::BoxFuture;
 
-/// A single-threaded pool that runs asynchronous operations (`Future`s) to completion.
-pub struct AsyncPool {
-	pool: LocalPool
+struct AsyncWork {
+	future: Mutex<Option<BoxFuture<'static, ()>>>,
+	sender: Sender<Arc<AsyncWork>>
 }
 
-thread_local! {
-	static CURRENT_ASYNCPOOL: Arc<RefCell<AsyncPool>> = Arc::new(RefCell::new(AsyncPool::new()));
-}
-
-impl AsyncPool {
-	/// Initializes a new [`AsyncPool`].
-	///
-	/// (private)
-	fn new() -> Self {
-		AsyncPool {
-			pool: LocalPool::new()
+impl AsyncWork {
+	pub fn new<T>(future: T, sender: Sender<Arc<AsyncWork>>) -> Self
+	where
+		T: Future<Output = ()> + Send + Sync + 'static
+	{
+		Self {
+			future: Mutex::new(Some(Box::pin(future))),
+			sender
 		}
 	}
+}
 
-	/// Schedules and executes a supplied `Future` to its completion.
-	///
-	/// `future` will run in the background, continually being polled by the [`AsyncPool`]'s underlying executor.
-	/// If any further `Future`s are created, then they will also be managed by the pool. If you require running
-	/// an `async fn` in the background, then [`AsyncPool::run_as_task`] allows you to do that.
-	pub fn run_as_task<TFuture>(future: TFuture) -> Result<(), SpawnError>
-	where
-		TFuture: Future<Output = ()> + Send + 'static
-	{
-		CURRENT_ASYNCPOOL.with(|instance| {
-			let spawner = instance.borrow().pool.spawner();
+impl ArcWake for AsyncWork {
+	fn wake_by_ref(arc_self: &Arc<Self>) {
+		let cloned = arc_self.clone();
 
-			spawner.spawn(future)
-		})
+		arc_self.sender.send_blocking(cloned).unwrap();
+	}
+}
+
+type WorkChannel = (Sender<Arc<AsyncWork>>, Receiver<Arc<AsyncWork>>);
+
+pub struct AsyncPool;
+
+thread_local!(static WORK_CHANNEL: RefCell<WorkChannel> = RefCell::new(async_channel::unbounded::<Arc<AsyncWork>>()));
+
+impl AsyncPool {
+	pub async fn start(cancel_token: Arc<CancellationToken>) -> Result<(), OperationCanceled> {
+		let (_, receiver) = WORK_CHANNEL.with(|c| c.borrow().clone());
+
+		while !cancel_token.is_canceled() {
+			match receiver.recv().await {
+				Ok(work) => {
+					let mut future_slot = work.future.lock().unwrap();
+
+					if let Some(mut future) = future_slot.take() {
+						let waker = waker_ref(&work);
+						let context = &mut Context::from_waker(&*waker);
+
+						if future.as_mut().poll(context).is_pending() {
+							*future_slot = Some(future)
+						}
+					}
+				},
+				Err(_) => break // `work_channel` has been closed.
+			}
+		}
+
+		if cancel_token.is_canceled() {
+			return Err(OperationCanceled);
+		}
+
+		Ok(())
 	}
 
-	/// Blocks the current thread and executes the tasks in the current [`AsyncPool`] until
-	/// the given `Future` completes.
-	pub fn block_run<TFuture: Future>(future: TFuture) -> TFuture::Output {
-		CURRENT_ASYNCPOOL.with(|instance| {
-			instance.borrow_mut().pool.run_until(future)
-		})
+	pub fn stop() {
+		let (_, receiver) = WORK_CHANNEL.with(|c| c.borrow().clone());
+
+		receiver.close();
+	}
+
+	pub fn spawn_work<T>(future: T)
+	where
+		T: Future<Output = ()> + Send + Sync + 'static
+	{
+		let (sender, _) = WORK_CHANNEL.with(|c| c.borrow().clone());
+		let future = Box::pin(future);
+		let work = Arc::new(AsyncWork::new(future, sender.clone()));
+
+		sender.send_blocking(work).unwrap();
 	}
 }

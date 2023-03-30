@@ -49,12 +49,7 @@ pub async fn main() {
 			subscriber::set_global_default(subscriber)
 				.expect("Unable to set global tracing subscriber.");
 
-			let signal = Arc::new(Event::new());
-
-			// Run the entire asynchronous pipeline via an `AsyncPool`. The main thread will be blocked until `signal`
-			// becomes signalled, but asynchronous operations will run as expected via the underlying executor.
-			AsyncPool::run_as_task(cmd.run(signal.clone())).unwrap();
-			AsyncPool::block_run(signal.listen());
+			cmd.run().await;
 		}
 		Err(err) => {
 			println!();
@@ -119,7 +114,7 @@ impl<C: Command> RunnableCommand<C> {
 	///
 	/// The supplied command will be invoked with a [`CancellationToken`] that is canceled upon receiving a 'Ctrl-C' signal (if
 	/// it is supported by the platform).
-	async fn run(self, signal: Arc<Event>) {
+	async fn run(self) {
 		let Self(cmd) = self;
 
 		let count = Arc::new(AtomicU8::new(0));
@@ -150,8 +145,6 @@ impl<C: Command> RunnableCommand<C> {
 				_ => eprintln!("{}", err),
 			},
 		};
-
-		signal.notify(1); // Signal that the command has completed.
 	}
 
 	/// Retrieves any additional logging layers that have been configured by the underlying command.

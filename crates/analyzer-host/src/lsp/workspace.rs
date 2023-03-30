@@ -1,6 +1,6 @@
 use core::fmt::Debug;
 use std::{
-	sync::{Arc, RwLock, Mutex},
+	sync::{Arc, RwLock, Mutex, RwLockWriteGuard},
 	collections::{HashMap, hash_map::{Iter, IntoIter, Entry}}, fmt::{Formatter, Display, Result as FmtResult},
 	task::Poll
 };
@@ -16,44 +16,24 @@ use thiserror::Error;
 
 use super::progress::ProgressManager;
 
-async fn index_files(index_receiver: Receiver<TextDocumentIdentifier>, file_system: Arc<AnyEnumerableFileSystem>) {
-	info!("WorkspaceManager background indexing started.");
-
-	loop {
-		match index_receiver.recv().await {
-			Ok(document_identifier) => {
-
-				info!(file_uri = document_identifier.uri.as_str(), "Indexing");
-			},
-			Err(_) => break
-		}
-	}
-
-	info!("WorkspaceManager background indexing stopped.");
-}
-
 /// Manages a collection of workspaces opened by an LSP compliant host.
 #[derive(Clone)]
-pub(crate) struct WorkspaceManager<T: Clone = ()> {
+pub(crate) struct WorkspaceManager {
 	has_workspaces: bool,
-	workspaces: HashMap<Url, Arc<Workspace<T>>>,
+	workspaces: HashMap<Url, Arc<Workspace>>,
 }
 
-impl<T> WorkspaceManager<T>
-where
-	T: Clone + Debug
-{
+impl WorkspaceManager {
 	/// Initializes a new [`WorkspaceManager`] instance.
 	///
 	/// If `workspace_folders` is [`None`], then a root workspace folder will be used by default.
 	pub fn new(file_system: Arc<AnyEnumerableFileSystem>, workspace_folders: Option<Vec<WorkspaceFolder>>) -> Self {
-		fn to_workspace<T: Clone + Debug>(
+		fn to_workspace(
 			file_system: Arc<AnyEnumerableFileSystem>,
-			workspace_folder: WorkspaceFolder,
-			index_sender: Sender<TextDocumentIdentifier>
-		) -> (Url, Arc<Workspace<T>>)
+			workspace_folder: WorkspaceFolder
+		) -> (Url, Arc<Workspace>)
 		{
-			(workspace_folder.uri.clone(), Arc::new(Workspace::new(file_system, workspace_folder, index_sender)))
+			(workspace_folder.uri.clone(), Arc::new(Workspace::new(file_system, workspace_folder)))
 		}
 
 		let (has_workspaces, workspace_folders) = workspace_folders
@@ -61,13 +41,9 @@ where
 				|| { (false, vec![WorkspaceFolder{ name: "<*>".to_string(), uri: Url::parse("file:///").unwrap() }]) },
 				|folders| { (true, folders) });
 
-		let (index_sender, index_receiver) = async_channel::unbounded::<TextDocumentIdentifier>();
-
-		AsyncPool::run_as_task(index_files(index_receiver.clone(), file_system.clone())).unwrap();
-
 		Self {
 			has_workspaces,
-			workspaces: workspace_folders.into_iter().map(|wf| to_workspace(file_system.clone(), wf, index_sender.clone())).collect()
+			workspaces: workspace_folders.into_iter().map(|wf| to_workspace(file_system.clone(), wf)).collect()
 		}
 	}
 
@@ -84,7 +60,7 @@ where
 	///
 	/// The overall state of the file can be determined from its [`File::get_compiled_unit`] method which will
 	/// inform its final state.
-	pub fn get_file(&self, uri: Url) -> Arc<File<T>> {
+	pub fn get_file(&self, uri: Url) -> Arc<File> {
 		fn is_descendant_path(base: &Url, target: &Url) -> bool {
 			if let Some(relative) = base.make_relative(target) {
 				return !relative.starts_with("..");
@@ -124,9 +100,9 @@ where
 	}
 }
 
-impl<T: Clone> IntoIterator for WorkspaceManager<T> {
-	type Item = (Url, Arc<Workspace<T>>);
-	type IntoIter = IntoIter<Url, Arc<Workspace<T>>>;
+impl IntoIterator for WorkspaceManager {
+	type Item = (Url, Arc<Workspace>);
+	type IntoIter = IntoIter<Url, Arc<Workspace>>;
 
 	/// Creates a consuming iterator of [`Workspace`].
 	fn into_iter(self) -> Self::IntoIter {
@@ -134,9 +110,9 @@ impl<T: Clone> IntoIterator for WorkspaceManager<T> {
 	}
 }
 
-impl<'a, T: Clone> IntoIterator for &'a WorkspaceManager<T> {
-	type Item = (&'a Url, &'a Arc<Workspace<T>>);
-	type IntoIter = Iter<'a, Url, Arc<Workspace<T>>>;
+impl<'a> IntoIterator for &'a WorkspaceManager {
+	type Item = (&'a Url, &'a Arc<Workspace>);
+	type IntoIter = Iter<'a, Url, Arc<Workspace>>;
 
 	/// Creates a consuming iterator of &[`Workspace`].
 	fn into_iter(self) -> Self::IntoIter {
@@ -146,24 +122,25 @@ impl<'a, T: Clone> IntoIterator for &'a WorkspaceManager<T> {
 
 /// Encapsulates a collection of related files opened as part of a set managed by an LSP compliant host.
 #[derive(Clone)]
-pub(crate) struct Workspace<T: Clone> {
+pub(crate) struct Workspace {
 	file_system: Arc<AnyEnumerableFileSystem>,
 	workspace_folder: WorkspaceFolder,
-	files: Arc<RwLock<HashMap<Url, Arc<File<T>>>>>,
-	index_sender: Sender<TextDocumentIdentifier>
+	files: Arc<RwLock<HashMap<Url, Arc<File>>>>,
+	parse_sender: Sender<Arc<File>>
 }
 
-impl<T> Workspace<T>
-where
-	T: Clone + Debug
-{
+impl Workspace {
 	/// Initializes a new [`Workspace`].
-	pub fn new(file_system: Arc<AnyEnumerableFileSystem>, workspace_folder: WorkspaceFolder, index_sender: Sender<TextDocumentIdentifier>) -> Self {
+	pub fn new(file_system: Arc<AnyEnumerableFileSystem>, workspace_folder: WorkspaceFolder) -> Self {
+		let (sender, receiver) = async_channel::unbounded::<Arc<File>>();
+
+		AsyncPool::spawn_work(background_parse(receiver, file_system.clone()));
+
 		Self {
 			file_system,
 			workspace_folder,
 			files: Arc::new(RwLock::new(HashMap::new())),
-			index_sender
+			parse_sender: sender
 		}
 	}
 
@@ -180,7 +157,7 @@ where
 	/// Look up and retrieve a file from the workspace.
 	///
 	/// The [`File`] will be created if it is not present in the current workspace.
-	pub fn get_file(&self, uri: Url) -> Arc<File<T>> {
+	pub fn get_file(&self, uri: Url) -> Arc<File> {
 		let mut files = self.files.write().unwrap();
 		let workspace_uri = self.uri();
 		let new_uri = uri.clone();
@@ -191,11 +168,11 @@ where
 				info!(workspace_uri = workspace_uri.as_str(), file_uri = new_uri.as_str(), "Missing file entry in workspace'{}'.", self.name());
 
 				let new_document_identifier = TextDocumentIdentifier { uri: new_uri };
-				let new_file = Arc::new(File::<T>::new(new_document_identifier.clone()));
+				let new_file = Arc::new(File::new(new_document_identifier.clone()));
 
 				entry.insert(new_file.clone());
 
-				// self.index_sender.send_blocking(new_document_identifier).unwrap();
+				self.parse_sender.send_blocking(new_file.clone()).unwrap();
 
 				new_file
 			}
@@ -203,13 +180,15 @@ where
 	}
 
 	pub async fn index(&self) {
-		fn write_files<T: Clone + Debug>(s: &Workspace<T>, document_identifiers: &Vec<TextDocumentIdentifier>) {
+		fn write_files(s: &Workspace, document_identifiers: &Vec<TextDocumentIdentifier>) {
 			let mut files = s.files.write().unwrap();
 
 			for document_identifier in document_identifiers.into_iter() {
-				files.insert(document_identifier.uri.clone(), Arc::new(File::<T>::new(document_identifier.clone())));
+				let new_file = Arc::new(File::new(document_identifier.clone()));
 
-				// s.index_sender.send_blocking(document_identifier.clone()).unwrap();
+				files.insert(document_identifier.uri.clone(), new_file.clone());
+
+				s.parse_sender.send_blocking(new_file.clone()).unwrap();
 			}
 		}
 
@@ -223,7 +202,7 @@ where
 	}
 }
 
-impl<T: Clone> Display for Workspace<T> {
+impl Display for Workspace {
 	/// Formats a [`Workspace`] using the given formatter.
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
 		write!(formatter, "[{}]({})", self.workspace_folder.name, self.workspace_folder.uri)?;
@@ -238,28 +217,27 @@ pub enum IndexError {
 	Unexpected
 }
 
+type CompiledUnit = ();
+
 #[derive(Clone)]
-struct FileState<T: Clone> {
+struct FileState<T: Clone = CompiledUnit> {
 	buffer: Option<String>,
 	compiled_unit: FutureCompletionSource<Box<T>, IndexError>
 }
 
 #[derive(Clone)]
-pub(crate) struct File<T: Clone> {
+pub(crate) struct File {
 	document_identifier: TextDocumentIdentifier,
-	state: Arc<RwLock<FileState<T>>>
+	state: Arc<RwLock<FileState>>
 }
 
-impl<T> File<T>
-where
-	T: Clone + Debug
-{
+impl File {
 	pub fn new(document_identifier: TextDocumentIdentifier) -> Self {
 		Self {
 			document_identifier,
 			state: Arc::new(RwLock::new(FileState {
 				buffer: None,
-				compiled_unit: FutureCompletionSource::<Box<T>, IndexError>::new()
+				compiled_unit: FutureCompletionSource::<Box<CompiledUnit>, IndexError>::new()
 			}))
 		}
 	}
@@ -280,7 +258,7 @@ where
 		state.buffer.clone()
 	}
 
-	pub async fn get_compiled_unit(&self) -> Result<T, IndexError> {
+	pub async fn get_compiled_unit(&self) -> Result<CompiledUnit, IndexError> {
 		let state = self.state.read().unwrap();
 
 		match state.compiled_unit.future().await {
@@ -291,20 +269,26 @@ where
 		}
 	}
 
-	pub fn open_or_change_buffer(&self, buffer: String, compiled_unit: T) {
-		let mut state = self.state.write().unwrap();
-
-		state.buffer.replace(buffer);
+	fn set_compiled_unit(&self, compiled_unit: CompiledUnit, state: Option<RwLockWriteGuard<FileState<CompiledUnit>>>) {
+		let mut state = state.unwrap_or_else(|| self.state.write().unwrap());
 
 		if let Poll::Ready(result) = state.compiled_unit.state() {
 			match result {
 				Ok(mut boxed_value) => *boxed_value = compiled_unit,
-				Err(_) => state.compiled_unit = FutureCompletionSource::<Box<T>, IndexError>::new_with_value(Box::new(compiled_unit))
+				Err(_) => state.compiled_unit = FutureCompletionSource::<Box<CompiledUnit>, IndexError>::new_with_value(Box::new(compiled_unit))
 			}
 		}
 		else {
-			state.compiled_unit.set_value(Box::new(compiled_unit)).expect("");
+			state.compiled_unit.set_value(Box::new(compiled_unit)).unwrap();
 		}
+	}
+
+	pub fn open_or_change_buffer(&self, buffer: String, compiled_unit: CompiledUnit) {
+		let mut state = self.state.write().unwrap();
+
+		state.buffer.replace(buffer);
+
+		self.set_compiled_unit(compiled_unit, Some(state)); // Use the writable state that we already have.
 	}
 
 	pub fn close_buffer(&self) {
@@ -314,11 +298,47 @@ where
 	}
 }
 
-impl<T: Clone> Display for File<T> {
+impl Display for File {
 	/// Formats a [`Workspace`] using the given formatter.
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
 		write!(formatter, "({})", self.document_identifier.uri)?;
 
 		Ok(())
+	}
+}
+
+async fn background_parse(receiver: Receiver<Arc<File>>, file_system: Arc<AnyEnumerableFileSystem>) {
+	loop {
+		match receiver.recv().await {
+			Ok(file) => {
+				info!(file_uri = file.document_identifier.uri.as_str(), "Background parsing");
+
+				// If the file has been opened in the IDE during the time taken to start this background parse, then
+				// ignore it. The IDE is now the source of truth for this file.
+				if file.is_open_in_ide() {
+					continue;
+				}
+
+				let contents = file_system.file_contents(file.document_identifier.uri.clone()).await;
+
+				if let None = contents {
+					error!(file_uri = file.document_identifier.uri.as_str(), "Failed to retrieve file contents.");
+
+					continue;
+				}
+
+				info!(file_uri = file.document_identifier.uri.as_str(), "Got contents: {}", contents.unwrap());
+
+				let compiled_unit: CompiledUnit = (); // Parse contents.
+
+				// If the file has been opened in the IDE during the fetching and parsing of its contents, then
+				// throw it all away. The IDE is now the source of truth for this file. Otherwise, update its
+				// compiled unit.
+				if !file.is_open_in_ide() {
+					file.set_compiled_unit(compiled_unit, None);
+				}
+			},
+			Err(_) => break
+		};
 	}
 }

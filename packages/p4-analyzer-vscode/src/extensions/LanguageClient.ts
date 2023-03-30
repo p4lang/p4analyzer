@@ -1,5 +1,6 @@
 import { Uri, workspace, RelativePattern } from "vscode";
 import { BaseLanguageClient, DocumentUri, TextDocumentIdentifier } from "vscode-languageclient";
+import { readFile } from "node:fs/promises";
 
 declare module "vscode-languageclient" {
 	interface BaseLanguageClient {
@@ -20,7 +21,7 @@ function setP4AnalyzerHandlers(this: BaseLanguageClient): void {
 		const uri = Uri.parse(params.uri);
 		const folder = workspace.getWorkspaceFolder(uri);
 
-		if (!folder) throw new Error(`Invalid Workspace ('${uri.toString()}')`);
+		if (!folder) throw new Error(`Invalid or unknown workspace ('${uri.toString()}')`);
 
 		const files = await workspace.findFiles(new RelativePattern(folder, "**/*.p4").pattern);
 
@@ -28,7 +29,9 @@ function setP4AnalyzerHandlers(this: BaseLanguageClient): void {
 	});
 
 	this.onRequest("p4analyzer/fileContents", async (params: TextDocumentIdentifier) => {
+		const uri = Uri.parse(params.uri);
 
+		return await readFile(uri.fsPath, { flag: "r",  encoding: "utf-8"});
 	});
 }
 

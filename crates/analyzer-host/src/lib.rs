@@ -6,7 +6,7 @@ pub mod tracing;
 pub mod fs;
 
 use std::sync::Arc;
-use analyzer_abstractions::{tracing::*, futures::{future::join3 as join_all}, fs::AnyEnumerableFileSystem};
+use analyzer_abstractions::{tracing::*, futures::{future::join4 as join_all}, fs::AnyEnumerableFileSystem, futures_extensions::async_extensions::AsyncPool};
 use async_channel::{Receiver, Sender};
 use cancellation::{CancellationToken, OperationCanceled};
 use fs::LspEnumerableFileSystem;
@@ -61,9 +61,10 @@ impl AnalyzerHost {
 		match join_all(
 			self.receive_messages(requests_sender.clone(), responses_sender.clone(), cancel_token.clone()),
 			self.run_protocol_machine(request_manager.clone(), file_system, requests_receiver.clone(), cancel_token.clone()),
-			request_manager.start(cancel_token.clone())).await
+			request_manager.start(cancel_token.clone()),
+			AsyncPool::start(cancel_token.clone())).await
 		{
-			(Ok(_), Ok(_), Ok(_)) => {
+			(Ok(_), Ok(_), Ok(_), Ok(_)) => {
 				self.sender.close();
 				self.receiver.close();
 
@@ -137,6 +138,8 @@ impl AnalyzerHost {
 				}
 			}
 		}
+
+		AsyncPool::stop();
 
 		if cancel_token.is_canceled() {
 			return Err(OperationCanceled);
