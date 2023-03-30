@@ -71,11 +71,7 @@ impl RequestManager {
 			}
 		}
 
-		if cancel_token.is_canceled() {
-			return Err(OperationCanceled);
-		}
-
-		Ok(())
+		return Err(OperationCanceled);
 	}
 
 	/// Sends a typed notification to the LSP client.

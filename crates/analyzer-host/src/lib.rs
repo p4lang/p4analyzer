@@ -89,14 +89,10 @@ impl AnalyzerHost {
 			}
 		}
 
-		if cancel_token.is_canceled() {
-			requests_sender.close();
-			responses_sender.close();
+		requests_sender.close();
+		responses_sender.close();
 
-			return Err(OperationCanceled);
-		}
-
-		Ok(())
+		return Err(OperationCanceled);
 	}
 
 	async fn run_protocol_machine(
