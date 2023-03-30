@@ -4,11 +4,11 @@ use async_rwlock::RwLock as AsyncRwLock;
 
 use analyzer_abstractions::{
 	lsp_types::{
-		notification::{Exit, Notification, SetTrace, DidChangeWatchedFiles, DidOpenTextDocument, DidCloseTextDocument, DidChangeTextDocument},
+		notification::{Exit, SetTrace, DidChangeWatchedFiles, DidOpenTextDocument, DidCloseTextDocument, DidChangeTextDocument, DidSaveTextDocument},
 		request::{Completion, HoverRequest, Shutdown},
 		CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
 		Hover, HoverContents, HoverParams, MarkupContent, MarkupKind, SetTraceParams, DidChangeWatchedFilesParams,
-		DidCloseTextDocumentParams, DidSaveTextDocumentParams,
+		DidCloseTextDocumentParams, DidSaveTextDocumentParams, Position, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
 	},
 	tracing::info,
 };

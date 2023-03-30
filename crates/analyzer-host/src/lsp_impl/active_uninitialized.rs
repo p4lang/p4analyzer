@@ -7,10 +7,9 @@ use analyzer_abstractions::{lsp_types::{
 	OneOf, ServerCapabilities, ServerInfo, SignatureHelpOptions, TextDocumentSyncCapability,
 	TextDocumentSyncKind, TypeDefinitionProviderCapability, WorkDoneProgressOptions,
 	TextDocumentSyncSaveOptions, TextDocumentSyncOptions, SaveOptions,
-	TextDocumentSyncKind, TypeDefinitionProviderCapability, WorkDoneProgressOptions, WorkspaceServerCapabilities,
-	WorkspaceFoldersServerCapabilities, WorkspaceFileOperationsServerCapabilities, FileOperationRegistrationOptions, FileOperationFilter,
-	FileOperationPattern,
-}, tracing::info};
+	WorkspaceServerCapabilities,
+	WorkspaceFoldersServerCapabilities, WindowClientCapabilities, WorkspaceFolder,
+}};
 
 use crate::{
 	json_rpc::ErrorCode,
@@ -128,9 +127,6 @@ fn create_initialize_result(include_workspace_folders: bool) -> InitializeResult
 				..Default::default()
 			})),
 			workspace,
-			text_document_sync: Some(TextDocumentSyncCapability::Kind(
-				TextDocumentSyncKind::INCREMENTAL,
-			)),
 			completion_provider: Some(CompletionOptions {
 				resolve_provider: Some(true),
 				trigger_characters: Some(vec!["(".to_string(), "<".to_string(), ".".to_string()]),
