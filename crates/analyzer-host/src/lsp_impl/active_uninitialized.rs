@@ -84,9 +84,10 @@ async fn initialize_client_dependant_state(
 	window_capabilities: Option<WindowClientCapabilities>)
 {
 	let mut state = state.write().await;
+	let analyzer = state.analyzer.clone();
 	let file_system = state.file_system.clone();
 
-	state.set_workspaces(WorkspaceManager::new(file_system, workspace_folders));
+	state.set_workspaces(WorkspaceManager::new(file_system, workspace_folders, analyzer));
 
 	let request_manager = state.request_manager.clone();
 	let work_done_supported = window_capabilities.map_or(

@@ -4,6 +4,7 @@ use std::{
 	collections::{HashMap, hash_map::{Iter, IntoIter, Entry}}, fmt::{Formatter, Display, Result as FmtResult},
 	task::Poll
 };
+use async_rwlock::RwLock as AsyncRwLock;
 
 use analyzer_abstractions::{
 	lsp_types::{WorkspaceFolder, Url, TextDocumentIdentifier},
@@ -13,27 +14,34 @@ use analyzer_abstractions::{
 use analyzer_abstractions::futures_extensions::FutureCompletionSource;
 use async_channel::{Sender, Receiver};
 use thiserror::Error;
+use super::analyzer::ParsedUnit;
 
-use super::progress::ProgressManager;
+use super::{progress::ProgressManager, analyzer::AnyAnalyzer};
 
 /// Manages a collection of workspaces opened by an LSP compliant host.
 #[derive(Clone)]
 pub(crate) struct WorkspaceManager {
 	has_workspaces: bool,
 	workspaces: HashMap<Url, Arc<Workspace>>,
+	analyzer: Arc<AnyAnalyzer>
 }
 
 impl WorkspaceManager {
 	/// Initializes a new [`WorkspaceManager`] instance.
 	///
 	/// If `workspace_folders` is [`None`], then a root workspace folder will be used by default.
-	pub fn new(file_system: Arc<AnyEnumerableFileSystem>, workspace_folders: Option<Vec<WorkspaceFolder>>) -> Self {
+	pub fn new(
+		file_system: Arc<AnyEnumerableFileSystem>,
+		workspace_folders: Option<Vec<WorkspaceFolder>>,
+		analyzer: Arc<AnyAnalyzer>) -> Self
+	{
 		fn to_workspace(
 			file_system: Arc<AnyEnumerableFileSystem>,
-			workspace_folder: WorkspaceFolder
+			workspace_folder: WorkspaceFolder,
+			analyzer: Arc<AnyAnalyzer>
 		) -> (Url, Arc<Workspace>)
 		{
-			(workspace_folder.uri.clone(), Arc::new(Workspace::new(file_system, workspace_folder)))
+			(workspace_folder.uri.clone(), Arc::new(Workspace::new(file_system, workspace_folder, analyzer)))
 		}
 
 		let (has_workspaces, workspace_folders) = workspace_folders
@@ -43,7 +51,8 @@ impl WorkspaceManager {
 
 		Self {
 			has_workspaces,
-			workspaces: workspace_folders.into_iter().map(|wf| to_workspace(file_system.clone(), wf)).collect()
+			workspaces: workspace_folders.into_iter().map(|wf| to_workspace(file_system.clone(), wf, analyzer.clone())).collect(),
+			analyzer
 		}
 	}
 
@@ -131,10 +140,14 @@ pub(crate) struct Workspace {
 
 impl Workspace {
 	/// Initializes a new [`Workspace`].
-	pub fn new(file_system: Arc<AnyEnumerableFileSystem>, workspace_folder: WorkspaceFolder) -> Self {
+	pub fn new(
+	file_system: Arc<AnyEnumerableFileSystem>,
+	workspace_folder: WorkspaceFolder,
+	analyzer: Arc<AnyAnalyzer>) -> Self
+	{
 		let (sender, receiver) = async_channel::unbounded::<Arc<File>>();
 
-		AsyncPool::spawn_work(background_parse(receiver, file_system.clone()));
+		AsyncPool::spawn_work(background_analyze(receiver, file_system.clone(), analyzer));
 
 		Self {
 			file_system,
@@ -217,51 +230,41 @@ pub enum IndexError {
 	Unexpected
 }
 
-type CompiledUnit = ();
 
 #[derive(Clone)]
-struct FileState<T: Clone = CompiledUnit> {
-	buffer: Option<String>,
-	compiled_unit: FutureCompletionSource<Box<T>, IndexError>
+struct FileState {
+	is_open_in_ide: bool,
+	parsed_unit: FutureCompletionSource<Box<ParsedUnit>, IndexError>
 }
 
 #[derive(Clone)]
 pub(crate) struct File {
 	document_identifier: TextDocumentIdentifier,
-	state: Arc<RwLock<FileState>>
+	state: Arc<AsyncRwLock<FileState>>
 }
 
 impl File {
 	pub fn new(document_identifier: TextDocumentIdentifier) -> Self {
 		Self {
 			document_identifier,
-			state: Arc::new(RwLock::new(FileState {
-				buffer: None,
-				compiled_unit: FutureCompletionSource::<Box<CompiledUnit>, IndexError>::new()
+			state: Arc::new(AsyncRwLock::new(FileState {
+				is_open_in_ide: false,
+				parsed_unit: FutureCompletionSource::<Box<ParsedUnit>, IndexError>::new()
 			}))
 		}
 	}
 
 	/// Returns `true` if the current file has a buffer open and under the control of an LSP compliant host.
 	pub fn is_open_in_ide(&self) -> bool {
-		let state = self.state.read().unwrap();
+		let state = self.state.try_read().unwrap();
 
-		state.buffer == None
+		state.is_open_in_ide
 	}
 
-	/// Returns the current buffer.
-	///
-	/// Returns [`None`] if the file has no buffer (indicating that the file is not open).
-	pub fn current_buffer(&self) -> Option<String> {
-		let state = self.state.read().unwrap();
+	pub async fn get_parsed_unit(&self) -> Result<ParsedUnit, IndexError> {
+		let state = self.state.try_read().unwrap();
 
-		state.buffer.clone()
-	}
-
-	pub async fn get_compiled_unit(&self) -> Result<CompiledUnit, IndexError> {
-		let state = self.state.read().unwrap();
-
-		match state.compiled_unit.future().await {
+		match state.parsed_unit.future().await {
 			Ok(boxed_value) => {
 				Ok(*boxed_value.clone())
 			},
@@ -269,32 +272,32 @@ impl File {
 		}
 	}
 
-	fn set_compiled_unit(&self, compiled_unit: CompiledUnit, state: Option<RwLockWriteGuard<FileState<CompiledUnit>>>) {
-		let mut state = state.unwrap_or_else(|| self.state.write().unwrap());
+	pub fn open_or_update(&self, parsed_unit: ParsedUnit) {
+		let mut state = self.state.try_write().unwrap();
 
-		if let Poll::Ready(result) = state.compiled_unit.state() {
+		state.is_open_in_ide = true;
+
+		self.set_parsed_unit(parsed_unit, Some(state)); // Use the writable state that we already have.
+	}
+
+	pub fn close(&self) {
+		let mut state = self.state.try_write().unwrap();
+
+		state.is_open_in_ide = false;
+	}
+
+	fn set_parsed_unit(&self, compiled_unit: ParsedUnit, state: Option<async_rwlock::RwLockWriteGuard<FileState>>) {
+		let mut state = state.unwrap_or_else(|| self.state.try_write().unwrap());
+
+		if let Poll::Ready(result) = state.parsed_unit.state() {
 			match result {
 				Ok(mut boxed_value) => *boxed_value = compiled_unit,
-				Err(_) => state.compiled_unit = FutureCompletionSource::<Box<CompiledUnit>, IndexError>::new_with_value(Box::new(compiled_unit))
+				Err(_) => state.parsed_unit = FutureCompletionSource::<Box<ParsedUnit>, IndexError>::new_with_value(Box::new(compiled_unit))
 			}
 		}
 		else {
-			state.compiled_unit.set_value(Box::new(compiled_unit)).unwrap();
+			state.parsed_unit.set_value(Box::new(compiled_unit)).unwrap();
 		}
-	}
-
-	pub fn open_or_change_buffer(&self, buffer: String, compiled_unit: CompiledUnit) {
-		let mut state = self.state.write().unwrap();
-
-		state.buffer.replace(buffer);
-
-		self.set_compiled_unit(compiled_unit, Some(state)); // Use the writable state that we already have.
-	}
-
-	pub fn close_buffer(&self) {
-		let mut state = self.state.write().unwrap();
-
-		state.buffer = None;
 	}
 }
 
@@ -307,7 +310,7 @@ impl Display for File {
 	}
 }
 
-async fn background_parse(receiver: Receiver<Arc<File>>, file_system: Arc<AnyEnumerableFileSystem>) {
+async fn background_analyze(receiver: Receiver<Arc<File>>, file_system: Arc<AnyEnumerableFileSystem>, analyzer: Arc<AnyAnalyzer>) {
 	loop {
 		match receiver.recv().await {
 			Ok(file) => {
@@ -319,23 +322,22 @@ async fn background_parse(receiver: Receiver<Arc<File>>, file_system: Arc<AnyEnu
 					continue;
 				}
 
-				let contents = file_system.file_contents(file.document_identifier.uri.clone()).await;
+				match file_system.file_contents(file.document_identifier.uri.clone()).await {
+					Some(contents) => {
+						info!(file_uri = file.document_identifier.uri.as_str(), "Got contents: {}", contents);
 
-				if let None = contents {
-					error!(file_uri = file.document_identifier.uri.as_str(), "Failed to retrieve file contents.");
+						// If the file has been opened in the IDE during the fetching of its contents, then
+						// throw it all away. The IDE is now the source of truth for this file. Otherwise, update its
+						// parsed unit.
+						if !file.is_open_in_ide() {
+							let parsed_unit = analyzer.parse_text_document_contents(file.document_identifier.clone(), contents);
 
-					continue;
-				}
-
-				info!(file_uri = file.document_identifier.uri.as_str(), "Got contents: {}", contents.unwrap());
-
-				let compiled_unit: CompiledUnit = (); // Parse contents.
-
-				// If the file has been opened in the IDE during the fetching and parsing of its contents, then
-				// throw it all away. The IDE is now the source of truth for this file. Otherwise, update its
-				// compiled unit.
-				if !file.is_open_in_ide() {
-					file.set_compiled_unit(compiled_unit, None);
+							file.set_parsed_unit(parsed_unit, None);
+						}
+					},
+					None => {
+						error!(file_uri = file.document_identifier.uri.as_str(), "Failed to retrieve file contents.");
+					}
 				}
 			},
 			Err(_) => break

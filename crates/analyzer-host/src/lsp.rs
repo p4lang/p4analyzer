@@ -14,6 +14,7 @@ use crate::json_rpc::{DeserializeError, ErrorCode};
 
 use self::{state::{LspServerState}, fluent::state::TransitionBuilder, dispatch::{DefaultDispatch, AnyDispatchTarget, Dispatch}, dispatch_target::{AsyncRequestHandlerFn, RequestDispatchTarget, NotificationDispatchTarget}};
 
+pub(crate) mod analyzer;
 pub(crate) mod fluent;
 pub(crate) mod state;
 pub(crate) mod dispatch;

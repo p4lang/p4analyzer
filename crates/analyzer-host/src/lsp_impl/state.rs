@@ -1,17 +1,26 @@
 use std::{sync::Arc, hash::Hash};
 
-use analyzer_abstractions::{lsp_types::{TraceValue, NumberOrString}, fs::AnyEnumerableFileSystem};
+use analyzer_abstractions::{lsp_types::{TraceValue, NumberOrString, TextDocumentIdentifier}, fs::AnyEnumerableFileSystem};
+use analyzer_core::base_abstractions::FileId;
 
-use crate::{tracing::TraceValueAccessor, lsp::{request::RequestManager, workspace::WorkspaceManager, progress::{ProgressManager, Progress}, LspProtocolError}};
+use crate::{tracing::TraceValueAccessor, lsp::{request::RequestManager, workspace::WorkspaceManager, progress::{ProgressManager, Progress}, LspProtocolError, analyzer::{Analyzer, AnyAnalyzer}}};
 
 pub(crate) struct AnalyzerWrapper(std::cell::RefCell<analyzer_core::Analyzer>);
 
 unsafe impl Sync for AnalyzerWrapper {}
 unsafe impl Send for AnalyzerWrapper {}
 
-impl AnalyzerWrapper {
-	pub fn unwrap(&self) -> std::cell::RefMut<analyzer_core::Analyzer> {
+impl Analyzer for AnalyzerWrapper {
+	fn unwrap(&self) -> std::cell::RefMut<analyzer_core::Analyzer> {
 		self.0.borrow_mut()
+	}
+
+	fn parse_text_document_contents(&self, document_identifier: TextDocumentIdentifier, contents: String) -> FileId {
+		let analyzer = self.unwrap();
+
+		let file_id = analyzer.file_id(document_identifier.uri.as_str());
+
+		file_id
 	}
 }
 
@@ -20,7 +29,9 @@ impl AnalyzerWrapper {
 pub(crate) struct State {
 	/// The optional [`TraceValueAccessor`] that can be used to set the trace value used in the LSP tracing layer.
 	pub trace_value: Option<TraceValueAccessor>,
-	pub analyzer: std::sync::Arc<AnalyzerWrapper>,
+
+	/// The Analyzer that will be used to parse and analyze `'.p4'` source files.
+	pub analyzer: Arc<AnyAnalyzer>,
 
 	/// The file system that can be used to enumerate folders and retrieve file contents.
 	pub file_system: Arc<AnyEnumerableFileSystem>,
@@ -40,7 +51,7 @@ impl State {
 	pub fn new(trace_value: Option<TraceValueAccessor>, request_manager: RequestManager, file_system: Arc<AnyEnumerableFileSystem>) -> Self {
 		Self {
 			trace_value,
-			analyzer: AnalyzerWrapper(Default::default()).into(),
+			analyzer: Arc::new(Box::new(AnalyzerWrapper(Default::default()))), // AnalyzerWrapper(Default::default()).into(),
 			file_system,
 			request_manager,
 			progress_manager: None,
