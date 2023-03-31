@@ -1,6 +1,6 @@
 use core::fmt::Debug;
 use std::{
-	sync::{Arc, RwLock, Mutex, RwLockWriteGuard},
+	sync::{Arc, RwLock},
 	collections::{HashMap, hash_map::{Iter, IntoIter, Entry}}, fmt::{Formatter, Display, Result as FmtResult},
 	task::Poll
 };
@@ -14,6 +14,8 @@ use analyzer_abstractions::{
 use analyzer_abstractions::futures_extensions::FutureCompletionSource;
 use async_channel::{Sender, Receiver};
 use thiserror::Error;
+use crate::lsp::RELATIVE_P4_SOURCEFILES_GLOBPATTERN;
+
 use super::analyzer::ParsedUnit;
 
 use super::{progress::ProgressManager, analyzer::AnyAnalyzer};
@@ -22,8 +24,7 @@ use super::{progress::ProgressManager, analyzer::AnyAnalyzer};
 #[derive(Clone)]
 pub(crate) struct WorkspaceManager {
 	has_workspaces: bool,
-	workspaces: HashMap<Url, Arc<Workspace>>,
-	analyzer: Arc<AnyAnalyzer>
+	workspaces: HashMap<Url, Arc<Workspace>>
 }
 
 impl WorkspaceManager {
@@ -51,8 +52,7 @@ impl WorkspaceManager {
 
 		Self {
 			has_workspaces,
-			workspaces: workspace_folders.into_iter().map(|wf| to_workspace(file_system.clone(), wf, analyzer.clone())).collect(),
-			analyzer
+			workspaces: workspace_folders.into_iter().map(|wf| to_workspace(file_system.clone(), wf, analyzer.clone())).collect()
 		}
 	}
 
@@ -91,7 +91,7 @@ impl WorkspaceManager {
 
 	/// Asynchronously indexes the contents of each [`Workspace`].
 	///
-	/// Returns immediately if the the [`WorkspaceManager`] was not initialized with workspace folders.
+	/// Returns immediately if the [`WorkspaceManager`] was not initialized with workspace folders.
 	pub async fn index(&self, progress: &ProgressManager) {
 		if !self.has_workspaces() {
 			return; // Do nothing if there are no workspace folders.
@@ -106,16 +106,6 @@ impl WorkspaceManager {
 		}
 
 		progress.end(None).await.unwrap();
-	}
-}
-
-impl IntoIterator for WorkspaceManager {
-	type Item = (Url, Arc<Workspace>);
-	type IntoIter = IntoIter<Url, Arc<Workspace>>;
-
-	/// Creates a consuming iterator of [`Workspace`].
-	fn into_iter(self) -> Self::IntoIter {
-		self.workspaces.into_iter()
 	}
 }
 
@@ -205,7 +195,7 @@ impl Workspace {
 			}
 		}
 
-		let document_identifiers = self.file_system.enumerate_folder(self.uri()).await;
+		let document_identifiers = self.file_system.enumerate_folder(self.uri(), RELATIVE_P4_SOURCEFILES_GLOBPATTERN.into()).await;
 
 		if document_identifiers.len() == 0 {
 			return;
@@ -234,8 +224,11 @@ pub enum IndexError {
 #[derive(Clone)]
 struct FileState {
 	is_open_in_ide: bool,
-	parsed_unit: FutureCompletionSource<Box<ParsedUnit>, IndexError>
+	parsed_unit: FutureCompletionSource<Arc<RwLock<ParsedUnit>>, IndexError>
 }
+
+unsafe impl Sync for FileState {}
+unsafe impl Send for FileState {}
 
 #[derive(Clone)]
 pub(crate) struct File {
@@ -249,7 +242,7 @@ impl File {
 			document_identifier,
 			state: Arc::new(AsyncRwLock::new(FileState {
 				is_open_in_ide: false,
-				parsed_unit: FutureCompletionSource::<Box<ParsedUnit>, IndexError>::new()
+				parsed_unit: FutureCompletionSource::<Arc<RwLock<ParsedUnit>>, IndexError>::new()
 			}))
 		}
 	}
@@ -265,8 +258,8 @@ impl File {
 		let state = self.state.try_read().unwrap();
 
 		match state.parsed_unit.future().await {
-			Ok(boxed_value) => {
-				Ok(*boxed_value.clone())
+			Ok(current_parsed_unit) => {
+				Ok(current_parsed_unit.read().unwrap().clone())
 			},
 			Err(err) => Err(err)
 		}
@@ -286,17 +279,24 @@ impl File {
 		state.is_open_in_ide = false;
 	}
 
-	fn set_parsed_unit(&self, compiled_unit: ParsedUnit, state: Option<async_rwlock::RwLockWriteGuard<FileState>>) {
+	fn set_parsed_unit(&self, parsed_unit: ParsedUnit, state: Option<async_rwlock::RwLockWriteGuard<FileState>>) {
 		let mut state = state.unwrap_or_else(|| self.state.try_write().unwrap());
 
+		// If the state of the FutureCompletionSource holding a parsed unit is 'Ready', then it means that
+		// we are already in receipt of output from the Analyzer (i.e., from a background fetch and analyze). In this
+		// case, we simply want to the update its value. If the FutureCompletionSource completed with an error,
+		// then we need to replace it with a new FutureCompletionSource instance that has the supplied parsed unit
+		// set for it.
+		//
+		// If the FutureCompletionSource is still pending, then we can simply 'complete' it with the given parsed unit.
 		if let Poll::Ready(result) = state.parsed_unit.state() {
 			match result {
-				Ok(mut boxed_value) => *boxed_value = compiled_unit,
-				Err(_) => state.parsed_unit = FutureCompletionSource::<Box<ParsedUnit>, IndexError>::new_with_value(Box::new(compiled_unit))
+				Ok(current_parsed_unit) => *current_parsed_unit.write().unwrap() = parsed_unit,
+				Err(_) => state.parsed_unit = FutureCompletionSource::new_with_value(RwLock::new(parsed_unit).into())
 			}
 		}
 		else {
-			state.parsed_unit.set_value(Box::new(compiled_unit)).unwrap();
+			state.parsed_unit.set_value(RwLock::new(parsed_unit).into()).unwrap();
 		}
 	}
 }

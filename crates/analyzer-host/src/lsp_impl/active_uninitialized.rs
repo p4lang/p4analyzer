@@ -106,10 +106,6 @@ fn create_initialize_result(include_workspace_folders: bool) -> InitializeResult
 					supported: Some(true),
 					change_notifications: Some(OneOf::Left(true))
 				}),
-				// file_operations: Some(WorkspaceFileOperationsServerCapabilities {
-				// 	did_create: Some(FileOperationRegistrationOptions { filters: vec![ FileOperationFilter {pattern: FileOperationPattern { glob: "**/*.rs".to_string() } } ] }),
-				// 	..Default::default()
-				// }),
 				..Default::default()
 			})
 		}
@@ -152,7 +148,7 @@ fn create_initialize_result(include_workspace_folders: bool) -> InitializeResult
 			..Default::default()
 		},
 		server_info: Some(ServerInfo {
-			name: String::from("p4-analyzer"),
+			name: String::from("P4 Analyzer"),
 			version: Some(String::from("0.0.0")),
 		}),
 	}

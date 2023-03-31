@@ -7,7 +7,7 @@ use analyzer_abstractions::{lsp_types::{
 }};
 
 use crate::{lsp::{
-	dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder,
+	dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder, RELATIVE_P4_SOURCEFILES_GLOBPATTERN,
 }, json_rpc::{ErrorCode, to_json}};
 
 use super::state::State;
@@ -54,7 +54,7 @@ async fn on_client_initialized(
 					to_json(
 						DidChangeWatchedFilesRegistrationOptions {
 							watchers: vec![FileSystemWatcher {
-								glob_pattern: "**/*.p4".to_string(),
+								glob_pattern: RELATIVE_P4_SOURCEFILES_GLOBPATTERN.into(),
 								kind: None // Default to create | change | delete.
 							}]
 						}).unwrap())

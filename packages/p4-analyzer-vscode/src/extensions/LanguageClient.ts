@@ -12,18 +12,19 @@ declare module "vscode-languageclient" {
 	}
 }
 
-interface FolderIdentifier {
+interface EnumerateFolderParams {
 	uri: string;
+	filePattern: string;
 }
 
 function setP4AnalyzerHandlers(this: BaseLanguageClient): void {
-	this.onRequest("p4analyzer/enumerateFolder", async (params: FolderIdentifier) => {
+	this.onRequest("p4analyzer/enumerateFolder", async (params: EnumerateFolderParams) => {
 		const uri = Uri.parse(params.uri);
 		const folder = workspace.getWorkspaceFolder(uri);
 
 		if (!folder) throw new Error(`Invalid or unknown workspace ('${uri.toString()}')`);
 
-		const files = await workspace.findFiles(new RelativePattern(folder, "**/*.p4").pattern);
+		const files = await workspace.findFiles(new RelativePattern(folder, params.filePattern).pattern);
 
 		return files.map(file => TextDocumentIdentifier.create(file.toString()));
 	});

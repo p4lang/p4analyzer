@@ -23,6 +23,9 @@ pub(crate) mod request;
 pub(crate) mod workspace;
 pub(crate) mod progress;
 
+/// A string representing a glob pattern of all relative `'.p4'` files.
+pub const RELATIVE_P4_SOURCEFILES_GLOBPATTERN: &str = "**/.p4";
+
 /// Represents an error in protocol while processing a received client message.
 #[derive(Error, Debug, Clone, Copy)]
 pub enum LspProtocolError {

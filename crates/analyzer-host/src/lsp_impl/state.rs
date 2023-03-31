@@ -1,6 +1,6 @@
-use std::{sync::Arc, hash::Hash};
+use std::sync::Arc;
 
-use analyzer_abstractions::{lsp_types::{TraceValue, NumberOrString, TextDocumentIdentifier}, fs::AnyEnumerableFileSystem};
+use analyzer_abstractions::{lsp_types::{TraceValue, TextDocumentIdentifier}, fs::AnyEnumerableFileSystem};
 use analyzer_core::base_abstractions::FileId;
 
 use crate::{tracing::TraceValueAccessor, lsp::{request::RequestManager, workspace::WorkspaceManager, progress::{ProgressManager, Progress}, LspProtocolError, analyzer::{Analyzer, AnyAnalyzer}}};
@@ -16,9 +16,11 @@ impl Analyzer for AnalyzerWrapper {
 	}
 
 	fn parse_text_document_contents(&self, document_identifier: TextDocumentIdentifier, contents: String) -> FileId {
-		let analyzer = self.unwrap();
+		let mut analyzer = self.unwrap();
 
 		let file_id = analyzer.file_id(document_identifier.uri.as_str());
+
+		analyzer.update(file_id, contents);
 
 		file_id
 	}

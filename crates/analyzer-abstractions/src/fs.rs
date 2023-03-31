@@ -17,8 +17,10 @@ pub trait EnumerableFileSystem {
 	// `async`.
 
 	/// Enumerates the contents of a given folder and returns zero or more [`TextDocumentIdentifier`]'s identifying
-	/// its contained `'.p4'` entries.
-	fn enumerate_folder<'a>(&'a self, folder_uri: Url) -> BoxFuture<'a, Vec<TextDocumentIdentifier>>;
+	/// its contained files.
+	///
+	/// `file_pattern` is file glob pattern like `'*.p4'` that will be matched on paths relative to `folder_uri`.
+	fn enumerate_folder<'a>(&'a self, folder_uri: Url, file_pattern: String) -> BoxFuture<'a, Vec<TextDocumentIdentifier>>;
 
 	/// Retrieves the contents of a given file.
 	fn file_contents<'a>(&'a self, file_uri: Url) -> BoxFuture<'a, Option<String>>;

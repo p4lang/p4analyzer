@@ -95,7 +95,6 @@ pub(crate) type AnyAsyncRequestHandlerFn<TState, TParams, TResult> =
 	Box<dyn (AsyncRequestHandlerFn<TState, TParams, TResult>) + Send + Sync>;
 
 /// Processes a message that represents a request.
-// #[derive(Clone)]
 pub(crate) struct RequestDispatchTarget<TState, TParams, TResult>
 where
 	TState: Send + Sync

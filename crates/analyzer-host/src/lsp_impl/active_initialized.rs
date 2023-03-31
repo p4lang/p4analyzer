@@ -71,7 +71,6 @@ async fn on_text_document_completion(
 ) -> HandlerResult<Option<CompletionResponse>> {
 	use itertools::Itertools;
 
-
 	let state = state.read().await;
 	let uri = params.text_document_position.text_document.uri;
 	let file = state.workspaces().get_file(uri.clone());

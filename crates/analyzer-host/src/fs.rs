@@ -22,9 +22,9 @@ impl LspEnumerableFileSystem {
 
 // #[async_trait]
 impl EnumerableFileSystem for LspEnumerableFileSystem {
-	fn enumerate_folder<'a>(&'a self, file_uri: Url) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {
-		async fn enumerate_folder(s: &LspEnumerableFileSystem, folder_uri: Url) -> Vec<TextDocumentIdentifier> {
-			let params = FolderIdentifier { uri: folder_uri.clone() };
+	fn enumerate_folder<'a>(&'a self, file_uri: Url, file_pattern: String) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {
+		async fn enumerate_folder(s: &LspEnumerableFileSystem, folder_uri: Url, file_pattern: String) -> Vec<TextDocumentIdentifier> {
+			let params = EnumerateFolderParams { uri: folder_uri.clone(), file_pattern };
 
 			match s.request_manager.send_and_receive::<EnumerateFolderRequest>(params).await {
 				Ok(entries) => entries,
@@ -36,7 +36,7 @@ impl EnumerableFileSystem for LspEnumerableFileSystem {
 			}
 		}
 
-		Box::pin(enumerate_folder(self, file_uri))
+		Box::pin(enumerate_folder(self, file_uri, file_pattern))
 	}
 
 	fn file_contents<'a>(&'a self, file_uri: Url) -> BoxFuture<'a, Option<String>> {
@@ -61,15 +61,17 @@ impl EnumerableFileSystem for LspEnumerableFileSystem {
 pub(crate) enum EnumerateFolderRequest {}
 
 impl Request for EnumerateFolderRequest {
-	type Params = FolderIdentifier;
+	type Params = EnumerateFolderParams;
 	type Result = Vec<TextDocumentIdentifier>;
 	const METHOD: &'static str = "p4analyzer/enumerateFolder";
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct FolderIdentifier {
-	pub uri: Url
+pub(crate) struct EnumerateFolderParams {
+	pub uri: Url,
+	pub file_pattern: String
+
 }
 
 #[derive(Debug)]
