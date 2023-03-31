@@ -20,6 +20,8 @@ use super::{
 	LspProtocolError,
 };
 
+use dyn_clonable::*;
+
 /// An error that can be produced when processing a message.
 #[derive(Clone)]
 pub(crate) struct HandlerError {
@@ -61,7 +63,8 @@ pub(crate) type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 's
 ///
 /// A request handler receives some deserialized parameters, and returns a [`HandlerRequest`]. During execution, the
 /// request handler can also mutate an instance of [`TState`].
-pub(crate) trait AsyncRequestHandlerFn<TState, TParams, TResult>
+#[clonable]
+pub(crate) trait AsyncRequestHandlerFn<TState, TParams, TResult>: Clone
 where
 	TState: Send + Sync
 {
@@ -95,9 +98,10 @@ pub(crate) type AnyAsyncRequestHandlerFn<TState, TParams, TResult> =
 	Box<dyn (AsyncRequestHandlerFn<TState, TParams, TResult>) + Send + Sync>;
 
 /// Processes a message that represents a request.
+#[derive(Clone)]
 pub(crate) struct RequestDispatchTarget<TState, TParams, TResult>
 where
-	TState: Send + Sync
+	TState: Clone + Send + Sync
 {
 	pub handler_fn: AnyAsyncRequestHandlerFn<TState, TParams, TResult>,
 	pub transition_target: LspTransitionTarget,
@@ -105,7 +109,7 @@ where
 
 impl<TState, TParams, TResult> RequestDispatchTarget<TState, TParams, TResult>
 where
-	TState: Send + Sync,
+	TState: Clone + Send + Sync,
 	TParams: DeserializeOwned + Send + Debug,
 	TResult: Serialize + Send,
 {
@@ -128,7 +132,7 @@ where
 #[async_trait]
 impl<TState, TParams, TResult> DispatchTarget<TState> for RequestDispatchTarget<TState, TParams, TResult>
 where
-	TState: Send + Sync + 'static,
+	TState: Clone + Send + Sync + 'static,
 	TParams: DeserializeOwned + Clone + Send + Debug + 'static,
 	TResult: Serialize + Clone + Send + 'static,
 {
@@ -177,7 +181,7 @@ where
 }
 
 /// Processes a message that represents a notification.
-// #[derive(Clone)]
+#[derive(Clone)]
 pub(crate) struct NotificationDispatchTarget<TState, TParams>
 where
 	TState: Send + Sync
@@ -210,7 +214,7 @@ where
 #[async_trait]
 impl<TState, TParams> DispatchTarget<TState> for NotificationDispatchTarget<TState, TParams>
 where
-	TState: Send + Sync + 'static,
+	TState: Clone + Send + Sync + 'static,
 	TParams: DeserializeOwned + Clone + Send + Debug + 'static,
 {
 	async fn process_message(

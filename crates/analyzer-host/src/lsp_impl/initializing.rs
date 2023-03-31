@@ -8,12 +8,12 @@ use analyzer_abstractions::{lsp_types::{
 
 use crate::{lsp::{
 	dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder, RELATIVE_P4_SOURCEFILES_GLOBPATTERN,
-}, json_rpc::{ErrorCode, to_json}};
+}, json_rpc::{ErrorCode, to_json}, fsm::LspServerStateDispatcher};
 
 use super::state::State;
 
 /// Builds and then returns a dispatcher handling the [`LspServerState::Initializing`] state.
-pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'static> {
+pub(crate) fn create_dispatcher() -> LspServerStateDispatcher {
 	Box::new(
 		DispatchBuilder::<State>::new(LspServerState::Initializing)
 			.for_notification_with_options::<Initialized, _>(

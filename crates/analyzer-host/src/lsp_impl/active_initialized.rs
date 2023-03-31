@@ -13,14 +13,14 @@ use analyzer_abstractions::{
 	tracing::{info, error},
 };
 
-use crate::lsp::{
+use crate::{lsp::{
 	dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder,
-};
+}, fsm::LspServerStateDispatcher};
 
 use super::state::State;
 
 /// Builds and then returns a dispatcher handling the [`LspServerState::ActiveUninitialized`] state.
-pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'static> {
+pub(crate) fn create_dispatcher() -> LspServerStateDispatcher {
 	Box::new(
 		DispatchBuilder::<State>::new(LspServerState::ActiveInitialized)
 			.for_request_with_options::<Shutdown, _>(on_shutdown, |mut options| {

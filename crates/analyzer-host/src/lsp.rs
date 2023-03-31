@@ -23,8 +23,8 @@ pub(crate) mod request;
 pub(crate) mod workspace;
 pub(crate) mod progress;
 
-/// A string representing a glob pattern of all relative `'.p4'` files.
-pub const RELATIVE_P4_SOURCEFILES_GLOBPATTERN: &str = "**/.p4";
+/// A string representing a glob pattern of all relative `'*.p4'` files.
+pub const RELATIVE_P4_SOURCEFILES_GLOBPATTERN: &str = "**/*.p4";
 
 /// Represents an error in protocol while processing a received client message.
 #[derive(Error, Debug, Clone, Copy)]
@@ -50,14 +50,14 @@ where
 	TState: Send + Sync
 {
 	state: LspServerState,
-	request_handlers: Arc<RwLock<HashMap<String, Arc<AnyDispatchTarget<TState>>>>>,
-	notification_handlers: Arc<RwLock<HashMap<String, Arc<AnyDispatchTarget<TState>>>>>,
+	request_handlers: Arc<RwLock<HashMap<String, AnyDispatchTarget<TState>>>>,
+	notification_handlers: Arc<RwLock<HashMap<String, AnyDispatchTarget<TState>>>>,
 	missing_handler_error: Option<(ErrorCode, &'static str)>,
 }
 
 impl<TState> DispatchBuilder<TState>
 where
-	TState: Send + Sync + 'static
+	TState: Clone + Send + Sync + 'static
 {
 	/// Initializes a new [`DispatchBuilder`] for a given [`LspServerState`].
 	pub fn new(state: LspServerState) -> Self {
@@ -79,7 +79,7 @@ where
 	{
 		let target = RequestDispatchTarget::<TState, T::Params, T::Result>::new(Box::new(handler));
 
-		self.request_handlers.write().unwrap().insert(String::from(T::METHOD), Arc::new(Box::new(target)));
+		self.request_handlers.write().unwrap().insert(String::from(T::METHOD), Box::new(target));
 
 		self
 	}
@@ -97,7 +97,7 @@ where
 
 		request_builder(TransitionBuilder::new(&mut target));
 
-		self.request_handlers.write().unwrap().insert(String::from(T::METHOD), Arc::new(Box::new(target)));
+		self.request_handlers.write().unwrap().insert(String::from(T::METHOD), Box::new(target));
 
 		self
 	}
@@ -117,7 +117,7 @@ where
 	{
 		let target = NotificationDispatchTarget::<TState, T::Params>::new(Box::new(handler));
 
-		self.notification_handlers.write().unwrap().insert(String::from(T::METHOD), Arc::new(Box::new(target)));
+		self.notification_handlers.write().unwrap().insert(String::from(T::METHOD), Box::new(target));
 
 		self
 	}
@@ -134,7 +134,7 @@ where
 
 		request_builder(TransitionBuilder::new(&mut target));
 
-		self.notification_handlers.write().unwrap().insert(String::from(T::METHOD), Arc::new(Box::new(target)));
+		self.notification_handlers.write().unwrap().insert(String::from(T::METHOD), Box::new(target));
 
 		self
 	}

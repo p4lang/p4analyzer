@@ -168,7 +168,7 @@ impl Workspace {
 		match files.entry(uri) {
 			Entry::Occupied(entry) => entry.get().clone(),
 			Entry::Vacant(entry) => {
-				info!(workspace_uri = workspace_uri.as_str(), file_uri = new_uri.as_str(), "Missing file entry in workspace'{}'.", self.name());
+				info!(workspace_uri = workspace_uri.as_str(), file_uri = new_uri.as_str(), "Unindexed file in workspace.");
 
 				let new_document_identifier = TextDocumentIdentifier { uri: new_uri };
 				let new_file = Arc::new(File::new(new_document_identifier.clone()));
@@ -196,6 +196,8 @@ impl Workspace {
 		}
 
 		let document_identifiers = self.file_system.enumerate_folder(self.uri(), RELATIVE_P4_SOURCEFILES_GLOBPATTERN.into()).await;
+
+		info!(workspace_uri = self.uri().as_str(), document_count = document_identifiers.len(), "Workspace indexing complete.");
 
 		if document_identifiers.len() == 0 {
 			return;

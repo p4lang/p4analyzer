@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use analyzer_abstractions::fs::{EnumerableFileSystem, AnyEnumerableFileSystem};
+use analyzer_abstractions::fs::AnyEnumerableFileSystem;
 use analyzer_abstractions::tracing::info;
 use async_rwlock::RwLock as AsyncRwLock;
 
@@ -19,14 +19,14 @@ use crate::{lsp::state::LspServerState, lsp_impl::state::State, tracing::TraceVa
 /// The [`LspServerState`] that a [`LspProtocolMachine`] will initially start in.
 const LSP_STARTING_STATE: LspServerState = LspServerState::ActiveUninitialized;
 
-type LspServerStateDispatcher = Box<dyn (Dispatch<State>) + Send + Sync>;
+pub(crate) type LspServerStateDispatcher = Box<dyn (Dispatch<State>) + Send + Sync>;
 
 /// A state machine that models the Language Server Protocol (LSP). In the specification, a LSP server has a lifecycle
 /// that is managed fully by the client. [`LspProtocolMachine`] ensures that the server responds accordingly by
 /// transitioning itself through states based on the requests received, and then processed on behalf of the client. If
 /// the server is in an invalid state for a given request, then the client will receive an appropriate error response.
 pub(crate) struct LspProtocolMachine {
-	dispatchers: Arc<RwLock<HashMap<LspServerState, Arc<LspServerStateDispatcher>>>>,
+	dispatchers: RwLock<HashMap<LspServerState, LspServerStateDispatcher>>,
 	current_state: LspServerState,
 	state: Arc<AsyncRwLock<State>>,
 }
@@ -34,7 +34,7 @@ pub(crate) struct LspProtocolMachine {
 impl LspProtocolMachine {
 	/// Initializes a new [`LspProtocolMachine`] that will start in its initial state.
 	pub fn new(trace_value: Option<TraceValueAccessor>, request_manager: RequestManager, file_system: Arc<AnyEnumerableFileSystem>) -> Self {
-		let dispatchers = Arc::new(RwLock::new(LspProtocolMachine::create_dispatchers()));
+		let dispatchers = RwLock::new(LspProtocolMachine::create_dispatchers());
 
 		Self {
 			dispatchers,
@@ -69,17 +69,17 @@ impl LspProtocolMachine {
 		}
 	}
 
-	fn create_dispatchers() -> HashMap<LspServerState, Arc<LspServerStateDispatcher>> {
+	fn create_dispatchers() -> HashMap<LspServerState, LspServerStateDispatcher> {
 		[
-			(LspServerState::ActiveUninitialized, Arc::new(create_dispatcher_active_uninitialized())),
-			(LspServerState::Initializing, Arc::new(create_dispatcher_initializing())),
-			(LspServerState::ActiveInitialized, Arc::new(create_dispatcher_active_initialized())),
-			(LspServerState::ShuttingDown, Arc::new(create_dispatcher_shutting_down())),
-			(LspServerState::Stopped, Arc::new(create_dispatcher_stopped())),
+			(LspServerState::ActiveUninitialized, create_dispatcher_active_uninitialized()),
+			(LspServerState::Initializing, create_dispatcher_initializing()),
+			(LspServerState::ActiveInitialized, create_dispatcher_active_initialized()),
+			(LspServerState::ShuttingDown, create_dispatcher_shutting_down()),
+			(LspServerState::Stopped, create_dispatcher_stopped()),
 		].into()
 	}
 
-	fn get_dispatcher(&self, state: LspServerState) -> Arc<LspServerStateDispatcher> {
+	fn get_dispatcher(&self, state: LspServerState) -> LspServerStateDispatcher {
 		let mut dispatchers = self.dispatchers.write().unwrap();
 
 		let a = dispatchers.entry(state).or_insert_with(|| LspProtocolMachine::default_dispatcher(state));
@@ -87,14 +87,14 @@ impl LspProtocolMachine {
 		a.clone()
 	}
 
-	fn default_dispatcher(state: LspServerState) -> Arc<LspServerStateDispatcher> {
-		Arc::new(Box::new(
+	fn default_dispatcher(state: LspServerState) -> LspServerStateDispatcher {
+		Box::new(
 			DispatchBuilder::new(state)
 				.for_unhandled_requests((
 					ErrorCode::InternalError,
 					"The server is in an unsupported state.",
 				))
 				.build(),
-		))
+		)
 	}
 }

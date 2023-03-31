@@ -15,13 +15,13 @@ use crate::{
 	json_rpc::ErrorCode,
 	lsp::{
 		dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder, workspace::WorkspaceManager, progress::ProgressManager,
-	},
+	}, fsm::LspServerStateDispatcher,
 };
 
 use super::state::State;
 
 /// Builds and then returns a dispatcher handling the [`LspServerState::ActiveUninitialized`] state.
-pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'static> {
+pub(crate) fn create_dispatcher() -> LspServerStateDispatcher {
 	Box::new(
 		DispatchBuilder::<State>::new(LspServerState::ActiveUninitialized)
 			.for_request_with_options::<Initialize, _>(on_initialize, |mut options| {
