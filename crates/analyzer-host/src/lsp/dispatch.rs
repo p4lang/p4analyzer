@@ -3,8 +3,7 @@ use std::{
 	sync::{Arc, RwLock}
 };
 use async_rwlock::RwLock as AsyncRwLock;
-
-use analyzer_abstractions::async_trait::async_trait;
+use analyzer_abstractions::{async_trait::async_trait, tracing::info};
 
 use crate::json_rpc::{
 	message::{Message, Response},
@@ -29,7 +28,7 @@ pub(crate) trait DispatchTarget<TState: Send + Sync>: Clone {
 	async fn process_message(
 		&self,
 		current_state: LspServerState,
-		message: &Message,
+		message: Arc<Message>,
 		state: Arc<AsyncRwLock<TState>>,
 	) -> Result<(Option<Message>, LspServerState), LspProtocolError>;
 
@@ -37,8 +36,7 @@ pub(crate) trait DispatchTarget<TState: Send + Sync>: Clone {
 	fn set_transition_target(&mut self, target: LspTransitionTarget);
 }
 
-pub(crate) type AnyDispatchTarget<TState> =
-	Box<dyn (DispatchTarget<TState>) + Send + Sync>;
+pub(crate) type AnyDispatchTarget<TState> = Box<dyn DispatchTarget<TState> + Send + Sync>;
 
 /// Dispatches [`Message`] instances to underlying [`DispatchTarget`] implementations.
 #[async_trait]
@@ -50,7 +48,7 @@ pub(crate) trait Dispatch<TState: Send + Sync>: Clone {
 	/// An instance of [`TState`] may be mutated by the [`DispatchTarget`] implementation during the processing of `message`.
 	async fn dispatch(
 		&self,
-		message: &Message,
+		message: Arc<Message>,
 		state: Arc<AsyncRwLock<TState>>,
 	) -> Result<(Option<Message>, LspServerState), LspProtocolError>;
 }
@@ -97,7 +95,9 @@ impl<TState: Send + Sync> DefaultDispatch<TState> {
 		};
 
 		match handlers {
-			Some((handlers, method)) => handlers.get(method).cloned(),
+			Some((handlers, method)) => {
+				handlers.get(method).cloned()
+			},
 			None => None,
 		}
 	}
@@ -114,28 +114,44 @@ impl<TState: Clone + Send + Sync + 'static> Dispatch<TState> for DefaultDispatch
 	/// message, or an [`LspProtocolError::UnexpectedRequest`] error, depending on whether defaults have been set on the [`Dispatch`].
 	async fn dispatch(
 		&self,
-		message: &Message,
+		message: Arc<Message>,
 		state: Arc<AsyncRwLock<TState>>,
 	) -> Result<(Option<Message>, LspServerState), LspProtocolError> {
-		match self.get_handler(message) {
+		match self.get_handler(&*message) {
 			Some(handler) => handler.process_message(self.state, message, state).await,
 			None => {
 				// If we have no handler for the message, then return either a response representing the default
 				// error message for requests, or an 'unexpected request' error for anything else.
-				if let Message::Request(ref request) = message {
-					if let Some((code, message)) = &self.missing_handler_error {
-						return Ok((
-							Some(Message::Response(Response::new_error(
-								request.id.clone(),
-								*code as i32,
-								message,
-							))),
-							self.state,
-						));
-					}
-				}
+				match &*message {
+					Message::Request(request) => {
+						if let Some((code, message)) = &self.missing_handler_error {
+							info!(error_code = *code as i32, custom_message = message, "Received an unexpected request ('{}'). Sending customized error.", request.method);
 
-				Err(LspProtocolError::UnexpectedRequest)
+							return Ok((
+								Some(Message::Response(Response::new_error(
+									request.id.clone(),
+									*code as i32,
+									message,
+								))),
+								self.state,
+							));
+						}
+
+						info!("Received an unexpected request ('{}'). Sending internal server error. Missing handler?", request.method);
+
+						Ok((
+							Some(
+								Message::Response(
+									Response::new_error(request.id.clone(), ErrorCode::InternalError as i32, "Internal server error."))),
+							self.state))
+					},
+					Message::Notification(notification) => {
+						info!("Received an unexpected notification ('{}'). Missing handler?", notification.method);
+
+						Err(LspProtocolError::UnexpectedRequest)
+					},
+					_ => Err(LspProtocolError::UnexpectedRequest)
+				}
 			}
 		}
 	}

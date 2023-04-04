@@ -3,11 +3,11 @@ use async_rwlock::RwLock as AsyncRwLock;
 use analyzer_abstractions::lsp_types::notification::Exit;
 use crate::{lsp::{
 	dispatch::Dispatch, dispatch_target::HandlerResult, state::LspServerState, DispatchBuilder,
-}, json_rpc::ErrorCode};
+}, json_rpc::ErrorCode, fsm::LspServerStateDispatcher};
 use super::state::State;
 
 /// Builds and then returns a dispatcher handling the [`LspServerState::ShuttingDown`] state.
-pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'static> {
+pub(crate) fn create_dispatcher() -> LspServerStateDispatcher {
 	Box::new(
 		DispatchBuilder::<State>::new(LspServerState::ShuttingDown)
 			.for_unhandled_requests((ErrorCode::InvalidRequest, "The server is currently shutting down."))

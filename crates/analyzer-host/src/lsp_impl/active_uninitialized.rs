@@ -1,25 +1,27 @@
 use std::sync::Arc;
 use async_rwlock::RwLock as AsyncRwLock;
 
-use analyzer_abstractions::lsp_types::{
+use analyzer_abstractions::{lsp_types::{
 	notification::Exit, request::Initialize, CompletionOptions, DeclarationCapability,
 	HoverProviderCapability, ImplementationProviderCapability, InitializeParams, InitializeResult,
 	OneOf, ServerCapabilities, ServerInfo, SignatureHelpOptions, TextDocumentSyncCapability,
 	TextDocumentSyncKind, TypeDefinitionProviderCapability, WorkDoneProgressOptions,
 	TextDocumentSyncSaveOptions, TextDocumentSyncOptions, SaveOptions,
-};
+	WorkspaceServerCapabilities,
+	WorkspaceFoldersServerCapabilities, WindowClientCapabilities, WorkspaceFolder,
+}};
 
 use crate::{
 	json_rpc::ErrorCode,
 	lsp::{
-		dispatch::Dispatch, dispatch_target::HandlerResult, state::LspServerState, DispatchBuilder,
-	},
+		dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder, workspace::WorkspaceManager, progress::ProgressManager,
+	}, fsm::LspServerStateDispatcher,
 };
 
 use super::state::State;
 
 /// Builds and then returns a dispatcher handling the [`LspServerState::ActiveUninitialized`] state.
-pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'static> {
+pub(crate) fn create_dispatcher() -> LspServerStateDispatcher {
 	Box::new(
 		DispatchBuilder::<State>::new(LspServerState::ActiveUninitialized)
 			.for_request_with_options::<Initialize, _>(on_initialize, |mut options| {
@@ -33,14 +35,85 @@ pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'st
 	)
 }
 
-/// Responds to an 'initialize' request from the LSP client returning a data structure that describes
+/// Responds to an 'initialize' request from the LSP client by returning a data structure that describes
 /// the capabilities of the P4 Analyzer.
+///
+/// If the client capabilities do not include support for workspace watched files, then an error is raised
+/// since the P4 Analyzer currently relies on the LSP client to watch for file changes in the workspaces.
 async fn on_initialize(
 	_: LspServerState,
-	_: InitializeParams,
-	_: Arc<AsyncRwLock<State>>,
+	params: InitializeParams,
+	state: Arc<AsyncRwLock<State>>,
 ) -> HandlerResult<InitializeResult> {
-	let result = InitializeResult {
+	initialize_client_dependant_state(state.clone(), params.workspace_folders, params.capabilities.window).await;
+
+	let state = state.read().await;
+
+	// If the server is being initialized with a trace value, then set use to set the current LSP tracing layer.
+	if let Some(trace_value) = params.trace {
+		state.set_trace_value(trace_value);
+	}
+
+	// If the server has been started without any workspace context, then simply return our 'default' capability.
+	if !state.has_workspaces() {
+		return Ok(create_initialize_result(false));
+	}
+
+	// With a workspace context in place, the P4 Analyzer depends on the LSP client to notify it of external file changes.
+	// If the client supports that capability, then start indexing
+	match params.capabilities.workspace {
+		Some(capabilities)
+			if capabilities.did_change_watched_files != None => Ok(create_initialize_result(true)),
+		_ => {
+			Err(
+				HandlerError::new(
+					"P4 Analyzer requires the Watched Files ('workspace.didChangeWatchedFiles') capability from the LSP client."))
+		}
+	}
+}
+
+/// Responds to an 'exit' notification from the LSP client.
+async fn on_exit(_: LspServerState, _: (), _: Arc<AsyncRwLock<State>>) -> HandlerResult<()> {
+	Ok(())
+}
+
+/// Initializes and stores in state the instances that are based on the reported client capabilities.
+async fn initialize_client_dependant_state(
+	state: Arc<AsyncRwLock<State>>,
+	workspace_folders: Option<Vec<WorkspaceFolder>>,
+	window_capabilities: Option<WindowClientCapabilities>)
+{
+	let mut state = state.write().await;
+	let analyzer = state.analyzer.clone();
+	let file_system = state.file_system.clone();
+
+	state.set_workspaces(WorkspaceManager::new(file_system, workspace_folders, analyzer));
+
+	let request_manager = state.request_manager.clone();
+	let work_done_supported = window_capabilities.map_or(
+		false,
+		|value| value.work_done_progress.map_or(false, |value| value));
+
+	state.set_progress(ProgressManager::new(request_manager, work_done_supported));
+}
+
+/// Creates an initialized [`InitializeResult`] instance that describes the capabilities of the P4 Analyzer.
+fn create_initialize_result(include_workspace_folders: bool) -> InitializeResult {
+	let workspace =
+		if include_workspace_folders {
+			Some(WorkspaceServerCapabilities {
+				workspace_folders: Some(WorkspaceFoldersServerCapabilities {
+					supported: Some(true),
+					change_notifications: Some(OneOf::Left(true))
+				}),
+				..Default::default()
+			})
+		}
+		else {
+			None
+		};
+
+	InitializeResult {
 		capabilities: ServerCapabilities {
 			text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
 				save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
@@ -50,6 +123,7 @@ async fn on_initialize(
 				change: Some(TextDocumentSyncKind::INCREMENTAL),
 				..Default::default()
 			})),
+			workspace,
 			completion_provider: Some(CompletionOptions {
 				resolve_provider: Some(true),
 				trigger_characters: Some(vec!["(".to_string(), "<".to_string(), ".".to_string()]),
@@ -74,15 +148,8 @@ async fn on_initialize(
 			..Default::default()
 		},
 		server_info: Some(ServerInfo {
-			name: String::from("p4-analyzer"),
+			name: String::from("P4 Analyzer"),
 			version: Some(String::from("0.0.0")),
 		}),
-	};
-
-	Ok(result)
-}
-
-/// Responds to an 'exit' notification from the LSP client.
-async fn on_exit(_: LspServerState, _: (), _: Arc<AsyncRwLock<State>>) -> HandlerResult<()> {
-	Ok(())
+	}
 }

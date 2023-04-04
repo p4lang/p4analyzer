@@ -2,6 +2,8 @@ mod cli;
 mod commands;
 mod stdio;
 
+use analyzer_abstractions::event_listener::Event;
+use analyzer_abstractions::futures_extensions::async_extensions::AsyncPool;
 use analyzer_abstractions::tracing::{subscriber, Level, Subscriber};
 use analyzer_host::tracing::tracing_subscriber::fmt::layer;
 use analyzer_host::tracing::tracing_subscriber::fmt::writer::MakeWriterExt;
@@ -31,7 +33,8 @@ pub async fn main() {
 			let default_logging_layer = create_default_logging_layer::<Registry>(&cmd);
 			let mut layers = if let Some((layer, _)) = default_logging_layer {
 				vec![layer]
-			} else {
+			}
+			else {
 				vec![]
 			};
 			let cmd = match cmd.subcommand {
@@ -141,7 +144,7 @@ impl<C: Command> RunnableCommand<C> {
 				CommandInvocationError::Cancelled => println!("{}", err),
 				_ => eprintln!("{}", err),
 			},
-		}
+		};
 	}
 
 	/// Retrieves any additional logging layers that have been configured by the underlying command.

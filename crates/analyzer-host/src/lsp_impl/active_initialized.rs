@@ -4,23 +4,23 @@ use async_rwlock::RwLock as AsyncRwLock;
 
 use analyzer_abstractions::{
 	lsp_types::{
-		notification::{Exit, Notification, SetTrace, DidOpenTextDocument, DidChangeTextDocument, DidCloseTextDocument, DidSaveTextDocument},
+		notification::{Exit, SetTrace, DidChangeWatchedFiles, DidOpenTextDocument, DidCloseTextDocument, DidChangeTextDocument, DidSaveTextDocument},
 		request::{Completion, HoverRequest, Shutdown},
 		CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
-		Hover, HoverContents, HoverParams, MarkupContent, MarkupKind, Position, SetTraceParams, DidOpenTextDocumentParams, DidChangeTextDocumentParams,
-		DidCloseTextDocumentParams, DidSaveTextDocumentParams,
+		Hover, HoverContents, HoverParams, MarkupContent, MarkupKind, SetTraceParams, DidChangeWatchedFilesParams,
+		DidCloseTextDocumentParams, DidSaveTextDocumentParams, Position, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
 	},
-	tracing::info,
+	tracing::{info, error},
 };
 
-use crate::lsp::{
+use crate::{lsp::{
 	dispatch::Dispatch, dispatch_target::{HandlerResult, HandlerError}, state::LspServerState, DispatchBuilder,
-};
+}, fsm::LspServerStateDispatcher};
 
 use super::state::State;
 
 /// Builds and then returns a dispatcher handling the [`LspServerState::ActiveUninitialized`] state.
-pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'static> {
+pub(crate) fn create_dispatcher() -> LspServerStateDispatcher {
 	Box::new(
 		DispatchBuilder::<State>::new(LspServerState::ActiveInitialized)
 			.for_request_with_options::<Shutdown, _>(on_shutdown, |mut options| {
@@ -33,6 +33,7 @@ pub(crate) fn create_dispatcher() -> Box<dyn Dispatch<State> + Send + Sync + 'st
 			.for_notification::<DidOpenTextDocument, _>(on_text_document_did_open)
 			.for_notification::<DidSaveTextDocument, _>(on_text_document_did_save)
 			.for_notification::<SetTrace, _>(on_set_trace)
+			.for_notification::<DidChangeWatchedFiles, _>(on_watched_file_change)
 			.for_notification_with_options::<Exit, _>(on_exit, |mut options| {
 				options.transition_to(LspServerState::Stopped)
 			})
@@ -69,43 +70,53 @@ async fn on_text_document_completion(
 	state: Arc<AsyncRwLock<State>>,
 ) -> HandlerResult<Option<CompletionResponse>> {
 	use itertools::Itertools;
-	let analyzer = state.write().await.analyzer.clone();
-	let analyzer = analyzer.unwrap();
 
-	let uri = params.text_document_position.text_document.uri.as_str();
-	let file_id = analyzer.file_id(uri);
+	let state = state.read().await;
+	let uri = params.text_document_position.text_document.uri;
+	let file = state.workspaces().get_file(uri.clone());
 
-	let (input, lexed) = match (analyzer.input(file_id), analyzer.preprocessed(file_id)) {
-		(Some(i), Some(l)) => (i, l),
-		_ => return Ok(Some(CompletionResponse::Array(vec![]))),
-	};
+	match file.get_parsed_unit().await {
+		Ok(file_id) => {
+			let analyzer = state.analyzer.unwrap();
 
-	let items = lexed
-		.iter()
-		.flat_map(|(_, token, _)| match token {
-			analyzer_core::lexer::Token::Identifier(name) => Some(name),
-			_ => None,
-		})
-		.unique()
-		.map(|label| CompletionItem {
-			label: label.to_string(),
-			kind: Some(CompletionItemKind::FILE),
-			..Default::default()
-		})
-		.collect();
+			let (input, lexed) = match (analyzer.input(file_id), analyzer.preprocessed(file_id)) {
+				(Some(i), Some(l)) => (i, l),
+				_ => return Ok(Some(CompletionResponse::Array(vec![]))),
+			};
 
-	let data = CompletionList {
-		is_incomplete: false,
-		items,
-	};
+			let items = lexed
+				.iter()
+				.flat_map(|(_, token, _)| match token {
+					analyzer_core::lexer::Token::Identifier(name) => Some(name),
+					_ => None,
+				})
+				.unique()
+				.map(|label| CompletionItem {
+					label: label.to_string(),
+					kind: Some(CompletionItemKind::FILE),
+					..Default::default()
+				})
+				.collect();
 
-	let shown_tokens = lexed.iter().map(|(file_id, tk, span)|
-		format!("{tk:?}: {file_id:?} {span:?}")
-	).collect::<Vec<_>>();
-	info!("input: {:?}\n{:?}", input, shown_tokens);
-	info!("files: {:?}", analyzer.files());
+			let data = CompletionList {
+				is_incomplete: false,
+				items,
+			};
 
-	Ok(Some(CompletionResponse::List(data)))
+			let shown_tokens = lexed.iter().map(|(file_id, tk, span)|
+				format!("{tk:?}: {file_id:?} {span:?}")
+			).collect::<Vec<_>>();
+			info!("input: {:?}\n{:?}", input, shown_tokens);
+			info!("files: {:?}", analyzer.files());
+
+			Ok(Some(CompletionResponse::List(data)))
+		},
+		Err(err) => {
+			error!(file_uri = uri.as_str(), "Could not query completions. Index error: {}", err);
+
+			Err(HandlerError::new("Could not query completions for document."))
+		}
+	}
 }
 
 async fn on_text_document_did_open(
@@ -113,11 +124,15 @@ async fn on_text_document_did_open(
 	params: DidOpenTextDocumentParams,
 	state: Arc<AsyncRwLock<State>>,
 ) -> HandlerResult<()> {
-	let analyzer = state.write().await.analyzer.clone();
-	let mut analyzer = analyzer.unwrap();
+	let state = state.write().await;
+	let file = state.workspaces().get_file(params.text_document.uri.clone());
+	let mut analyzer = state.analyzer.unwrap();
 
 	let file_id = analyzer.file_id(params.text_document.uri.as_str());
+
 	analyzer.update(file_id, params.text_document.text);
+
+	file.open_or_update(file_id);
 
 	Ok(())
 }
@@ -128,6 +143,7 @@ async fn on_text_document_did_change(
 	state: Arc<AsyncRwLock<State>>,
 ) -> HandlerResult<()> {
 	let state = state.write().await;
+	let file = state.workspaces().get_file(params.text_document.uri.clone());
 	let mut analyzer = state.analyzer.unwrap();
 
 	let uri = params.text_document.uri.as_str();
@@ -158,6 +174,7 @@ async fn on_text_document_did_change(
 
 	// TODO: avoid cloning
 	analyzer.update(file_id, input.clone());
+	file.open_or_update(file_id);
 	let diagnostics = process_diagnostics(&analyzer, file_id, &input);
 
 	// TODO: report diagnostics
@@ -175,9 +192,11 @@ async fn on_text_document_did_close(
 	state: Arc<AsyncRwLock<State>>
 ) -> HandlerResult<()> {
 	let state = state.write().await;
+	let file = state.workspaces().get_file(params.text_document.uri.clone());
 	let mut analyzer = state.analyzer.unwrap();
 
 	analyzer.delete(params.text_document.uri.as_str());
+	file.close();
 
 	Ok(())
 }
@@ -187,15 +206,17 @@ async fn on_text_document_did_save(
 	params: DidSaveTextDocumentParams,
 	state: Arc<AsyncRwLock<State>>
 ) -> HandlerResult<()> {
-	let state = state.write().await;
-	let mut analyzer = state.analyzer.unwrap();
-
 	if let Some(text) = params.text {
+		let state = state.write().await;
+		let file = state.workspaces().get_file(params.text_document.uri.clone());
+		let mut analyzer = state.analyzer.unwrap();
+
 		info!("Syncing buffer on save.");
 		let file_id = analyzer.file_id(params.text_document.uri.as_str());
 		let diagnostics = process_diagnostics(&analyzer, file_id, &text);
 		// TODO: report diagnostics, and process *after* the update below!
 		analyzer.update(file_id, text);
+		file.open_or_update(file_id);
 	}
 
 	Ok(())
@@ -206,18 +227,22 @@ async fn on_set_trace(
 	params: SetTraceParams,
 	state: Arc<AsyncRwLock<State>>,
 ) -> HandlerResult<()> {
-	let read_state = state.read().await;
+	let state = state.read().await;
 
-	// If a trace value accessor is available, then set it using the trace value received in the
-	// parameters.
-	if let Some(tv) = &read_state.trace_value {
-		info!(
-			method = SetTrace::METHOD,
-			"Setting trace level to {:?}", params.value
-		);
+	state.set_trace_value(params.value);
 
-		tv.set(params.value);
-	}
+	Ok(())
+}
+
+async fn on_watched_file_change(
+	_: LspServerState,
+	params: DidChangeWatchedFilesParams,
+	state: Arc<AsyncRwLock<State>>,
+) -> HandlerResult<()>
+{
+	let file_changes: Vec<String> = params.changes.into_iter().map(|file_event| { format!("({:?} {})", file_event.typ, file_event.uri) }).collect();
+
+	info!(file_changes = file_changes.join(", "), "Watched file changes.");
 
 	Ok(())
 }

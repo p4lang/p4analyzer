@@ -1,12 +1,10 @@
+use core::fmt::Debug;
 use std::{
-	fmt,
 	future::Future,
 	pin::Pin,
 	sync::Arc,
 };
 use async_rwlock::RwLock as AsyncRwLock;
-use dyn_clonable::*;
-
 use analyzer_abstractions::{async_trait::async_trait, tracing::error};
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -21,6 +19,8 @@ use super::{
 	state::{LspServerState, LspTransitionTarget},
 	LspProtocolError,
 };
+
+use dyn_clonable::*;
 
 /// An error that can be produced when processing a message.
 #[derive(Clone)]
@@ -101,7 +101,7 @@ pub(crate) type AnyAsyncRequestHandlerFn<TState, TParams, TResult> =
 #[derive(Clone)]
 pub(crate) struct RequestDispatchTarget<TState, TParams, TResult>
 where
-	TState: Send + Sync
+	TState: Clone + Send + Sync
 {
 	pub handler_fn: AnyAsyncRequestHandlerFn<TState, TParams, TResult>,
 	pub transition_target: LspTransitionTarget,
@@ -109,8 +109,8 @@ where
 
 impl<TState, TParams, TResult> RequestDispatchTarget<TState, TParams, TResult>
 where
-	TState: Send + Sync,
-	TParams: DeserializeOwned + Send + fmt::Debug,
+	TState: Clone + Send + Sync,
+	TParams: DeserializeOwned + Send + Debug,
 	TResult: Serialize + Send,
 {
 	/// Initializes a new [`RequestDispatchTarget`] for a given handler function.
@@ -133,19 +133,19 @@ where
 impl<TState, TParams, TResult> DispatchTarget<TState> for RequestDispatchTarget<TState, TParams, TResult>
 where
 	TState: Clone + Send + Sync + 'static,
-	TParams: DeserializeOwned + Clone + Send + fmt::Debug + 'static,
+	TParams: DeserializeOwned + Clone + Send + Debug + 'static,
 	TResult: Serialize + Clone + Send + 'static,
 {
 	async fn process_message(
 		&self,
 		current_state: LspServerState,
-		message: &Message,
+		message: Arc<Message>,
 		state: Arc<AsyncRwLock<TState>>,
 	) -> Result<(Option<Message>, LspServerState), LspProtocolError> {
-		match message {
+		match &*message {
 			Message::Request(request) => {
 				let method = request.method.as_str();
-				let params = from_json::<TParams>(method, &request.params)?;
+				let params = from_json::<TParams>(&request.params)?;
 				let (response, next_state) =
 					match self.handler_fn.call(current_state, params, state).await {
 						Ok(result) => (
@@ -193,7 +193,7 @@ where
 impl<TState, TParams> NotificationDispatchTarget<TState, TParams>
 where
 	TState: Send + Sync,
-	TParams: DeserializeOwned + Send + fmt::Debug,
+	TParams: DeserializeOwned + Send + Debug,
 {
 	/// Initializes a new [`NotificationDispatchTarget`] for a given handler function.
 	pub fn new(handler_fn: Box<dyn (AsyncRequestHandlerFn<TState, TParams, ()>) + Send + Sync>) -> Self {
@@ -215,18 +215,18 @@ where
 impl<TState, TParams> DispatchTarget<TState> for NotificationDispatchTarget<TState, TParams>
 where
 	TState: Clone + Send + Sync + 'static,
-	TParams: DeserializeOwned + Clone + Send + fmt::Debug + 'static,
+	TParams: DeserializeOwned + Clone + Send + Debug + 'static,
 {
 	async fn process_message(
 		&self,
 		current_state: LspServerState,
-		message: &Message,
+		message: Arc<Message>,
 		state: Arc<AsyncRwLock<TState>>,
 	) -> Result<(Option<Message>, LspServerState), LspProtocolError> {
-		match message {
+		match &*message {
 			Message::Notification(request) => {
 				let method = request.method.as_str();
-				let params = from_json::<TParams>(method, &request.params)?;
+				let params = from_json::<TParams>(&request.params)?;
 
 				if let Err(err) = self.handler_fn.call(current_state, params, state).await {
 					error!(

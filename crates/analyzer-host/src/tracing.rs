@@ -1,5 +1,6 @@
 pub use tracing_subscriber;
 
+use core::fmt::Debug;
 use crate::{
 	json_rpc::message::{Message, Notification},
 	MessageChannel,
@@ -78,14 +79,6 @@ where
 			},
 		);
 
-		// let notification = Notification::new(
-		// 	"window/logMessage",
-		// 	LogMessageParams {
-		// 		message: visitor.message,
-		// 		typ: MessageType::LOG,
-		// 	},
-		// );
-
 		self.sender
 			.send_blocking(Message::Notification(notification))
 			.unwrap_or_default(); // Ignore errors.
@@ -121,7 +114,7 @@ impl Display for LspTraceMessageVisitor {
 }
 
 impl Visit for LspTraceMessageVisitor {
-	fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+	fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
 		if field.name() == "message" {
 			write!(self.message, "{:?}", value).unwrap();
 

@@ -60,7 +60,9 @@ impl Command for LspServerCommand {
 		&self,
 		cancel_token: Arc<CancellationToken>,
 	) -> Result<(), CommandInvocationError> {
-		let host = AnalyzerHost::new(self.console_driver.get_message_channel(), self.trace_value());
+		// Passing `None` as the `file_system`. This will then default to the LSP based file system that works
+		// with the client extensions built as part of the P4 Analyzer Visual Studio Code extension.
+		let host = AnalyzerHost::new(self.console_driver.get_message_channel(), self.trace_value(), None);
 
 		match tokio::join!(
 			host.start(cancel_token.clone()),

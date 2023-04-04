@@ -2,7 +2,7 @@ mod buffer;
 
 extern crate console_error_panic_hook;
 
-use analyzer_abstractions::{tracing::subscriber};
+use analyzer_abstractions::tracing::subscriber;
 use analyzer_host::{
 	json_rpc::message::*,
 	tracing::{
@@ -44,7 +44,7 @@ impl LspServer {
 	/// Starts the LSP server by creating and starting an underlying [`AnalyzerHost`].
 	pub async fn start(&self) -> Result<JsValue, JsValue> {
 		let layer = LspTracingLayer::new(self.get_message_channel());
-		let host = AnalyzerHost::new(self.get_message_channel(), Some(layer.trace_value()));
+		let host = AnalyzerHost::new(self.get_message_channel(), Some(layer.trace_value()), None);
 		let subscriber = Registry::default().with(layer);
 
 		subscriber::set_global_default(subscriber)
