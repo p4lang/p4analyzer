@@ -1,0 +1,27 @@
+on: [push, pull_request]
+
+name: Build & test
+
+jobs:
+  build_and_test:
+    name:  push/pull build_and_test
+    runs-on: [ubuntu-latest,windows-latest]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+      
+      - name: Install node-JS 18
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - name: Install Rust
+        run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      
+      - name: building
+        run: |
+          npm i
+          npm run build
+          npm run package
+      
+      - name: testing
+        run: cargo t
