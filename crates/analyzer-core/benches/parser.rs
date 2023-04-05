@@ -7,14 +7,17 @@ use parser::*;
 use criterion::{black_box, Criterion};
 
 fn baseline(make: impl FnOnce(String) -> Parser<char>, input: &str) -> Parser<char> {
+
 	make(input.chars().into_iter().collect())
 }
 
 fn parse(make: impl FnOnce(String) -> Parser<char>, input: &str) -> Cst<char> {
+
 	make(input.to_string())._match().unwrap()
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
+
 	let mut group = c.benchmark_group("parser throughput");
 
 	let rules = grammar! {
@@ -41,20 +44,32 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 	};
 
 	let input = {
+
 		use oorandom::Rand32;
+
 		let mut rand = Rand32::new(42);
+
 		let mut buf = String::new();
+
 		let mut last_op = true;
 
 		// generate 100 kB of input
 		for _ in 0..100_000 {
+
 			let n = rand.rand_range(0..100) + 1;
+
 			if !last_op && n < 20 {
+
 				buf.push(if n % 2 == 0 { '+' } else { '-' });
+
 				last_op = true;
-			} else {
+			}
+			else {
+
 				let ch = (rand.rand_u32() % 10) as u8;
+
 				buf.push((b'0' + ch) as char);
+
 				last_op = false;
 			}
 		}
@@ -63,20 +78,29 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 	};
 
 	let mut matcher = Parser::from_rules(&rules).unwrap()(input.chars().collect::<Vec<_>>().into());
+
 	assert!(matcher._match().is_some());
 
 	group.bench_function("baseline", |b| {
+
 		b.iter(|| {
+
 			let make_matcher = Parser::from_rules(&rules).unwrap();
+
 			let make = black_box(|s: String| make_matcher(s.chars().collect::<Vec<_>>().into()));
+
 			baseline(make, black_box(&input))
 		});
 	});
 
 	group.bench_function("parsing", |b| {
+
 		b.iter(|| {
+
 			let make_matcher = Parser::from_rules(&rules).unwrap();
+
 			let make = black_box(|s: String| make_matcher(s.chars().collect::<Vec<_>>().into()));
+
 			parse(make, black_box(&input))
 		});
 	});

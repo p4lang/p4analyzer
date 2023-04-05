@@ -1,5 +1,6 @@
 /// Represents the distinct state of a Language Server Protocol (LSP) server implementation.
 #[derive(Debug, Eq, Hash, PartialEq, PartialOrd, Copy, Clone)]
+
 pub(crate) enum LspServerState {
 	/// The server is active, but not yet initialized.
 	ActiveUninitialized,
@@ -15,15 +16,16 @@ pub(crate) enum LspServerState {
 	ShuttingDown,
 
 	/// The server is stopped.
-	Stopped,
+	Stopped
 }
 
 /// Captures a desired change in state.
 #[derive(Debug, PartialEq, PartialOrd, Copy, Clone)]
+
 pub(crate) enum LspTransitionTarget {
 	/// The state should remain current.
 	Current,
 
 	/// The state should transition to a defined 'next' state.
-	Next(LspServerState),
+	Next(LspServerState)
 }
