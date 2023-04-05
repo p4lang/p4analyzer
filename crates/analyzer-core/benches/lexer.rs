@@ -4,7 +4,7 @@ use analyzer_core::*;
 use base_abstractions::*;
 use lexer::*;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, Criterion};
 use logos::Span;
 
 fn baseline(input: String) -> Vec<char> {
@@ -19,7 +19,7 @@ fn basic(input: String) -> Vec<(Token, Span)> {
 	lexed.lexemes(&db).clone()
 }
 
-fn criterion_benchmark(c: &mut Criterion) {
+pub fn criterion_benchmark(c: &mut Criterion) {
 	let input = r##"
 	// Include P4 core library
 	# include <core.p4>
@@ -252,6 +252,3 @@ fn criterion_benchmark(c: &mut Criterion) {
 
 	group.finish()
 }
-
-criterion_group!(benches, criterion_benchmark);
-criterion_main!(benches);
