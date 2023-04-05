@@ -1,11 +1,15 @@
-use analyzer_abstractions::lsp_types::{notification::Progress as ProgressNotification, request::WorkDoneProgressCreate, WorkDoneProgressCreateParams, ProgressToken, WorkDoneProgressBegin, ProgressParams, ProgressParamsValue, WorkDoneProgress, WorkDoneProgressReport, WorkDoneProgressEnd, NumberOrString};
+use analyzer_abstractions::lsp_types::{
+	notification::Progress as ProgressNotification, request::WorkDoneProgressCreate, NumberOrString, ProgressParams,
+	ProgressParamsValue, ProgressToken, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressCreateParams,
+	WorkDoneProgressEnd, WorkDoneProgressReport,
+};
 
 use super::{request::RequestManager, LspProtocolError};
 
 #[derive(Clone)]
 pub(crate) struct ProgressManager {
 	request_manager: RequestManager,
-	client_supported: bool
+	client_supported: bool,
 }
 
 impl ProgressManager {
@@ -28,12 +32,11 @@ impl ProgressManager {
 
 		let params = ProgressParams {
 			token: token.clone(),
-			value: ProgressParamsValue::WorkDone(
-				WorkDoneProgress::Begin(
-					WorkDoneProgressBegin {
-						title: title.into(),
-						..Default::default()
-					}))};
+			value: ProgressParamsValue::WorkDone(WorkDoneProgress::Begin(WorkDoneProgressBegin {
+				title: title.into(),
+				..Default::default()
+			})),
+		};
 
 		if let Err(_) = self.request_manager.send_notification::<ProgressNotification>(params).await {
 			return Err(LspProtocolError::TransportError);
@@ -46,7 +49,7 @@ impl ProgressManager {
 pub(crate) struct Progress {
 	request_manager: RequestManager,
 	client_supported: bool,
-	token: ProgressToken
+	token: ProgressToken,
 }
 
 impl Progress {
@@ -61,12 +64,11 @@ impl Progress {
 
 		let params = ProgressParams {
 			token: self.token.clone(),
-			value: ProgressParamsValue::WorkDone(
-				WorkDoneProgress::Report(
-					WorkDoneProgressReport {
-						message: Some(message.into()),
-						..Default::default()
-					}))};
+			value: ProgressParamsValue::WorkDone(WorkDoneProgress::Report(WorkDoneProgressReport {
+				message: Some(message.into()),
+				..Default::default()
+			})),
+		};
 
 		if let Err(_) = self.request_manager.send_notification::<ProgressNotification>(params).await {
 			return Err(LspProtocolError::TransportError);
@@ -82,12 +84,11 @@ impl Progress {
 
 		let params = ProgressParams {
 			token: self.token.clone(),
-			value: ProgressParamsValue::WorkDone(
-				WorkDoneProgress::End(
-					WorkDoneProgressEnd {
-						message: message.map(|value| value.into()),
-						..Default::default()
-					}))};
+			value: ProgressParamsValue::WorkDone(WorkDoneProgress::End(WorkDoneProgressEnd {
+				message: message.map(|value| value.into()),
+				..Default::default()
+			})),
+		};
 
 		if let Err(_) = self.request_manager.send_notification::<ProgressNotification>(params).await {
 			return Err(LspProtocolError::TransportError);

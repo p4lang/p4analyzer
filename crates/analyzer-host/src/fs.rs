@@ -1,4 +1,10 @@
-use analyzer_abstractions::{fs::EnumerableFileSystem, lsp_types::{Url, request::Request, TextDocumentIdentifier}, async_trait::async_trait, tracing::error, BoxFuture};
+use analyzer_abstractions::{
+	async_trait::async_trait,
+	fs::EnumerableFileSystem,
+	lsp_types::{request::Request, TextDocumentIdentifier, Url},
+	tracing::error,
+	BoxFuture,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::lsp::request::RequestManager;
@@ -9,21 +15,27 @@ use crate::lsp::request::RequestManager;
 /// extended requests using an extended method beginning `'p4analyzer/<...>'`.
 #[derive(Clone)]
 pub(crate) struct LspEnumerableFileSystem {
-	request_manager: RequestManager
+	request_manager: RequestManager,
 }
 
 impl LspEnumerableFileSystem {
 	/// Initializes a new [`LspEnumerableFileSystem`] with the request manager to use when sending
 	/// requests.
-	pub fn new(request_manager: RequestManager) -> Self {
-		Self { request_manager }
-	}
+	pub fn new(request_manager: RequestManager) -> Self { Self { request_manager } }
 }
 
 // #[async_trait]
 impl EnumerableFileSystem for LspEnumerableFileSystem {
-	fn enumerate_folder<'a>(&'a self, file_uri: Url, file_pattern: String) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {
-		async fn enumerate_folder(s: &LspEnumerableFileSystem, folder_uri: Url, file_pattern: String) -> Vec<TextDocumentIdentifier> {
+	fn enumerate_folder<'a>(
+		&'a self,
+		file_uri: Url,
+		file_pattern: String,
+	) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {
+		async fn enumerate_folder(
+			s: &LspEnumerableFileSystem,
+			folder_uri: Url,
+			file_pattern: String,
+		) -> Vec<TextDocumentIdentifier> {
 			let params = EnumerateFolderParams { uri: folder_uri.clone(), file_pattern };
 
 			match s.request_manager.send_and_receive::<EnumerateFolderRequest>(params).await {
@@ -70,8 +82,7 @@ impl Request for EnumerateFolderRequest {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct EnumerateFolderParams {
 	pub uri: Url,
-	pub file_pattern: String
-
+	pub file_pattern: String,
 }
 
 #[derive(Debug)]

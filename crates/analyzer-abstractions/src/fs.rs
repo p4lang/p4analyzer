@@ -1,4 +1,4 @@
-use lsp_types::{Url, TextDocumentIdentifier};
+use lsp_types::{TextDocumentIdentifier, Url};
 use serde::{Deserialize, Serialize};
 
 use crate::BoxFuture;
@@ -20,7 +20,11 @@ pub trait EnumerableFileSystem {
 	/// its contained files.
 	///
 	/// `file_pattern` is file glob pattern like `'*.p4'` that will be matched on paths relative to `folder_uri`.
-	fn enumerate_folder<'a>(&'a self, folder_uri: Url, file_pattern: String) -> BoxFuture<'a, Vec<TextDocumentIdentifier>>;
+	fn enumerate_folder<'a>(
+		&'a self,
+		folder_uri: Url,
+		file_pattern: String,
+	) -> BoxFuture<'a, Vec<TextDocumentIdentifier>>;
 
 	/// Retrieves the contents of a given file.
 	fn file_contents<'a>(&'a self, file_uri: Url) -> BoxFuture<'a, Option<String>>;

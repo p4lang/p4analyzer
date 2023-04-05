@@ -1,9 +1,9 @@
+use analyzer_abstractions::{async_trait::async_trait, tracing::info};
+use async_rwlock::RwLock as AsyncRwLock;
 use std::{
 	collections::HashMap,
-	sync::{Arc, RwLock}
+	sync::{Arc, RwLock},
 };
-use async_rwlock::RwLock as AsyncRwLock;
-use analyzer_abstractions::{async_trait::async_trait, tracing::info};
 
 use crate::json_rpc::{
 	message::{Message, Response},
@@ -71,12 +71,7 @@ impl<TState: Send + Sync> DefaultDispatch<TState> {
 		notification_handlers: Arc<RwLock<HashMap<String, AnyDispatchTarget<TState>>>>,
 		missing_handler_error: Option<(ErrorCode, &'static str)>,
 	) -> Self {
-		Self {
-			state,
-			request_handlers,
-			notification_handlers,
-			missing_handler_error,
-		}
+		Self { state, request_handlers, notification_handlers, missing_handler_error }
 	}
 
 	/// Retrieves the [`DispatchTarget`] that is registered to process the given message.
@@ -84,20 +79,15 @@ impl<TState: Send + Sync> DefaultDispatch<TState> {
 	/// Returns `None` if no handler was registered.
 	fn get_handler(&self, message: &Message) -> Option<AnyDispatchTarget<TState>> {
 		let handlers = match message {
-			Message::Request(request) => {
-				Some((self.request_handlers.read().unwrap(), &request.method))
+			Message::Request(request) => Some((self.request_handlers.read().unwrap(), &request.method)),
+			Message::Notification(notification) => {
+				Some((self.notification_handlers.read().unwrap(), &notification.method))
 			}
-			Message::Notification(notification) => Some((
-				self.notification_handlers.read().unwrap(),
-				&notification.method,
-			)),
 			_ => None,
 		};
 
 		match handlers {
-			Some((handlers, method)) => {
-				handlers.get(method).cloned()
-			},
+			Some((handlers, method)) => handlers.get(method).cloned(),
 			None => None,
 		}
 	}
@@ -125,32 +115,39 @@ impl<TState: Clone + Send + Sync + 'static> Dispatch<TState> for DefaultDispatch
 				match &*message {
 					Message::Request(request) => {
 						if let Some((code, message)) = &self.missing_handler_error {
-							info!(error_code = *code as i32, custom_message = message, "Received an unexpected request ('{}'). Sending customized error.", request.method);
+							info!(
+								error_code = *code as i32,
+								custom_message = message,
+								"Received an unexpected request ('{}'). Sending customized error.",
+								request.method
+							);
 
 							return Ok((
-								Some(Message::Response(Response::new_error(
-									request.id.clone(),
-									*code as i32,
-									message,
-								))),
+								Some(Message::Response(Response::new_error(request.id.clone(), *code as i32, message))),
 								self.state,
 							));
 						}
 
-						info!("Received an unexpected request ('{}'). Sending internal server error. Missing handler?", request.method);
+						info!(
+							"Received an unexpected request ('{}'). Sending internal server error. Missing handler?",
+							request.method
+						);
 
 						Ok((
-							Some(
-								Message::Response(
-									Response::new_error(request.id.clone(), ErrorCode::InternalError as i32, "Internal server error."))),
-							self.state))
-					},
+							Some(Message::Response(Response::new_error(
+								request.id.clone(),
+								ErrorCode::InternalError as i32,
+								"Internal server error.",
+							))),
+							self.state,
+						))
+					}
 					Message::Notification(notification) => {
 						info!("Received an unexpected notification ('{}'). Missing handler?", notification.method);
 
 						Err(LspProtocolError::UnexpectedRequest)
-					},
-					_ => Err(LspProtocolError::UnexpectedRequest)
+					}
+					_ => Err(LspProtocolError::UnexpectedRequest),
 				}
 			}
 		}

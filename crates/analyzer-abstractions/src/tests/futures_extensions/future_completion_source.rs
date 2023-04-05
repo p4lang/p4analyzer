@@ -30,7 +30,6 @@ mod set_value {
 	}
 }
 
-
 /// Provides test fixtures for the [`FutureCompletionSource::set_err()`] method.
 mod set_err {
 	use crate::futures_extensions::{FutureCompletionSource, FutureCompletionSourceError};
@@ -64,10 +63,13 @@ mod set_err {
 
 /// Provides test fixtures for the [`FutureCompletionSource::future()`] method.
 mod future {
-	use futures::join;
-	use thiserror::Error;
-	use std::{time::Duration, sync::atomic::{AtomicUsize, Ordering}};
 	use crate::futures_extensions::FutureCompletionSource;
+	use futures::join;
+	use std::{
+		sync::atomic::{AtomicUsize, Ordering},
+		time::Duration,
+	};
+	use thiserror::Error;
 
 	#[derive(Error, Clone, Copy, Debug, PartialEq, Eq)]
 	enum MockError {
@@ -86,7 +88,9 @@ mod future {
 			assert_eq!(fcs.future().await, Ok(EXPECTED_VALUE));
 		};
 		let set = async {
-			async_std::future::timeout(Duration::from_millis(500), async_std::future::pending::<()>()).await.unwrap_err();
+			async_std::future::timeout(Duration::from_millis(500), async_std::future::pending::<()>())
+				.await
+				.unwrap_err();
 
 			fcs.set_value(EXPECTED_VALUE).unwrap();
 		};
@@ -111,7 +115,9 @@ mod future {
 			completed_count.fetch_add(1, Ordering::Relaxed);
 		};
 		let set = async {
-			async_std::future::timeout(Duration::from_millis(500), async_std::future::pending::<()>()).await.unwrap_err();
+			async_std::future::timeout(Duration::from_millis(500), async_std::future::pending::<()>())
+				.await
+				.unwrap_err();
 
 			fcs.set_value(EXPECTED_VALUE).unwrap();
 		};

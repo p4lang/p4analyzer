@@ -1,6 +1,5 @@
 pub use tracing_subscriber;
 
-use core::fmt::Debug;
 use crate::{
 	json_rpc::message::{Message, Notification},
 	MessageChannel,
@@ -10,6 +9,7 @@ use analyzer_abstractions::{
 	tracing::{field::Field, Event, Subscriber},
 };
 use async_channel::Sender;
+use core::fmt::Debug;
 use std::{
 	fmt::{Display, Write},
 	sync::{Arc, Mutex},
@@ -45,15 +45,10 @@ impl LspTracingLayer {
 	pub fn new(request_channel: MessageChannel) -> Self {
 		let (sender, _) = request_channel;
 
-		Self {
-			sender,
-			trace_value: Arc::new(Mutex::new(TraceValue::Off)),
-		}
+		Self { sender, trace_value: Arc::new(Mutex::new(TraceValue::Off)) }
 	}
 
-	pub fn trace_value(&self) -> TraceValueAccessor {
-		TraceValueAccessor(self.trace_value.clone())
-	}
+	pub fn trace_value(&self) -> TraceValueAccessor { TraceValueAccessor(self.trace_value.clone()) }
 }
 
 impl<S> Layer<S> for LspTracingLayer
@@ -75,13 +70,12 @@ where
 			"$/logTrace",
 			LogTraceParams {
 				message: visitor.message,
-				verbose: if *trace_value == TraceValue::Verbose { Some(visitor.formatted_fields) } else { None }
+				verbose: if *trace_value == TraceValue::Verbose { Some(visitor.formatted_fields) } else { None },
 			},
 		);
 
-		self.sender
-			.send_blocking(Message::Notification(notification))
-			.unwrap_or_default(); // Ignore errors.
+		self.sender.send_blocking(Message::Notification(notification)).unwrap_or_default();
+		// Ignore errors.
 	}
 }
 
@@ -93,12 +87,7 @@ struct LspTraceMessageVisitor {
 }
 
 impl LspTraceMessageVisitor {
-	fn new() -> Self {
-		Self {
-			message: String::new(),
-			formatted_fields: String::new(),
-		}
-	}
+	fn new() -> Self { Self { message: String::new(), formatted_fields: String::new() } }
 }
 
 impl Display for LspTraceMessageVisitor {

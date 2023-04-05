@@ -1,30 +1,34 @@
+use async_rwlock::RwLock as AsyncRwLock;
 use core::fmt::Debug;
 use std::{
+	collections::{
+		hash_map::{Entry, IntoIter, Iter},
+		HashMap,
+	},
+	fmt::{Display, Formatter, Result as FmtResult},
 	sync::{Arc, RwLock},
-	collections::{HashMap, hash_map::{Iter, IntoIter, Entry}}, fmt::{Formatter, Display, Result as FmtResult},
-	task::Poll
+	task::Poll,
 };
-use async_rwlock::RwLock as AsyncRwLock;
 
-use analyzer_abstractions::{
-	lsp_types::{WorkspaceFolder, Url, TextDocumentIdentifier},
-	fs::AnyEnumerableFileSystem,
-	tracing::{error, info}, futures_extensions::async_extensions::AsyncPool
-};
-use analyzer_abstractions::futures_extensions::FutureCompletionSource;
-use async_channel::{Sender, Receiver};
-use thiserror::Error;
 use crate::lsp::RELATIVE_P4_SOURCEFILES_GLOBPATTERN;
+use analyzer_abstractions::{
+	fs::AnyEnumerableFileSystem,
+	futures_extensions::{async_extensions::AsyncPool, FutureCompletionSource},
+	lsp_types::{TextDocumentIdentifier, Url, WorkspaceFolder},
+	tracing::{error, info},
+};
+use async_channel::{Receiver, Sender};
+use thiserror::Error;
 
 use super::analyzer::ParsedUnit;
 
-use super::{progress::ProgressManager, analyzer::AnyAnalyzer};
+use super::{analyzer::AnyAnalyzer, progress::ProgressManager};
 
 /// Manages a collection of workspaces opened by an LSP compliant host.
 #[derive(Clone)]
 pub(crate) struct WorkspaceManager {
 	has_workspaces: bool,
-	workspaces: HashMap<Url, Arc<Workspace>>
+	workspaces: HashMap<Url, Arc<Workspace>>,
 }
 
 impl WorkspaceManager {
@@ -34,32 +38,32 @@ impl WorkspaceManager {
 	pub fn new(
 		file_system: Arc<AnyEnumerableFileSystem>,
 		workspace_folders: Option<Vec<WorkspaceFolder>>,
-		analyzer: Arc<AnyAnalyzer>) -> Self
-	{
+		analyzer: Arc<AnyAnalyzer>,
+	) -> Self {
 		fn to_workspace(
 			file_system: Arc<AnyEnumerableFileSystem>,
 			workspace_folder: WorkspaceFolder,
-			analyzer: Arc<AnyAnalyzer>
-		) -> (Url, Arc<Workspace>)
-		{
+			analyzer: Arc<AnyAnalyzer>,
+		) -> (Url, Arc<Workspace>) {
 			(workspace_folder.uri.clone(), Arc::new(Workspace::new(file_system, workspace_folder, analyzer)))
 		}
 
-		let (has_workspaces, workspace_folders) = workspace_folders
-			.map_or_else(
-				|| { (false, vec![WorkspaceFolder{ name: "<*>".to_string(), uri: Url::parse("file:///").unwrap() }]) },
-				|folders| { (true, folders) });
+		let (has_workspaces, workspace_folders) = workspace_folders.map_or_else(
+			|| (false, vec![WorkspaceFolder { name: "<*>".to_string(), uri: Url::parse("file:///").unwrap() }]),
+			|folders| (true, folders),
+		);
 
 		Self {
 			has_workspaces,
-			workspaces: workspace_folders.into_iter().map(|wf| to_workspace(file_system.clone(), wf, analyzer.clone())).collect()
+			workspaces: workspace_folders
+				.into_iter()
+				.map(|wf| to_workspace(file_system.clone(), wf, analyzer.clone()))
+				.collect(),
 		}
 	}
 
 	/// Returns `true` if the [`WorkspaceManager`] was initialized with workspace folders; otherwise `false`.
-	pub fn has_workspaces(&self) -> bool {
-		self.has_workspaces
-	}
+	pub fn has_workspaces(&self) -> bool { self.has_workspaces }
 
 	/// Retrieves a file from a workspace.
 	///
@@ -114,9 +118,7 @@ impl<'a> IntoIterator for &'a WorkspaceManager {
 	type IntoIter = Iter<'a, Url, Arc<Workspace>>;
 
 	/// Creates a consuming iterator of &[`Workspace`].
-	fn into_iter(self) -> Self::IntoIter {
-		self.workspaces.iter()
-	}
+	fn into_iter(self) -> Self::IntoIter { self.workspaces.iter() }
 }
 
 /// Encapsulates a collection of related files opened as part of a set managed by an LSP compliant host.
@@ -125,37 +127,28 @@ pub(crate) struct Workspace {
 	file_system: Arc<AnyEnumerableFileSystem>,
 	workspace_folder: WorkspaceFolder,
 	files: Arc<RwLock<HashMap<Url, Arc<File>>>>,
-	parse_sender: Sender<Arc<File>>
+	parse_sender: Sender<Arc<File>>,
 }
 
 impl Workspace {
 	/// Initializes a new [`Workspace`].
 	pub fn new(
-	file_system: Arc<AnyEnumerableFileSystem>,
-	workspace_folder: WorkspaceFolder,
-	analyzer: Arc<AnyAnalyzer>) -> Self
-	{
+		file_system: Arc<AnyEnumerableFileSystem>,
+		workspace_folder: WorkspaceFolder,
+		analyzer: Arc<AnyAnalyzer>,
+	) -> Self {
 		let (sender, receiver) = async_channel::unbounded::<Arc<File>>();
 
 		AsyncPool::spawn_work(background_analyze(receiver, file_system.clone(), analyzer));
 
-		Self {
-			file_system,
-			workspace_folder,
-			files: Arc::new(RwLock::new(HashMap::new())),
-			parse_sender: sender
-		}
+		Self { file_system, workspace_folder, files: Arc::new(RwLock::new(HashMap::new())), parse_sender: sender }
 	}
 
 	/// Gets the URL of the current [`Workspace`].
-	pub fn uri(&self) -> Url {
-		self.workspace_folder.uri.clone()
-	}
+	pub fn uri(&self) -> Url { self.workspace_folder.uri.clone() }
 
 	/// Gets the name of the current [`Workspace`].
-	pub fn name(&self) -> &str {
-		self.workspace_folder.name.as_str()
-	}
+	pub fn name(&self) -> &str { self.workspace_folder.name.as_str() }
 
 	/// Look up and retrieve a file from the workspace.
 	///
@@ -168,7 +161,11 @@ impl Workspace {
 		match files.entry(uri) {
 			Entry::Occupied(entry) => entry.get().clone(),
 			Entry::Vacant(entry) => {
-				info!(workspace_uri = workspace_uri.as_str(), file_uri = new_uri.as_str(), "Unindexed file in workspace.");
+				info!(
+					workspace_uri = workspace_uri.as_str(),
+					file_uri = new_uri.as_str(),
+					"Unindexed file in workspace."
+				);
 
 				let new_document_identifier = TextDocumentIdentifier { uri: new_uri };
 				let new_file = Arc::new(File::new(new_document_identifier.clone()));
@@ -195,9 +192,14 @@ impl Workspace {
 			}
 		}
 
-		let document_identifiers = self.file_system.enumerate_folder(self.uri(), RELATIVE_P4_SOURCEFILES_GLOBPATTERN.into()).await;
+		let document_identifiers =
+			self.file_system.enumerate_folder(self.uri(), RELATIVE_P4_SOURCEFILES_GLOBPATTERN.into()).await;
 
-		info!(workspace_uri = self.uri().as_str(), document_count = document_identifiers.len(), "Workspace indexing complete.");
+		info!(
+			workspace_uri = self.uri().as_str(),
+			document_count = document_identifiers.len(),
+			"Workspace indexing complete."
+		);
 
 		if document_identifiers.len() == 0 {
 			return;
@@ -219,14 +221,13 @@ impl Display for Workspace {
 #[derive(Error, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IndexError {
 	#[error("An unexpected error occurred during file indexing.")]
-	Unexpected
+	Unexpected,
 }
-
 
 #[derive(Clone)]
 struct FileState {
 	is_open_in_ide: bool,
-	parsed_unit: FutureCompletionSource<Arc<RwLock<ParsedUnit>>, IndexError>
+	parsed_unit: FutureCompletionSource<Arc<RwLock<ParsedUnit>>, IndexError>,
 }
 
 unsafe impl Sync for FileState {}
@@ -235,7 +236,7 @@ unsafe impl Send for FileState {}
 #[derive(Clone)]
 pub(crate) struct File {
 	document_identifier: TextDocumentIdentifier,
-	state: Arc<AsyncRwLock<FileState>>
+	state: Arc<AsyncRwLock<FileState>>,
 }
 
 impl File {
@@ -244,8 +245,8 @@ impl File {
 			document_identifier,
 			state: Arc::new(AsyncRwLock::new(FileState {
 				is_open_in_ide: false,
-				parsed_unit: FutureCompletionSource::<Arc<RwLock<ParsedUnit>>, IndexError>::new()
-			}))
+				parsed_unit: FutureCompletionSource::<Arc<RwLock<ParsedUnit>>, IndexError>::new(),
+			})),
 		}
 	}
 
@@ -260,10 +261,8 @@ impl File {
 		let state = self.state.try_read().unwrap();
 
 		match state.parsed_unit.future().await {
-			Ok(current_parsed_unit) => {
-				Ok(current_parsed_unit.read().unwrap().clone())
-			},
-			Err(err) => Err(err)
+			Ok(current_parsed_unit) => Ok(current_parsed_unit.read().unwrap().clone()),
+			Err(err) => Err(err),
 		}
 	}
 
@@ -294,10 +293,9 @@ impl File {
 		if let Poll::Ready(result) = state.parsed_unit.state() {
 			match result {
 				Ok(current_parsed_unit) => *current_parsed_unit.write().unwrap() = parsed_unit,
-				Err(_) => state.parsed_unit = FutureCompletionSource::new_with_value(RwLock::new(parsed_unit).into())
+				Err(_) => state.parsed_unit = FutureCompletionSource::new_with_value(RwLock::new(parsed_unit).into()),
 			}
-		}
-		else {
+		} else {
 			state.parsed_unit.set_value(RwLock::new(parsed_unit).into()).unwrap();
 		}
 	}
@@ -312,7 +310,11 @@ impl Display for File {
 	}
 }
 
-async fn background_analyze(receiver: Receiver<Arc<File>>, file_system: Arc<AnyEnumerableFileSystem>, analyzer: Arc<AnyAnalyzer>) {
+async fn background_analyze(
+	receiver: Receiver<Arc<File>>,
+	file_system: Arc<AnyEnumerableFileSystem>,
+	analyzer: Arc<AnyAnalyzer>,
+) {
 	loop {
 		match receiver.recv().await {
 			Ok(file) => {
@@ -332,17 +334,18 @@ async fn background_analyze(receiver: Receiver<Arc<File>>, file_system: Arc<AnyE
 						// throw it all away. The IDE is now the source of truth for this file. Otherwise, update its
 						// parsed unit.
 						if !file.is_open_in_ide() {
-							let parsed_unit = analyzer.parse_text_document_contents(file.document_identifier.clone(), contents);
+							let parsed_unit =
+								analyzer.parse_text_document_contents(file.document_identifier.clone(), contents);
 
 							file.set_parsed_unit(parsed_unit, None);
 						}
-					},
+					}
 					None => {
 						error!(file_uri = file.document_identifier.uri.as_str(), "Failed to retrieve file contents.");
 					}
 				}
-			},
-			Err(_) => break
+			}
+			Err(_) => break,
 		};
 	}
 }

@@ -1,6 +1,8 @@
-use crate::{lsp::{
-	dispatch::Dispatch, state::LspServerState, DispatchBuilder,
-}, json_rpc::ErrorCode, fsm::LspServerStateDispatcher};
+use crate::{
+	fsm::LspServerStateDispatcher,
+	json_rpc::ErrorCode,
+	lsp::{dispatch::Dispatch, state::LspServerState, DispatchBuilder},
+};
 
 use super::state::State;
 

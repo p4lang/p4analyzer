@@ -1,10 +1,12 @@
-use std::sync::Arc;
-use async_rwlock::RwLock as AsyncRwLock;
-use analyzer_abstractions::lsp_types::notification::Exit;
-use crate::{lsp::{
-	dispatch::Dispatch, dispatch_target::HandlerResult, state::LspServerState, DispatchBuilder,
-}, json_rpc::ErrorCode, fsm::LspServerStateDispatcher};
 use super::state::State;
+use crate::{
+	fsm::LspServerStateDispatcher,
+	json_rpc::ErrorCode,
+	lsp::{dispatch::Dispatch, dispatch_target::HandlerResult, state::LspServerState, DispatchBuilder},
+};
+use analyzer_abstractions::lsp_types::notification::Exit;
+use async_rwlock::RwLock as AsyncRwLock;
+use std::sync::Arc;
 
 /// Builds and then returns a dispatcher handling the [`LspServerState::ShuttingDown`] state.
 pub(crate) fn create_dispatcher() -> LspServerStateDispatcher {
@@ -19,6 +21,4 @@ pub(crate) fn create_dispatcher() -> LspServerStateDispatcher {
 }
 
 /// Responds to an 'exit' notification from the LSP client.
-async fn on_exit(_: LspServerState, _: (), _: Arc<AsyncRwLock<State>>) -> HandlerResult<()> {
-	Ok(())
-}
+async fn on_exit(_: LspServerState, _: (), _: Arc<AsyncRwLock<State>>) -> HandlerResult<()> { Ok(()) }

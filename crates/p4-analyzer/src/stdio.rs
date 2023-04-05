@@ -1,8 +1,11 @@
 use analyzer_host::{json_rpc::message::Message, MessageChannel};
-use async_channel::{Sender, Receiver, SendError};
+use async_channel::{Receiver, SendError, Sender};
 use cancellation::{CancellationToken, OperationCanceled};
+use std::{
+	io::{stdin, stdout},
+	sync::Arc,
+};
 use tokio::task;
-use std::{io::{stdin, stdout}, sync::Arc};
 
 /// Connects the `stdin` and `stdout` of the process to appropriate [`MessageChannel`] instances, and executes a sender and
 /// reader thread to marshal [`Message`] instances between them.
@@ -27,22 +30,22 @@ impl ConsoleDriver {
 
 		(sender, receiver)
 	}
-	
+
 	pub async fn send_message_in(&self, message: Message) -> Result<(), SendError<Message>> {
 		let (sender, _) = self.stdin_channel.clone();
-	
+
 		sender.send(message).await
 	}
 
-	fn sender_task(sender : Sender<Message>) {
+	fn sender_task(sender: Sender<Message>) {
 		while let Ok(Some(message)) = Message::read(&mut stdin().lock()) {
 			if sender.send_blocking(message).is_err() {
 				break;
 			}
 		}
 	}
-	
-	fn receiver_task(receiver : Receiver<Message>) {
+
+	fn receiver_task(receiver: Receiver<Message>) {
 		while let Ok(message) = receiver.recv_blocking() {
 			//#[cfg(debug_assertions)]	// This code is only compiled in debug mode as it's added for testing only
 			//{	let _lock = tester::tester::tester::message_sent();	}	// hopefully lock will exist outside of this block...
@@ -77,10 +80,12 @@ impl ConsoleDriver {
 
 					match cancel_token.is_canceled() {
 						true => Err(OperationCanceled),
-						_ => Ok(())
+						_ => Ok(()),
 					}
 				},
 			)
-		}).await.unwrap()
+		})
+		.await
+		.unwrap()
 	}
 }

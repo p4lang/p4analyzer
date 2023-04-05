@@ -1,11 +1,27 @@
-use core::fmt::Debug;
-use std::{collections::HashMap, sync::{Arc, atomic::{AtomicI32, Ordering}}};
+use analyzer_abstractions::{
+	futures_extensions::FutureCompletionSource,
+	tracing::{error, info},
+};
+use async_channel::{Receiver, Sender};
 use async_rwlock::RwLock as AsyncRwLock;
-use analyzer_abstractions::{futures_extensions::FutureCompletionSource, tracing::{error, info}};
-use async_channel::{Sender, Receiver};
-use cancellation::{OperationCanceled, CancellationToken};
+use cancellation::{CancellationToken, OperationCanceled};
+use core::fmt::Debug;
+use std::{
+	collections::HashMap,
+	sync::{
+		atomic::{AtomicI32, Ordering},
+		Arc,
+	},
+};
 
-use crate::{json_rpc::{message::{Message, Request, Notification}, RequestId, from_json}, MessageChannel};
+use crate::{
+	json_rpc::{
+		from_json,
+		message::{Message, Notification, Request},
+		RequestId,
+	},
+	MessageChannel,
+};
 use serde::{de::DeserializeOwned, Serialize};
 
 use super::LspProtocolError;
@@ -64,7 +80,7 @@ impl RequestManager {
 					}
 
 					panic!("expected message to be a 'Response' variant");
-				},
+				}
 				Err(err) => {
 					error!("Unexpected error receiving response: {:?}", err);
 				}
@@ -78,7 +94,7 @@ impl RequestManager {
 	pub async fn send_notification<T>(&self, params: T::Params) -> Result<(), LspProtocolError>
 	where
 		T: analyzer_abstractions::lsp_types::notification::Notification + 'static,
-		T::Params: Clone + Serialize + Send + Debug
+		T::Params: Clone + Serialize + Send + Debug,
 	{
 		let request = Notification::new(T::METHOD, params);
 
@@ -94,14 +110,19 @@ impl RequestManager {
 	where
 		T: analyzer_abstractions::lsp_types::request::Request + 'static,
 		T::Params: Clone + Serialize + Send + Debug,
-		T::Result: Clone + DeserializeOwned + Send
+		T::Result: Clone + DeserializeOwned + Send,
 	{
 		let response_message = self.send_request(T::METHOD, params).await?;
 
 		match &*response_message {
 			Message::Response(response) => {
 				if let Some(err) = &response.error {
-					error!(method = T::METHOD, "Error processing response for server request '{}': {}", T::METHOD, err.message);
+					error!(
+						method = T::METHOD,
+						"Error processing response for server request '{}': {}",
+						T::METHOD,
+						err.message
+					);
 
 					return Err(LspProtocolError::UnexpectedResponse);
 				}
@@ -116,8 +137,8 @@ impl RequestManager {
 						Err(LspProtocolError::UnexpectedResponse)
 					}
 				}
-			},
-			_ => Err(LspProtocolError::UnexpectedResponse)
+			}
+			_ => Err(LspProtocolError::UnexpectedResponse),
 		}
 	}
 
@@ -127,27 +148,32 @@ impl RequestManager {
 	pub async fn send<T>(&self, params: T::Params) -> Result<(), LspProtocolError>
 	where
 		T: analyzer_abstractions::lsp_types::request::Request + 'static,
-		T::Params: Clone + Serialize + Send + Debug
+		T::Params: Clone + Serialize + Send + Debug,
 	{
 		let response_message = self.send_request(T::METHOD, params).await?;
 
 		match &*response_message {
 			Message::Response(response) => {
 				if let Some(err) = &response.error {
-					error!(method = T::METHOD, "Error processing response for server request '{}': {}", T::METHOD, err.message);
+					error!(
+						method = T::METHOD,
+						"Error processing response for server request '{}': {}",
+						T::METHOD,
+						err.message
+					);
 
 					return Err(LspProtocolError::UnexpectedResponse);
 				}
 
 				Ok(())
-			},
-			_ => Err(LspProtocolError::UnexpectedResponse)
+			}
+			_ => Err(LspProtocolError::UnexpectedResponse),
 		}
 	}
 
 	async fn send_request<P>(&self, method: &str, params: P) -> Result<Arc<Message>, LspProtocolError>
 	where
-		P: Clone + Serialize + Send + Debug
+		P: Clone + Serialize + Send + Debug,
 	{
 		let id = RequestId::from(self.request_id.fetch_add(1, Ordering::Relaxed));
 		let request = Request::new(id.clone(), method.into(), params);
@@ -184,7 +210,7 @@ impl Clone for RequestManager {
 			requests: self.requests.clone(),
 			responses: self.responses.clone(),
 			request_id: AtomicI32::new(self.request_id.load(Ordering::Relaxed)),
-			awaiting_requests: self.awaiting_requests.clone()
+			awaiting_requests: self.awaiting_requests.clone(),
 		}
 	}
 }

@@ -10,12 +10,7 @@ fn lex_str(s: &str) -> Vec<Token> {
 	let buf = Buffer::new(&db, s.to_string());
 	let file_id = FileId::new(&db, "foo.p4".to_string());
 	let lexed = lex(&db, file_id, buf);
-	lexed
-		.lexemes(&db)
-		.iter()
-		.map(|(tk, _)| tk)
-		.cloned()
-		.collect()
+	lexed.lexemes(&db).iter().map(|(tk, _)| tk).cloned().collect()
 }
 
 #[test]
@@ -38,33 +33,13 @@ fn int_literals() {
 		),
 		vec![
 			Whitespace,
-			Integer(Literal {
-				base: 10,
-				signed: false,
-				width: None,
-				value: 123
-			}),
+			Integer(Literal { base: 10, signed: false, width: None, value: 123 }),
 			Whitespace,
-			Integer(Literal {
-				base: 10,
-				signed: true,
-				width: Some(10),
-				value: 5
-			}),
+			Integer(Literal { base: 10, signed: true, width: Some(10), value: 5 }),
 			Whitespace,
-			Integer(Literal {
-				base: 10,
-				signed: false,
-				width: Some(2),
-				value: 11
-			}),
+			Integer(Literal { base: 10, signed: false, width: Some(2), value: 11 }),
 			Whitespace,
-			Integer(Literal {
-				base: 16,
-				signed: false,
-				width: None,
-				value: 255
-			}),
+			Integer(Literal { base: 16, signed: false, width: None, value: 255 }),
 			Whitespace,
 		]
 	);
@@ -72,8 +47,7 @@ fn int_literals() {
 
 #[test]
 fn real_p4() {
-	use preprocessor::PreprocessorDirective::*;
-	use preprocessor::*;
+	use preprocessor::{PreprocessorDirective::*, *};
 	use PreprocessorQuotationStyle::*;
 	use Token::*;
 
@@ -109,10 +83,7 @@ fn real_p4() {
 			Whitespace,
 			Comment,
 			Whitespace,
-			PreprocessorDirective(Include(
-				DoubleQuotes,
-				"very_simple_switch_model.p4".to_string()
-			)),
+			PreprocessorDirective(Include(DoubleQuotes, "very_simple_switch_model.p4".to_string())),
 			Whitespace,
 			PreprocessorDirective(Other("foo".to_string(), " something".to_string())),
 			Whitespace,
@@ -124,12 +95,7 @@ fn real_p4() {
 			Whitespace,
 			Identifier("bit".to_string()),
 			OpenChevron,
-			Integer(Literal {
-				base: 10,
-				signed: false,
-				width: None,
-				value: 48
-			}),
+			Integer(Literal { base: 10, signed: false, width: None, value: 48 }),
 			CloseChevron,
 			Whitespace,
 			Identifier("EthernetAddress".to_string()),
@@ -139,12 +105,7 @@ fn real_p4() {
 			Whitespace,
 			Identifier("bit".to_string()),
 			OpenChevron,
-			Integer(Literal {
-				base: 10,
-				signed: false,
-				width: None,
-				value: 32
-			}),
+			Integer(Literal { base: 10, signed: false, width: None, value: 32 }),
 			CloseChevron,
 			Whitespace,
 			Identifier("IPv4Address".to_string()),
@@ -170,12 +131,7 @@ fn real_p4() {
 			Whitespace,
 			Identifier("bit".to_string()),
 			OpenChevron,
-			Integer(Literal {
-				base: 10,
-				signed: false,
-				width: None,
-				value: 16
-			}),
+			Integer(Literal { base: 10, signed: false, width: None, value: 16 }),
 			CloseChevron,
 			Whitespace,
 			Identifier("etherType".to_string()),
@@ -192,43 +148,41 @@ fn long_comment() {
 	use Token::*;
 
 	assert_eq!(
-		lex_str(r#"
+		lex_str(
+			r#"
 			identifier
 			/* poof */
-		"#),
-		vec![
-			Whitespace,
-			Identifier("identifier".into()),
-			Whitespace,
-			Comment,
-			Whitespace,
-		]
+		"#
+		),
+		vec![Whitespace, Identifier("identifier".into()), Whitespace, Comment, Whitespace,]
 	);
 
 	assert_eq!(
-		lex_str(r#"
+		lex_str(
+			r#"
 			/* if you're happy and you know it sign your commits with GPG */
 			/*//* incomplete long *comment*
-		"#),
-		vec![
-			Whitespace,
-			Comment,
-			Whitespace,
-			Error,
-		]
+		"#
+		),
+		vec![Whitespace, Comment, Whitespace, Error,]
 	);
 }
 
 #[test]
 fn unknown_directive() {
 	use Token::*;
-	assert_eq!(lex_str(r#"
+	assert_eq!(
+		lex_str(
+			r#"
 	#defineoops 1
-	"#), vec![
-		Whitespace,
-		PreprocessorDirective(preprocessor::PreprocessorDirective::Other("defineoops".into(), " 1".into())),
-		Whitespace,
-	]);
+	"#
+		),
+		vec![
+			Whitespace,
+			PreprocessorDirective(preprocessor::PreprocessorDirective::Other("defineoops".into(), " 1".into())),
+			Whitespace,
+		]
+	);
 }
 
 #[test]
@@ -239,11 +193,7 @@ fn preprocessor_parser() {
 
 	assert_eq!(
 		parse_pp_expression("2 == 3".to_string()),
-		Some(BinOp(
-			Equals,
-			Box::new(IntLiteral(2)),
-			Box::new(IntLiteral(3))
-		))
+		Some(BinOp(Equals, Box::new(IntLiteral(2)), Box::new(IntLiteral(3))))
 	);
 }
 

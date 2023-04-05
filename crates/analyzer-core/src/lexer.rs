@@ -3,8 +3,7 @@ use lazy_static::lazy_static;
 use logos::{Logos, Span};
 use regex::Regex;
 
-use super::base_abstractions::*;
-use super::preprocessor::*;
+use super::{base_abstractions::*, preprocessor::*};
 
 #[salsa::tracked]
 pub struct LexedBuffer {
@@ -142,12 +141,7 @@ struct Lexer<'a, 'b>(&'b mut logos::Lexer<'a, Token>);
 impl<'a, 'b> Lexer<'a, 'b> {
 	// TODO: report nice errors
 	fn read_int(mut self) -> Option<Literal> {
-		let mut lit = Literal {
-			base: 10,
-			signed: false,
-			width: None,
-			value: 0,
-		};
+		let mut lit = Literal { base: 10, signed: false, width: None, value: 0 };
 
 		let str = self.0.slice();
 		// the stitching here is a little ugly, fn(&str) -> Option<(T, &str)> here
@@ -211,11 +205,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
 				}
 				PreprocessorDirective::Undef(words[0].to_string())
 			}
-			"pragma" => PreprocessorDirective::Pragma(
-				arg.chars()
-					.skip_while(|ch| ch.is_ascii_whitespace())
-					.collect(),
-			),
+			"pragma" => PreprocessorDirective::Pragma(arg.chars().skip_while(|ch| ch.is_ascii_whitespace()).collect()),
 			directive => PreprocessorDirective::Other(directive.to_string(), arg),
 		};
 
@@ -227,10 +217,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
 
 		if let Some(ch) = buf.chars().next() {
 			if !ch.is_ascii_whitespace() {
-				self.report(
-					Severity::Error,
-					"the include directive and its argument must be separated by whitespace"
-				)
+				self.report(Severity::Error, "the include directive and its argument must be separated by whitespace")
 			}
 		}
 
@@ -241,7 +228,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
 			_ => {
 				self.report(
 					Severity::Error,
-					"include path must start with an opening angle bracket ('<') or double quote ('\"')"
+					"include path must start with an opening angle bracket ('<') or double quote ('\"')",
 				);
 				None
 			}
@@ -261,7 +248,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
 				Some(ch) => buf.push(ch),
 				None => {
 					self.report(Severity::Error, &format!("include path must end with a '{terminator}'"));
-					return None
+					return None;
 				}
 			};
 		}
@@ -362,12 +349,7 @@ impl<'a, 'b> Lexer<'a, 'b> {
 		if let Some(db) = self.0.extras.db.map(|db| unsafe { &*db }) {
 			Diagnostics::push(
 				db,
-				Diagnostic {
-					file: self.0.extras.file_id,
-					location: self.0.span(),
-					severity,
-					message: msg.to_string(),
-				},
+				Diagnostic { file: self.0.extras.file_id, location: self.0.span(), severity, message: msg.to_string() },
 			);
 		}
 	}

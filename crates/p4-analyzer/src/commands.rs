@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use analyzer_abstractions::{async_trait::async_trait, tracing::Subscriber};
-use analyzer_host::tracing::tracing_subscriber::{Layer, registry::LookupSpan};
+use analyzer_host::tracing::tracing_subscriber::{registry::LookupSpan, Layer};
 use cancellation::CancellationToken;
 use thiserror::Error;
 
@@ -32,7 +32,7 @@ pub(crate) trait Command {
 	fn logging_layers<S>(&self) -> Vec<Box<dyn Layer<S> + Send + Sync + 'static>>
 	where
 		S: Subscriber,
-		for<'a> S: LookupSpan<'a>
+		for<'a> S: LookupSpan<'a>,
 	{
 		vec![] // Return an empty vector by default.
 	}

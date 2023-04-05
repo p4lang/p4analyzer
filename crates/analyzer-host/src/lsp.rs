@@ -1,27 +1,32 @@
-use core::fmt::Debug;
 use analyzer_abstractions::{
 	lsp_types::{notification::Notification, request::Request},
 	tracing::error,
 };
+use core::fmt::Debug;
 use serde::{de::DeserializeOwned, Serialize};
-use thiserror::Error;
 use std::{
 	collections::HashMap,
 	sync::{Arc, RwLock},
 };
+use thiserror::Error;
 
 use crate::json_rpc::{DeserializeError, ErrorCode};
 
-use self::{state::{LspServerState}, fluent::state::TransitionBuilder, dispatch::{DefaultDispatch, AnyDispatchTarget, Dispatch}, dispatch_target::{AsyncRequestHandlerFn, RequestDispatchTarget, NotificationDispatchTarget}};
+use self::{
+	dispatch::{AnyDispatchTarget, DefaultDispatch, Dispatch},
+	dispatch_target::{AsyncRequestHandlerFn, NotificationDispatchTarget, RequestDispatchTarget},
+	fluent::state::TransitionBuilder,
+	state::LspServerState,
+};
 
 pub(crate) mod analyzer;
-pub(crate) mod fluent;
-pub(crate) mod state;
 pub(crate) mod dispatch;
 pub(crate) mod dispatch_target;
-pub(crate) mod request;
-pub(crate) mod workspace;
+pub(crate) mod fluent;
 pub(crate) mod progress;
+pub(crate) mod request;
+pub(crate) mod state;
+pub(crate) mod workspace;
 
 /// A string representing a glob pattern of all relative `'*.p4'` files.
 pub const RELATIVE_P4_SOURCEFILES_GLOBPATTERN: &str = "**/*.p4";
@@ -47,7 +52,7 @@ pub enum LspProtocolError {
 /// Provides a fluent API for building [`Dispatch`] implementations.
 pub(crate) struct DispatchBuilder<TState>
 where
-	TState: Send + Sync
+	TState: Send + Sync,
 {
 	state: LspServerState,
 	request_handlers: Arc<RwLock<HashMap<String, AnyDispatchTarget<TState>>>>,
@@ -57,7 +62,7 @@ where
 
 impl<TState> DispatchBuilder<TState>
 where
-	TState: Clone + Send + Sync + 'static
+	TState: Clone + Send + Sync + 'static,
 {
 	/// Initializes a new [`DispatchBuilder`] for a given [`LspServerState`].
 	pub fn new(state: LspServerState) -> Self {
@@ -75,7 +80,7 @@ where
 		T: Request + 'static,
 		T::Params: Clone + DeserializeOwned + Send + Debug,
 		T::Result: Clone + Serialize + Send,
-		THandler: AsyncRequestHandlerFn<TState, T::Params, T::Result> + Send + Sync + 'static
+		THandler: AsyncRequestHandlerFn<TState, T::Params, T::Result> + Send + Sync + 'static,
 	{
 		let target = RequestDispatchTarget::<TState, T::Params, T::Result>::new(Box::new(handler));
 
@@ -86,12 +91,16 @@ where
 
 	/// Registers a handler for a given type of request message, and supports additional options to apply
 	/// during its registration.
-	pub fn for_request_with_options<T, THandler>(&mut self, handler: THandler, request_builder: fn(TransitionBuilder<TState>) -> ()) -> &mut Self
+	pub fn for_request_with_options<T, THandler>(
+		&mut self,
+		handler: THandler,
+		request_builder: fn(TransitionBuilder<TState>) -> (),
+	) -> &mut Self
 	where
 		T: Request + 'static,
 		T::Params: Clone + DeserializeOwned + Send + Debug,
 		T::Result: Clone + Serialize + Send,
-		THandler: AsyncRequestHandlerFn<TState, T::Params, T::Result> + Send + Sync + 'static
+		THandler: AsyncRequestHandlerFn<TState, T::Params, T::Result> + Send + Sync + 'static,
 	{
 		let mut target = RequestDispatchTarget::<TState, T::Params, T::Result>::new(Box::new(handler));
 
@@ -113,7 +122,7 @@ where
 	where
 		T: Notification + 'static,
 		T::Params: Clone + DeserializeOwned + Send + Debug,
-		THandler: AsyncRequestHandlerFn<TState, T::Params, ()> + Send + Sync + 'static
+		THandler: AsyncRequestHandlerFn<TState, T::Params, ()> + Send + Sync + 'static,
 	{
 		let target = NotificationDispatchTarget::<TState, T::Params>::new(Box::new(handler));
 
@@ -124,11 +133,15 @@ where
 
 	/// Registers a handler for a given type of notification message, and supports additional options to apply
 	/// during its registration.
-	pub fn for_notification_with_options<T, THandler>(&mut self, handler: THandler, request_builder: fn(TransitionBuilder<TState>) -> ()) -> &mut Self
+	pub fn for_notification_with_options<T, THandler>(
+		&mut self,
+		handler: THandler,
+		request_builder: fn(TransitionBuilder<TState>) -> (),
+	) -> &mut Self
 	where
 		T: Notification + 'static,
 		T::Params: Clone + DeserializeOwned + Send + Debug,
-		THandler: AsyncRequestHandlerFn<TState, T::Params, ()> + Send + Sync + 'static
+		THandler: AsyncRequestHandlerFn<TState, T::Params, ()> + Send + Sync + 'static,
 	{
 		let mut target = NotificationDispatchTarget::<TState, T::Params>::new(Box::new(handler));
 
@@ -141,6 +154,11 @@ where
 
 	/// Builds the [`Dispatch`] implementation for the current set of handler registrations.
 	pub fn build(&self) -> impl Dispatch<TState> {
-		DefaultDispatch::new(self.state, self.request_handlers.clone(), self.notification_handlers.clone(), self.missing_handler_error)
+		DefaultDispatch::new(
+			self.state,
+			self.request_handlers.clone(),
+			self.notification_handlers.clone(),
+			self.missing_handler_error,
+		)
 	}
 }

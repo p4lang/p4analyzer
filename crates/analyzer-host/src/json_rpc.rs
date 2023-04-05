@@ -19,15 +19,11 @@ enum IdRepr {
 }
 
 impl From<i32> for RequestId {
-	fn from(id: i32) -> RequestId {
-		RequestId(IdRepr::I32(id))
-	}
+	fn from(id: i32) -> RequestId { RequestId(IdRepr::I32(id)) }
 }
 
 impl From<String> for RequestId {
-	fn from(id: String) -> RequestId {
-		RequestId(IdRepr::String(id))
-	}
+	fn from(id: String) -> RequestId { RequestId(IdRepr::String(id)) }
 }
 
 impl fmt::Display for RequestId {
@@ -47,17 +43,13 @@ pub enum ErrorCode {
 	ServerNotInitialized = -32002,
 	InvalidRequest = -32600,
 	InvalidParams = -32602,
-	InternalError = -32603
+	InternalError = -32603,
 }
 
 impl Message {
-	pub fn read(r: &mut impl BufRead) -> io::Result<Option<Message>> {
-		Message::buffered_read(r)
-	}
+	pub fn read(r: &mut impl BufRead) -> io::Result<Option<Message>> { Message::buffered_read(r) }
 
-	pub fn write(self, w: &mut impl Write) -> io::Result<()> {
-		self.buffered_write(w)
-	}
+	pub fn write(self, w: &mut impl Write) -> io::Result<()> { self.buffered_write(w) }
 
 	fn buffered_read(r: &mut dyn BufRead) -> io::Result<Option<Message>> {
 		let text = match read_msg_text(r)? {
@@ -75,10 +67,7 @@ impl Message {
 			#[serde(flatten)]
 			msg: Message,
 		}
-		let text = serde_json::to_string(&JsonRpc {
-			jsonrpc: "2.0",
-			msg: self,
-		})?;
+		let text = serde_json::to_string(&JsonRpc { jsonrpc: "2.0", msg: self })?;
 		write_msg_text(w, &text)
 	}
 }
@@ -119,9 +108,7 @@ fn read_msg_text(inp: &mut dyn BufRead) -> io::Result<Option<String>> {
 		}
 		let mut parts = buf.splitn(2, ": ");
 		let header_name = parts.next().unwrap();
-		let header_value = parts
-			.next()
-			.ok_or_else(|| invalid_data!("malformed header: {:?}", buf))?;
+		let header_value = parts.next().ok_or_else(|| invalid_data!("malformed header: {:?}", buf))?;
 		if header_name == "Content-Length" {
 			size = Some(header_value.parse::<usize>().map_err(invalid_data)?);
 		}
@@ -145,44 +132,25 @@ fn write_msg_text(out: &mut dyn Write, msg: &str) -> io::Result<()> {
 
 impl Request {
 	pub fn new<TParams: Serialize>(id: RequestId, method: String, params: TParams) -> Self {
-		Request {
-			id,
-			method,
-			params: serde_json::to_value(params).unwrap()
-		}
+		Request { id, method, params: serde_json::to_value(params).unwrap() }
 	}
 }
 
 impl Response {
 	/// Create a new [`Response`] based on given data.
 	pub fn new<TResult: Serialize>(id: RequestId, data: TResult) -> Self {
-		Response {
-			id,
-			result: Some(serde_json::to_value(data).unwrap()),
-			error: None,
-		}
+		Response { id, result: Some(serde_json::to_value(data).unwrap()), error: None }
 	}
 
 	/// Creates a new [`Response`] that contains an error based on a given error code and message.
 	pub fn new_error(id: RequestId, code: i32, message: &str) -> Self {
-		Response {
-			id,
-			result: None,
-			error: Some(ResponseError {
-				code,
-				message: String::from(message),
-				data: None,
-			}),
-		}
+		Response { id, result: None, error: Some(ResponseError { code, message: String::from(message), data: None }) }
 	}
 }
 
 impl Notification {
 	pub fn new<T: Serialize>(method: &'static str, data: T) -> Self {
-		Self {
-			method: method.to_string(),
-			params: serde_json::to_value(data).unwrap(),
-		}
+		Self { method: method.to_string(), params: serde_json::to_value(data).unwrap() }
 	}
 }
 
@@ -191,9 +159,7 @@ impl Notification {
 pub struct SerializeError;
 
 impl std::fmt::Display for SerializeError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Failed to serialize object into JSON.")
-	}
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "Failed to serialize object into JSON.") }
 }
 
 /// An error that is the result of a failed attempt to deserialize a JSON value.
@@ -201,9 +167,7 @@ impl std::fmt::Display for SerializeError {
 pub struct DeserializeError;
 
 impl std::fmt::Display for DeserializeError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Failed to deserialize object from JSON.")
-	}
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "Failed to deserialize object from JSON.") }
 }
 
 /// Serializes an object into a JSON value.

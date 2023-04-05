@@ -47,8 +47,7 @@ impl LspServer {
 		let host = AnalyzerHost::new(self.get_message_channel(), Some(layer.trace_value()), None);
 		let subscriber = Registry::default().with(layer);
 
-		subscriber::set_global_default(subscriber)
-			.expect("Unable to set global tracing subscriber.");
+		subscriber::set_global_default(subscriber).expect("Unable to set global tracing subscriber.");
 
 		match join(host.start(self.cts.token().clone()), self.on_receive()).await {
 			(Ok(_), Ok(_)) => Ok(JsValue::UNDEFINED),
@@ -103,15 +102,9 @@ impl LspServer {
 		let (_, receiver) = self.response_channel.clone();
 
 		while let Ok(message) = receiver.recv().await {
-			let message_text = serde_json::to_string(&JsonRpcEnvelope {
-				jsonrpc: "2.0",
-				msg: message,
-			})
-			.unwrap();
+			let message_text = serde_json::to_string(&JsonRpcEnvelope { jsonrpc: "2.0", msg: message }).unwrap();
 
-			self.on_response_callback
-				.call1(&JsValue::NULL, &to_buffer(message_text.as_bytes()))
-				.unwrap();
+			self.on_response_callback.call1(&JsValue::NULL, &to_buffer(message_text.as_bytes())).unwrap();
 		}
 
 		Ok(())

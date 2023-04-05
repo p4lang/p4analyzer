@@ -4,8 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use self::parser::expression;
 
-use super::base_abstractions::*;
-use super::lexer::Token;
+use super::{base_abstractions::*, lexer::Token};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 pub enum PreprocessorQuotationStyle {
@@ -40,11 +39,7 @@ pub enum PreprocessorExpression {
 	// TODO: the spec also allows malformed expressions, if they're skipped by conditional inclusion
 	IntLiteral(i64),
 	Identifier(String),
-	BinOp(
-		PreprocessorBinOp,
-		Box<PreprocessorExpression>,
-		Box<PreprocessorExpression>,
-	),
+	BinOp(PreprocessorBinOp, Box<PreprocessorExpression>, Box<PreprocessorExpression>),
 	Not(Box<PreprocessorExpression>),
 	Defined(String),
 }
@@ -72,15 +67,13 @@ mod parser {
 		branch::alt,
 		bytes::complete::tag,
 		character::complete::{alpha1, alphanumeric1, char, multispace0, multispace1, one_of},
-		combinator::{complete, map, map_res, recognize, fail},
-		multi::{many0, many0_count, many1, fold_many1},
+		combinator::{complete, fail, map, map_res, recognize},
+		multi::{fold_many1, many0, many0_count, many1},
 		sequence::{delimited, pair, preceded, terminated, tuple},
 		IResult,
 	};
 
-	fn ws<'a, F, O, E: nom::error::ParseError<&'a str>>(
-		inner: F,
-	) -> impl FnMut(&'a str) -> IResult<&'a str, O, E>
+	fn ws<'a, F, O, E: nom::error::ParseError<&'a str>>(inner: F) -> impl FnMut(&'a str) -> IResult<&'a str, O, E>
 	where
 		F: FnMut(&'a str) -> IResult<&'a str, O, E>,
 	{
@@ -88,27 +81,20 @@ mod parser {
 	}
 
 	pub(super) fn identifier(input: &str) -> IResult<&str, &str> {
-		recognize(pair(
-			alt((alpha1, tag("_"))),
-			many0_count(alt((alphanumeric1, tag("_")))),
-		))(input)
+		recognize(pair(alt((alpha1, tag("_"))), many0_count(alt((alphanumeric1, tag("_"))))))(input)
 	}
 
 	fn decimal(input: &str) -> IResult<&str, i64> {
-		map_res(
-			recognize(many1(terminated(one_of("0123456789"), many0(char('_'))))),
-			|out: &str| str::replace(out, "_", "").parse(),
-		)(input)
+		map_res(recognize(many1(terminated(one_of("0123456789"), many0(char('_'))))), |out: &str| {
+			str::replace(out, "_", "").parse()
+		})(input)
 	}
 
 	fn hexadecimal(input: &str) -> IResult<&str, i64> {
 		map_res(
 			preceded(
 				alt((tag("0x"), tag("0X"))),
-				recognize(many1(terminated(
-					one_of("0123456789abcdefABCDEF"),
-					many0(char('_')),
-				))),
+				recognize(many1(terminated(one_of("0123456789abcdefABCDEF"), many0(char('_'))))),
 			),
 			|out: &str| i64::from_str_radix(&str::replace(out, "_", ""), 16),
 		)(input)
@@ -147,9 +133,7 @@ mod parser {
 			fold_many1(
 				tuple((delimited(multispace0, &*f, multispace0), subexpr)),
 				|| lhs.clone(),
-				|l, (op, r)| {
-					PreprocessorExpression::BinOp(op, l.into(), r.into())
-				}
+				|l, (op, r)| PreprocessorExpression::BinOp(op, l.into(), r.into()),
 			)(input)
 		}
 	}
@@ -158,12 +142,8 @@ mod parser {
 		use PreprocessorExpression::*;
 		alt((
 			delimited(tag("("), exp12, tag(")")),
-			map(terminated(defined, multispace0), |ident| {
-				Defined(ident.to_string())
-			}),
-			map(terminated(identifier, multispace0), |ident| {
-				Identifier(ident.to_string())
-			}),
+			map(terminated(defined, multispace0), |ident| Defined(ident.to_string())),
+			map(terminated(identifier, multispace0), |ident| Identifier(ident.to_string())),
 			map(terminated(integer, multispace0), IntLiteral),
 		))(input)
 	}
@@ -172,53 +152,36 @@ mod parser {
 		use PreprocessorBinOp::*;
 		let (input, f) = factor(input)?;
 
-		bin_op(&f, factor, &[
-			("*", Times),
-			("/", Divide),
-			("%", Modulo),
-		])(input).or(Ok((input, f)))
+		bin_op(&f, factor, &[("*", Times), ("/", Divide), ("%", Modulo)])(input).or(Ok((input, f)))
 	}
 
 	pub(super) fn exp4(input: &str) -> IResult<&str, PreprocessorExpression> {
 		use PreprocessorBinOp::*;
 		let (input, e) = ws(exp3)(input)?;
 
-		bin_op(&e, exp3, &[
-			("+", Plus),
-			("-", Minus),
-		])(input).or(Ok((input, e)))
+		bin_op(&e, exp3, &[("+", Plus), ("-", Minus)])(input).or(Ok((input, e)))
 	}
 
 	pub(super) fn exp5(input: &str) -> IResult<&str, PreprocessorExpression> {
 		use PreprocessorBinOp::*;
 		let (input, e) = ws(exp4)(input)?;
 
-		bin_op(&e, exp4, &[
-			("<<", BitwiseShiftLeft),
-			(">>", BitwiseShiftRight),
-		])(input).or(Ok((input, e)))
+		bin_op(&e, exp4, &[("<<", BitwiseShiftLeft), (">>", BitwiseShiftRight)])(input).or(Ok((input, e)))
 	}
 
 	pub(super) fn exp6(input: &str) -> IResult<&str, PreprocessorExpression> {
 		use PreprocessorBinOp::*;
 		let (input, e) = ws(exp5)(input)?;
 
-		bin_op(&e, exp5, &[
-			("<=", LessOrEqual),
-			("<", LessThan),
-			(">=", GreaterOrEqual),
-			(">", GreaterThan),
-		])(input).or(Ok((input, e)))
+		bin_op(&e, exp5, &[("<=", LessOrEqual), ("<", LessThan), (">=", GreaterOrEqual), (">", GreaterThan)])(input)
+			.or(Ok((input, e)))
 	}
 
 	pub(super) fn exp7(input: &str) -> IResult<&str, PreprocessorExpression> {
 		use PreprocessorBinOp::*;
 		let (input, e) = ws(exp6)(input)?;
 
-		bin_op(&e, exp6, &[
-			("==", Equals),
-			("!=", NotEquals),
-		])(input).or(Ok((input, e)))
+		bin_op(&e, exp6, &[("==", Equals), ("!=", NotEquals)])(input).or(Ok((input, e)))
 	}
 
 	pub(super) fn exp8(input: &str) -> IResult<&str, PreprocessorExpression> {
@@ -256,9 +219,7 @@ mod parser {
 		bin_op(&e, exp11, &[("||", LogicalOr)])(input).or(Ok((input, e)))
 	}
 
-	pub fn expression(input: &str) -> IResult<&str, PreprocessorExpression> {
-		complete(ws(exp12))(input)
-	}
+	pub fn expression(input: &str) -> IResult<&str, PreprocessorExpression> { complete(ws(exp12))(input) }
 }
 
 // TODO: is taking ownership necessary?
@@ -296,10 +257,7 @@ enum VertexState {
 }
 
 impl<'a> PreprocessorState<'a> {
-	pub fn new<
-		Idlyzer: FnMut(String) -> FileId + 'a,
-		FLex: FnMut(FileId) -> Option<&'a Vec<(Token, Span)>> + 'a,
-	>(
+	pub fn new<Idlyzer: FnMut(String) -> FileId + 'a, FLex: FnMut(FileId) -> Option<&'a Vec<(Token, Span)>> + 'a>(
 		to_id: Idlyzer,
 		lex: FLex,
 	) -> PreprocessorState<'a> {
@@ -314,14 +272,9 @@ impl<'a> PreprocessorState<'a> {
 	}
 
 	// TODO: include file & position
-	fn error(&mut self, file_id: FileId, location: Span, msg: String) {
-		self.errors.push(((file_id, location), msg))
-	}
+	fn error(&mut self, file_id: FileId, location: Span, msg: String) { self.errors.push(((file_id, location), msg)) }
 
-	pub fn preprocess(
-		&mut self,
-		input: &mut VecDeque<(FileId, Token, Span)>,
-	) -> Vec<(FileId, Token, Span)> {
+	pub fn preprocess(&mut self, input: &mut VecDeque<(FileId, Token, Span)>) -> Vec<(FileId, Token, Span)> {
 		let mut result: Vec<(FileId, Token, Span)> = vec![];
 		let mut previous_file = None;
 
@@ -341,9 +294,7 @@ impl<'a> PreprocessorState<'a> {
 						let file_id = (self.to_id)(path); // TODO: path resolution here or in to_id
 						if self.state.get(&file_id).is_some() {
 							self.error(id, span, recursive_err);
-						} else if let Some(tokens) =
-							(self.lex)(file_id) as Option<&Vec<(Token, Span)>>
-						{
+						} else if let Some(tokens) = (self.lex)(file_id) as Option<&Vec<(Token, Span)>> {
 							self.state.insert(file_id, VertexState::Open);
 							input.reserve(input.len() + tokens.len());
 							tokens
@@ -358,27 +309,20 @@ impl<'a> PreprocessorState<'a> {
 					}
 					ref d @ PreprocessorDirective::If(ref cond) => {
 						let c = self.interpret_condition(cond);
-						self.conditional_stack
-							.push(((id, d.clone(), span), vec![], c));
+						self.conditional_stack.push(((id, d.clone(), span), vec![], c));
 						if !c {
 							self.skip_conditional_directive(input)
 						}
 					}
 					ref dir @ PreprocessorDirective::ElseIf(ref cond) => {
-						if let Some((tk, mut branches, already_processed)) =
-							self.conditional_stack.pop()
-						{
+						if let Some((tk, mut branches, already_processed)) = self.conditional_stack.pop() {
 							branches.push((id, dir.clone(), span));
 							let include_body = match () {
 								_ if already_processed => false, // a previous #if or #elif already matched
 								_ if self.interpret_condition(cond) => true,
 								_ => false,
 							};
-							self.conditional_stack.push((
-								tk,
-								branches,
-								already_processed || include_body,
-							));
+							self.conditional_stack.push((tk, branches, already_processed || include_body));
 							if !include_body {
 								self.skip_conditional_directive(input)
 							}
@@ -387,9 +331,7 @@ impl<'a> PreprocessorState<'a> {
 						}
 					}
 					dir @ PreprocessorDirective::Else => {
-						if let Some((tk, mut branches, already_processed)) =
-							self.conditional_stack.pop()
-						{
+						if let Some((tk, mut branches, already_processed)) = self.conditional_stack.pop() {
 							if let Some((_, PreprocessorDirective::Else, _)) = branches.last() {
 								self.error(id, span.clone(), "This conditional already has an #else".to_string())
 							}
@@ -409,10 +351,10 @@ impl<'a> PreprocessorState<'a> {
 					}
 					PreprocessorDirective::Define(k, rhs) => {
 						self.definitions.insert(k, rhs);
-					},
+					}
 					PreprocessorDirective::Undef(k) => {
 						self.definitions.remove(&k);
-					},
+					}
 					PreprocessorDirective::Pragma(_) => todo!(),
 					PreprocessorDirective::Other(name, _) => {
 						self.error(id, span, format!("Unrecognised directive: {name}"))
@@ -561,39 +503,33 @@ impl<'a> PreprocessorState<'a> {
 				})
 			}
 			PreprocessorExpression::Not(inner) => Some(!self.interpret_condition(inner) as i64),
-			PreprocessorExpression::Defined(name) => {
-				Some(self.definitions.contains_key(name) as i64)
-			}
+			PreprocessorExpression::Defined(name) => Some(self.definitions.contains_key(name) as i64),
 		}
 	}
 }
 
 #[cfg(test)]
 mod test {
-	use crate::base_abstractions::Buffer;
-	use crate::base_abstractions::FileId;
-	use crate::lex;
-	use crate::lexer::Token;
-	use crate::Database;
+	use crate::{
+		base_abstractions::{Buffer, FileId},
+		lex,
+		lexer::Token,
+		Database,
+	};
 
-	use super::parser::*;
-	use super::PreprocessorBinOp as Op;
-	use super::PreprocessorExpression::*;
-	use super::PreprocessorState;
+	use super::{parser::*, PreprocessorBinOp as Op, PreprocessorExpression::*, PreprocessorState};
 	use pretty_assertions::assert_eq;
 
 	macro_rules! test_pp {
 		($str: literal, $vec: expr) => {
 			test_pp!($str, $vec, vec![]);
 		};
-		($str: literal, $vec: expr, $errs: expr) => {
-			{
-				let mut errors = vec![];
-				assert_eq!(preprocess($str, &mut errors), $vec);
-				let expected_errors: Vec<String> = $errs;
-				assert_eq!(errors.drain(..).collect::<Vec<String>>(), expected_errors);
-			}
-		};
+		($str: literal, $vec: expr, $errs: expr) => {{
+			let mut errors = vec![];
+			assert_eq!(preprocess($str, &mut errors), $vec);
+			let expected_errors: Vec<String> = $errs;
+			assert_eq!(errors.drain(..).collect::<Vec<String>>(), expected_errors);
+		}};
 	}
 
 	#[test]
@@ -611,25 +547,11 @@ mod test {
 
 		assert_eq!(
 			exp3("foo * bar"),
-			Ok((
-				"",
-				BinOp(
-					Op::Times,
-					Identifier("foo".to_string()).into(),
-					Identifier("bar".to_string()).into()
-				)
-			))
+			Ok(("", BinOp(Op::Times, Identifier("foo".to_string()).into(), Identifier("bar".to_string()).into())))
 		);
 		assert_eq!(
 			exp3("12 / asdf"),
-			Ok((
-				"",
-				BinOp(
-					Op::Divide,
-					IntLiteral(12).into(),
-					Identifier("asdf".to_string()).into()
-				)
-			))
+			Ok(("", BinOp(Op::Divide, IntLiteral(12).into(), Identifier("asdf".to_string()).into())))
 		);
 	}
 
@@ -637,33 +559,13 @@ mod test {
 	fn parse_expressions() {
 		assert_eq!(
 			expression("foo * bar"),
-			Ok((
-				"",
-				BinOp(
-					Op::Times,
-					Identifier("foo".to_string()).into(),
-					Identifier("bar".to_string()).into()
-				)
-			))
+			Ok(("", BinOp(Op::Times, Identifier("foo".to_string()).into(), Identifier("bar".to_string()).into())))
 		);
 		assert_eq!(
 			expression("12 / asdf"),
-			Ok((
-				"",
-				BinOp(
-					Op::Divide,
-					IntLiteral(12).into(),
-					Identifier("asdf".to_string()).into()
-				)
-			))
+			Ok(("", BinOp(Op::Divide, IntLiteral(12).into(), Identifier("asdf".to_string()).into())))
 		);
-		assert_eq!(
-			expression("1 + (2)"),
-			Ok((
-				"",
-				BinOp(Op::Plus, IntLiteral(1).into(), IntLiteral(2).into())
-			))
-		)
+		assert_eq!(expression("1 + (2)"), Ok(("", BinOp(Op::Plus, IntLiteral(1).into(), IntLiteral(2).into()))))
 	}
 
 	fn preprocess(s: &str, errors: &mut Vec<String>) -> Vec<Token> {
@@ -673,17 +575,9 @@ mod test {
 		let test_id = FileId::new(&db, "<test-code>.p4".into());
 		let input = Buffer::new(&db, s.into());
 		let lexed = lex(&db, test_id, input);
-		let mut lexemes = lexed
-			.lexemes(&db)
-			.iter()
-			.cloned()
-			.map(|(tk, span)| (test_id, tk, span))
-			.collect();
+		let mut lexemes = lexed.lexemes(&db).iter().cloned().map(|(tk, span)| (test_id, tk, span)).collect();
 
-		let r = pp.preprocess(&mut lexemes)
-			.into_iter()
-			.map(|(_, tk, _)| tk)
-			.collect();
+		let r = pp.preprocess(&mut lexemes).into_iter().map(|(_, tk, _)| tk).collect();
 
 		errors.clear();
 		for (_, msg) in pp.errors {
@@ -696,37 +590,29 @@ mod test {
 	#[test]
 	fn conditional_inclusion() {
 		test_pp!(
-				r##"
+			r##"
 				#if 1
 				foo
 				#else
 				problem
 				#endif
 			"##,
-			vec![
-				Token::Whitespace,
-				Token::Identifier("foo".to_string()),
-				Token::Whitespace,
-			]
+			vec![Token::Whitespace, Token::Identifier("foo".to_string()), Token::Whitespace,]
 		);
 
 		test_pp!(
-				r##"
+			r##"
 				#if 0
 				problem
 				#else
 				foo
 				#endif
 			"##,
-			vec![
-				Token::Whitespace,
-				Token::Identifier("foo".to_string()),
-				Token::Whitespace,
-			]
+			vec![Token::Whitespace, Token::Identifier("foo".to_string()), Token::Whitespace,]
 		);
 
 		test_pp!(
-				r##"
+			r##"
 				#if 0
 				problem
 				#elif 0
@@ -734,30 +620,22 @@ mod test {
 				#endif
 				foo
 			"##,
-			vec![
-				Token::Whitespace,
-				Token::Identifier("foo".to_string()),
-				Token::Whitespace,
-			]
+			vec![Token::Whitespace, Token::Identifier("foo".to_string()), Token::Whitespace,]
 		);
 
 		test_pp!(
-				r##"
+			r##"
 				#if 0
 				problem
 				#elif 1
 				foo
 				#endif
 			"##,
-			vec![
-				Token::Whitespace,
-				Token::Identifier("foo".to_string()),
-				Token::Whitespace,
-			]
+			vec![Token::Whitespace, Token::Identifier("foo".to_string()), Token::Whitespace,]
 		);
 
 		test_pp!(
-				r##"
+			r##"
 				#if 0
 				problem
 				#elif 0
@@ -768,90 +646,82 @@ mod test {
 				foo
 				#endif
 			"##,
-			vec![
-				Token::Whitespace,
-				Token::Identifier("foo".to_string()),
-				Token::Whitespace,
-			]
+			vec![Token::Whitespace, Token::Identifier("foo".to_string()), Token::Whitespace,]
 		);
 	}
 
 	#[test]
 	fn complex_conditions() {
-		let pp = PreprocessorState::new(
-			|_| unimplemented!(),
-			|_| unimplemented!(),
-		);
+		let pp = PreprocessorState::new(|_| unimplemented!(), |_| unimplemented!());
 
 		let expr = expression("1 - ( 2 ) + 1").unwrap().1;
 		assert_eq!(pp.interpret_pp_expr(&expr), Some(0));
 
 		test_pp!(
-				r##"
+			r##"
 				#if 3-2*(8-6)+1
 				problem
 				#else
 				foo
 				#endif
 			"##,
-			vec![
-				Token::Whitespace,
-				Token::Identifier("foo".to_string()),
-				Token::Whitespace,
-			]
+			vec![Token::Whitespace, Token::Identifier("foo".to_string()), Token::Whitespace,]
 		);
 	}
 
 	#[test]
 	fn invalid_input() {
-		test_pp!(r##"
+		test_pp!(
+			r##"
 			#if 1
 			foo
 			#else
 			// missing #endif
 			problem
-		"##, vec![
-			Token::Whitespace,
-			Token::Identifier("foo".into()),
-			Token::Whitespace,
-		], vec![
-			"This #if directive lacks a corresponding #endif".to_string(),
-		]);
+		"##,
+			vec![Token::Whitespace, Token::Identifier("foo".into()), Token::Whitespace,],
+			vec!["This #if directive lacks a corresponding #endif".to_string(),]
+		);
 
-		test_pp!(r##"
+		test_pp!(
+			r##"
 			#if 0
 			problem
 			#else
 			// missing #endif
 			foo
-		"##, vec![
-			Token::Whitespace,
-			Token::Comment,
-			Token::Whitespace,
-			Token::Identifier("foo".into()),
-			Token::Whitespace,
-		], vec![
-			"This #if directive lacks a corresponding #endif".to_string(),
-		]);
+		"##,
+			vec![
+				Token::Whitespace,
+				Token::Comment,
+				Token::Whitespace,
+				Token::Identifier("foo".into()),
+				Token::Whitespace,
+			],
+			vec!["This #if directive lacks a corresponding #endif".to_string(),]
+		);
 
-		test_pp!(r##"
+		test_pp!(
+			r##"
 			foo
 			#else
 			// dangling #else
 			bar
-		"##, vec![
-			Token::Whitespace,
-			Token::Identifier("foo".into()),
-			Token::Whitespace,
-			Token::Comment,
-			Token::Whitespace,
-			Token::Identifier("bar".into()),
-			Token::Whitespace,
-		], vec![
-			"Dangling #else".to_string(),
-		]);
+		"##,
+			vec![
+				Token::Whitespace,
+				Token::Identifier("foo".into()),
+				Token::Whitespace,
+				Token::Comment,
+				Token::Whitespace,
+				Token::Identifier("bar".into()),
+				Token::Whitespace,
+			],
+			vec!["Dangling #else".to_string(),]
+		);
 
-		test_pp!(r##"
+		test_pp!(
+			r##"
 			#if 1
 			foo
 			#else
@@ -860,30 +730,30 @@ mod test {
 			problem
 			#endif
 			bar
-		"##, vec![
-			Token::Whitespace,
-			Token::Identifier("foo".into()),
-			Token::Whitespace,
-			Token::Identifier("bar".into()),
-			Token::Whitespace,
-		], vec![
-			"This conditional already has an #else".to_string(),
-		]);
+		"##,
+			vec![
+				Token::Whitespace,
+				Token::Identifier("foo".into()),
+				Token::Whitespace,
+				Token::Identifier("bar".into()),
+				Token::Whitespace,
+			],
+			vec!["This conditional already has an #else".to_string(),]
+		);
 	}
 
 	#[test]
 	fn defines() {
-		test_pp!(r##"
+		test_pp!(
+			r##"
 			#define x 1
 			#if x
 			foo
 			#else
 			problem
 			#endif
-		"##, vec![
-			Token::Whitespace,
-			Token::Identifier("foo".into()),
-			Token::Whitespace,
-		])
+		"##,
+			vec![Token::Whitespace, Token::Identifier("foo".into()), Token::Whitespace,]
+		)
 	}
 }

@@ -13,9 +13,7 @@ extern "C" {
 }
 
 /// Converts a [`Buffer`] into a new vector of `u8`.
-pub(crate) fn to_u8_vec(buffer: &Buffer) -> Vec<u8> {
-	Uint8Array::new(buffer).to_vec()
-}
+pub(crate) fn to_u8_vec(buffer: &Buffer) -> Vec<u8> { Uint8Array::new(buffer).to_vec() }
 
 /// Converts a `u8` slice into a new [`Buffer`].
 pub(crate) fn to_buffer(src: &[u8]) -> Buffer {

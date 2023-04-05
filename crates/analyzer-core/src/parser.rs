@@ -26,13 +26,8 @@ struct Column<Token: Clone> {
 	max_examined_length: isize,
 }
 
-impl <T: Clone> Default for Column<T> {
-	fn default() -> Self {
-		Self {
-			memo: Default::default(),
-			max_examined_length: -1,
-		}
-	}
+impl<T: Clone> Default for Column<T> {
+	fn default() -> Self { Self { memo: Default::default(), max_examined_length: -1 } }
 }
 
 #[derive(Debug, Clone)]
@@ -58,8 +53,10 @@ pub enum Cst<Token: Clone> {
 	Not(RuleName),
 }
 
-impl <Token: Clone + PartialEq> Parser<Token> {
-	pub fn from_rules<R: Into<HashMap<RuleName, Rule<Token>>> + Clone>(rules: &R) -> Result<impl FnOnce(RwLock<Vec<Token>>) -> Parser<Token>> {
+impl<Token: Clone + PartialEq> Parser<Token> {
+	pub fn from_rules<R: Into<HashMap<RuleName, Rule<Token>>> + Clone>(
+		rules: &R,
+	) -> Result<impl FnOnce(RwLock<Vec<Token>>) -> Parser<Token>> {
 		let rules: HashMap<_, _> = rules.clone().into();
 		if !rules.contains_key("start") {
 			return Err(anyhow!("Missing initial non-terminal 'start'"));
@@ -74,19 +71,12 @@ impl <Token: Clone + PartialEq> Parser<Token> {
 		};
 
 		for (k, rule) in rules.iter() {
-			if let Some(n) = neighbours(rule)
-				.iter()
-				.find(|name| !rules.contains_key(*name))
-			{
+			if let Some(n) = neighbours(rule).iter().find(|name| !rules.contains_key(*name)) {
 				return Err(anyhow!("Rule '{k}' references undefined '{n}'"));
 			}
 		}
 
-		Ok(move |buffer| Parser {
-			rules: rules.into(),
-			memo_table: vec![],
-			buffer,
-		})
+		Ok(move |buffer| Parser { rules: rules.into(), memo_table: vec![], buffer })
 	}
 
 	pub fn _match(&mut self) -> Option<Cst<Token>> {
@@ -98,7 +88,8 @@ impl <Token: Clone + PartialEq> Parser<Token> {
 			max_examined_pos: -1,
 		};
 
-		matcher.memoized_eval_rule("start")
+		matcher
+			.memoized_eval_rule("start")
 			.filter(|_| matcher.pos == matcher.input.len())
 			.map(|rc| (*rc).clone())
 	}
@@ -109,10 +100,7 @@ impl <Token: Clone + PartialEq> Parser<Token> {
 		self.buffer.write().splice(range.clone(), r.iter().cloned());
 
 		// adjust the memo table: replace the affected range with empty entries
-		self.memo_table.splice(
-			range.clone(),
-			std::iter::repeat(Default::default()).take(r.len())
-		);
+		self.memo_table.splice(range.clone(), std::iter::repeat(Default::default()).take(r.len()));
 
 		// invalidate overlapping entries
 		for pos in 0..range.start {
@@ -145,7 +133,7 @@ impl <Token: Clone + PartialEq> Parser<Token> {
 	}
 }
 
-impl <'a, Token: Clone + PartialEq> Matcher<'a, Token> {
+impl<'a, Token: Clone + PartialEq> Matcher<'a, Token> {
 	// originally under the (weird?) RuleApplication abstraction
 	fn memoized_eval_rule(&mut self, rule_name: RuleName) -> Option<Rc<Cst<Token>>> {
 		if let Some(cst) = self.use_memoized_result(rule_name) {
@@ -233,33 +221,25 @@ impl <'a, Token: Clone + PartialEq> Matcher<'a, Token> {
 
 		let col = &mut self.memo_table[pos];
 		let examined_length = (self.max_examined_pos - pos as isize + 1) as usize;
-		let existing_match = cst.map(|cst| ExistingMatch {
-			cst,
-			match_length: self.pos - pos
-		});
+		let existing_match = cst.map(|cst| ExistingMatch { cst, match_length: self.pos - pos });
 
-		let entry = MemoTableEntry {
-			existing_match,
-			examined_length,
-		};
+		let entry = MemoTableEntry { existing_match, examined_length };
 
 		col.memo.insert(rule_name, entry);
 		col.max_examined_length = col.max_examined_length.max(examined_length as isize)
 	}
 
 	fn use_memoized_result(&mut self, rule_name: RuleName) -> Option<Rc<Cst<Token>>> {
-		self.memo_table
-			.get(self.pos)
-			.and_then(|col| col.memo.get(rule_name).and_then(|entry| {
-				self.max_examined_pos = self.max_examined_pos.max(
-					(self.pos + entry.examined_length - 1) as isize
-				);
+		self.memo_table.get(self.pos).and_then(|col| {
+			col.memo.get(rule_name).and_then(|entry| {
+				self.max_examined_pos = self.max_examined_pos.max((self.pos + entry.examined_length - 1) as isize);
 
 				entry.existing_match.clone().map(|m| {
 					self.pos += m.match_length;
 					m.cst
 				})
-			}))
+			})
+		})
 	}
 
 	fn consume(&mut self, tk: &Token) -> bool {
@@ -324,9 +304,8 @@ mod test {
 
 	#[test]
 	fn terminal() {
-		let matcher = Parser::from_rules(&[
-			("start", Rule::Terminal("foo".chars().collect::<Vec<_>>().into()))
-		]).unwrap();
+		let matcher =
+			Parser::from_rules(&[("start", Rule::Terminal("foo".chars().collect::<Vec<_>>().into()))]).unwrap();
 
 		let result = matcher("foo".chars().collect::<Vec<_>>().into())._match();
 		assert_eq!(result, Some(Cst::Terminal("foo".chars().collect::<Vec<_>>().into())));
@@ -334,20 +313,21 @@ mod test {
 
 	#[test]
 	fn choice_of_terminals() {
-		let mtch = |input| Parser::from_rules(&[
-			("start", Rule::Choice(vec!["a", "b", "c"])),
-			("a", Rule::Choice(vec!["x", "y"])),
-			("b", Rule::Terminal("1".chars().collect::<Vec<_>>().into())),
-			("c", Rule::Choice(vec!["b", "y"])),
-			("x", Rule::Terminal("2".chars().collect::<Vec<_>>().into())),
-			("y", Rule::Terminal("3".chars().collect::<Vec<_>>().into())),
-		]).unwrap()(input)._match();
+		let mtch = |input| {
+			Parser::from_rules(&[
+				("start", Rule::Choice(vec!["a", "b", "c"])),
+				("a", Rule::Choice(vec!["x", "y"])),
+				("b", Rule::Terminal("1".chars().collect::<Vec<_>>().into())),
+				("c", Rule::Choice(vec!["b", "y"])),
+				("x", Rule::Terminal("2".chars().collect::<Vec<_>>().into())),
+				("y", Rule::Terminal("3".chars().collect::<Vec<_>>().into())),
+			])
+			.unwrap()(input)
+			._match()
+		};
 
 		let input = "1".chars().collect::<Vec<_>>().into();
-		assert_eq!(
-			mtch(input),
-			Some(Cst::Choice("b", Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into()))
-		);
+		assert_eq!(mtch(input), Some(Cst::Choice("b", Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into())));
 
 		let input = "2".chars().collect::<Vec<_>>().into();
 		assert_eq!(
@@ -408,7 +388,8 @@ mod test {
 			n7 => "7";
 			n8 => "8";
 			n9 => "9";
-		}).unwrap()(input);
+		})
+		.unwrap()(input);
 
 		let apply_edit = |p: &mut Parser<_>, r: std::ops::Range<usize>, s: &'static str| {
 			let as_tokens: Vec<_> = s.chars().collect();
@@ -425,14 +406,18 @@ mod test {
 						Cst::Repetition(vec![
 							Cst::Choice("n9", Cst::Terminal("9".chars().collect::<Vec<_>>().into()).into()).into(),
 							Cst::Choice("n6", Cst::Terminal("6".chars().collect::<Vec<_>>().into()).into()).into(),
-						]).into()
-					]).into(),
+						])
+						.into()
+					])
+					.into(),
 					Cst::Terminal("-".chars().collect::<Vec<_>>().into()).into(),
 					Cst::Sequence(vec![
 						Cst::Choice("n7", Cst::Terminal("7".chars().collect::<Vec<_>>().into()).into()).into(),
 						Cst::Repetition(vec![]).into()
-					]).into(),
-				]).into()
+					])
+					.into(),
+				])
+				.into()
 			))
 		);
 
@@ -448,14 +433,18 @@ mod test {
 						Cst::Repetition(vec![
 							Cst::Choice("n0", Cst::Terminal("0".chars().collect::<Vec<_>>().into()).into()).into(),
 							Cst::Choice("n6", Cst::Terminal("6".chars().collect::<Vec<_>>().into()).into()).into(),
-						]).into()
-					]).into(),
+						])
+						.into()
+					])
+					.into(),
 					Cst::Terminal("-".chars().collect::<Vec<_>>().into()).into(),
 					Cst::Sequence(vec![
 						Cst::Choice("n7", Cst::Terminal("7".chars().collect::<Vec<_>>().into()).into()).into(),
 						Cst::Repetition(vec![]).into()
-					]).into(),
-				]).into()
+					])
+					.into(),
+				])
+				.into()
 			))
 		);
 
@@ -469,25 +458,28 @@ mod test {
 				Cst::Sequence(vec![
 					Cst::Sequence(vec![
 						Cst::Choice("n4", Cst::Terminal("4".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![
-							Cst::Choice("n2", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into(),
-						]).into()
-					]).into(),
+						Cst::Repetition(vec![Cst::Choice(
+							"n2",
+							Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()
+						)
+						.into(),])
+						.into()
+					])
+					.into(),
 					Cst::Terminal("+".chars().collect::<Vec<_>>().into()).into(),
 					Cst::Sequence(vec![
 						Cst::Choice("n7", Cst::Terminal("7".chars().collect::<Vec<_>>().into()).into()).into(),
 						Cst::Repetition(vec![]).into()
-					]).into(),
-				]).into()
+					])
+					.into(),
+				])
+				.into()
 			))
 		);
 
 		apply_edit(&mut parser, 3..4, "");
 		// "42+"
-		assert_eq!(
-			parser._match(),
-			None
-		);
+		assert_eq!(parser._match(), None);
 
 		apply_edit(&mut parser, 3..3, "123");
 		// "42+123"
@@ -498,19 +490,26 @@ mod test {
 				Cst::Sequence(vec![
 					Cst::Sequence(vec![
 						Cst::Choice("n4", Cst::Terminal("4".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![
-							Cst::Choice("n2", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into(),
-						]).into()
-					]).into(),
+						Cst::Repetition(vec![Cst::Choice(
+							"n2",
+							Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()
+						)
+						.into(),])
+						.into()
+					])
+					.into(),
 					Cst::Terminal("+".chars().collect::<Vec<_>>().into()).into(),
 					Cst::Sequence(vec![
 						Cst::Choice("n1", Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into()).into(),
 						Cst::Repetition(vec![
 							Cst::Choice("n2", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into(),
 							Cst::Choice("n3", Cst::Terminal("3".chars().collect::<Vec<_>>().into()).into()).into(),
-						]).into()
-					]).into(),
-				]).into()
+						])
+						.into()
+					])
+					.into(),
+				])
+				.into()
 			))
 		);
 
@@ -526,26 +525,28 @@ mod test {
 						Cst::Repetition(vec![
 							Cst::Choice("n4", Cst::Terminal("4".chars().collect::<Vec<_>>().into()).into()).into(),
 							Cst::Choice("n2", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into(),
-						]).into()
-					]).into(),
+						])
+						.into()
+					])
+					.into(),
 					Cst::Terminal("+".chars().collect::<Vec<_>>().into()).into(),
 					Cst::Sequence(vec![
 						Cst::Choice("n1", Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into()).into(),
 						Cst::Repetition(vec![
 							Cst::Choice("n2", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into(),
 							Cst::Choice("n3", Cst::Terminal("3".chars().collect::<Vec<_>>().into()).into()).into(),
-						]).into()
-					]).into(),
-				]).into()
+						])
+						.into()
+					])
+					.into(),
+				])
+				.into()
 			))
 		);
 
 		apply_edit(&mut parser, 3..4, "_");
 		// "942_123"
-		assert_eq!(
-			parser._match(),
-			None,
-		);
+		assert_eq!(parser._match(), None,);
 
 		apply_edit(&mut parser, 3..4, "0-0");
 		// "9420-0123"
@@ -560,8 +561,10 @@ mod test {
 							Cst::Choice("n4", Cst::Terminal("4".chars().collect::<Vec<_>>().into()).into()).into(),
 							Cst::Choice("n2", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into(),
 							Cst::Choice("n0", Cst::Terminal("0".chars().collect::<Vec<_>>().into()).into()).into(),
-						]).into()
-					]).into(),
+						])
+						.into()
+					])
+					.into(),
 					Cst::Terminal("-".chars().collect::<Vec<_>>().into()).into(),
 					Cst::Sequence(vec![
 						Cst::Choice("n0", Cst::Terminal("0".chars().collect::<Vec<_>>().into()).into()).into(),
@@ -569,9 +572,12 @@ mod test {
 							Cst::Choice("n1", Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into()).into(),
 							Cst::Choice("n2", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into(),
 							Cst::Choice("n3", Cst::Terminal("3".chars().collect::<Vec<_>>().into()).into()).into(),
-						]).into()
-					]).into(),
-				]).into()
+						])
+						.into()
+					])
+					.into(),
+				])
+				.into()
 			))
 		);
 	}

@@ -1,24 +1,28 @@
-use std::{sync::{Mutex, Arc}, task::Context, cell::RefCell};
+use std::{
+	cell::RefCell,
+	sync::{Arc, Mutex},
+	task::Context,
+};
 
-use async_channel::{Sender, Receiver};
-use cancellation::{CancellationToken, OperationCanceled};
-use futures::{Future, task::{ArcWake, waker_ref}};
 use crate::BoxFuture;
+use async_channel::{Receiver, Sender};
+use cancellation::{CancellationToken, OperationCanceled};
+use futures::{
+	task::{waker_ref, ArcWake},
+	Future,
+};
 
 struct AsyncWork {
 	future: Mutex<Option<BoxFuture<'static, ()>>>,
-	sender: Sender<Arc<AsyncWork>>
+	sender: Sender<Arc<AsyncWork>>,
 }
 
 impl AsyncWork {
 	pub fn new<T>(future: T, sender: Sender<Arc<AsyncWork>>) -> Self
 	where
-		T: Future<Output = ()> + Send + Sync + 'static
+		T: Future<Output = ()> + Send + Sync + 'static,
 	{
-		Self {
-			future: Mutex::new(Some(Box::pin(future))),
-			sender
-		}
+		Self { future: Mutex::new(Some(Box::pin(future))), sender }
 	}
 }
 
@@ -53,8 +57,8 @@ impl AsyncPool {
 							*future_slot = Some(future)
 						}
 					}
-				},
-				Err(_) => break // `work_channel` has been closed.
+				}
+				Err(_) => break, // `work_channel` has been closed.
 			}
 		}
 
@@ -73,7 +77,7 @@ impl AsyncPool {
 
 	pub fn spawn_work<T>(future: T)
 	where
-		T: Future<Output = ()> + Send + Sync + 'static
+		T: Future<Output = ()> + Send + Sync + 'static,
 	{
 		let (sender, _) = WORK_CHANNEL.with(|c| c.borrow().clone());
 		let future = Box::pin(future);

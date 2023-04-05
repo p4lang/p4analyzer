@@ -1,9 +1,21 @@
 use std::sync::Arc;
 
-use analyzer_abstractions::{lsp_types::{TraceValue, TextDocumentIdentifier}, fs::AnyEnumerableFileSystem};
+use analyzer_abstractions::{
+	fs::AnyEnumerableFileSystem,
+	lsp_types::{TextDocumentIdentifier, TraceValue},
+};
 use analyzer_core::base_abstractions::FileId;
 
-use crate::{tracing::TraceValueAccessor, lsp::{request::RequestManager, workspace::WorkspaceManager, progress::{ProgressManager, Progress}, LspProtocolError, analyzer::{Analyzer, AnyAnalyzer}}};
+use crate::{
+	lsp::{
+		analyzer::{Analyzer, AnyAnalyzer},
+		progress::{Progress, ProgressManager},
+		request::RequestManager,
+		workspace::WorkspaceManager,
+		LspProtocolError,
+	},
+	tracing::TraceValueAccessor,
+};
 
 pub(crate) struct AnalyzerWrapper(std::cell::RefCell<analyzer_core::Analyzer>);
 
@@ -11,9 +23,7 @@ unsafe impl Sync for AnalyzerWrapper {}
 unsafe impl Send for AnalyzerWrapper {}
 
 impl Analyzer for AnalyzerWrapper {
-	fn unwrap(&self) -> std::cell::RefMut<analyzer_core::Analyzer> {
-		self.0.borrow_mut()
-	}
+	fn unwrap(&self) -> std::cell::RefMut<analyzer_core::Analyzer> { self.0.borrow_mut() }
 
 	fn parse_text_document_contents(&self, document_identifier: TextDocumentIdentifier, contents: String) -> FileId {
 		let mut analyzer = self.unwrap();
@@ -50,14 +60,18 @@ pub(crate) struct State {
 
 impl State {
 	/// Initializes a new [`State`] instance.
-	pub fn new(trace_value: Option<TraceValueAccessor>, request_manager: RequestManager, file_system: Arc<AnyEnumerableFileSystem>) -> Self {
+	pub fn new(
+		trace_value: Option<TraceValueAccessor>,
+		request_manager: RequestManager,
+		file_system: Arc<AnyEnumerableFileSystem>,
+	) -> Self {
 		Self {
 			trace_value,
 			analyzer: Arc::new(Box::new(AnalyzerWrapper(Default::default()))), // AnalyzerWrapper(Default::default()).into(),
 			file_system,
 			request_manager,
 			progress_manager: None,
-			workspace_manager: None
+			workspace_manager: None,
 		}
 	}
 
@@ -70,9 +84,7 @@ impl State {
 	}
 
 	/// Returns `true` if the current P4 Analyzer instance has been started in the context of a workspace.
-	pub fn has_workspaces(&self) -> bool {
-		self.workspaces().has_workspaces()
-	}
+	pub fn has_workspaces(&self) -> bool { self.workspaces().has_workspaces() }
 
 	/// Returns a reference to the current [`WorkspaceManager`].
 	pub fn workspaces(&self) -> &WorkspaceManager {

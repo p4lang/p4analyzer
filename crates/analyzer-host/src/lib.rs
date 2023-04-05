@@ -1,17 +1,20 @@
+pub mod fs;
 mod fsm;
+pub mod json_rpc;
 mod lsp;
 mod lsp_impl;
-pub mod json_rpc;
 pub mod tracing;
-pub mod fs;
 
-use std::sync::Arc;
-use analyzer_abstractions::{tracing::*, futures::{future::join4 as join_all}, fs::AnyEnumerableFileSystem, futures_extensions::async_extensions::AsyncPool};
+use analyzer_abstractions::{
+	fs::AnyEnumerableFileSystem, futures::future::join4 as join_all, futures_extensions::async_extensions::AsyncPool,
+	tracing::*,
+};
 use async_channel::{Receiver, Sender};
 use cancellation::{CancellationToken, OperationCanceled};
 use fs::LspEnumerableFileSystem;
 use fsm::LspProtocolMachine;
 use json_rpc::message::Message;
+use std::sync::Arc;
 use tracing::TraceValueAccessor;
 
 use crate::lsp::request::RequestManager;
@@ -24,7 +27,7 @@ pub struct AnalyzerHost {
 	sender: Sender<Message>,
 	receiver: Receiver<Message>,
 	trace_value: Option<TraceValueAccessor>,
-	file_system: Option<Arc<AnyEnumerableFileSystem>>
+	file_system: Option<Arc<AnyEnumerableFileSystem>>,
 }
 
 impl AnalyzerHost {
@@ -33,15 +36,14 @@ impl AnalyzerHost {
 	///
 	/// If available, `trace_value` will be used on receipt of a `'$/setTrace'` notification from the LSP client to set
 	/// the required logging level.
-	pub fn new(message_channel: MessageChannel, trace_value: Option<TraceValueAccessor>, file_system: Option<Arc<AnyEnumerableFileSystem>>) -> Self {
+	pub fn new(
+		message_channel: MessageChannel,
+		trace_value: Option<TraceValueAccessor>,
+		file_system: Option<Arc<AnyEnumerableFileSystem>>,
+	) -> Self {
 		let (sender, receiver) = message_channel;
 
-		AnalyzerHost {
-			sender,
-			receiver,
-			trace_value,
-			file_system
-		}
+		AnalyzerHost { sender, receiver, trace_value, file_system }
 	}
 
 	/// Starts executing the [`AnalyzerHost`] instance.
@@ -55,33 +57,43 @@ impl AnalyzerHost {
 		// If no file system was supplied, then default to the standard LSP based one.
 		let file_system: Arc<AnyEnumerableFileSystem> = match self.file_system.as_ref() {
 			Some(fs) => fs.clone(),
-			None => Arc::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone())))
+			None => Arc::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone()))),
 		};
 
 		match join_all(
 			self.receive_messages(requests_sender.clone(), responses_sender.clone(), cancel_token.clone()),
-			self.run_protocol_machine(request_manager.clone(), file_system, requests_receiver.clone(), cancel_token.clone()),
+			self.run_protocol_machine(
+				request_manager.clone(),
+				file_system,
+				requests_receiver.clone(),
+				cancel_token.clone(),
+			),
 			request_manager.start(cancel_token.clone()),
-			AsyncPool::start(cancel_token.clone())).await
+			AsyncPool::start(cancel_token.clone()),
+		)
+		.await
 		{
 			(Ok(_), Ok(_), Ok(_), Ok(_)) => {
 				self.sender.close();
 				self.receiver.close();
 
 				Ok(())
-			},
-			_ => Err(OperationCanceled)
+			}
+			_ => Err(OperationCanceled),
 		}
 	}
 
-	async fn receive_messages(&self, requests_sender: Sender<Message>, responses_sender: Sender<Message>, cancel_token: Arc<CancellationToken>) -> Result<(), OperationCanceled> {
+	async fn receive_messages(
+		&self,
+		requests_sender: Sender<Message>,
+		responses_sender: Sender<Message>,
+		cancel_token: Arc<CancellationToken>,
+	) -> Result<(), OperationCanceled> {
 		while !cancel_token.is_canceled() {
 			match self.receiver.recv().await {
-				Ok(message) => {
-					match message {
-						Message::Response(_) => responses_sender.send(message).await.unwrap(),
-						_ => requests_sender.send(message).await.unwrap()
-					}
+				Ok(message) => match message {
+					Message::Response(_) => responses_sender.send(message).await.unwrap(),
+					_ => requests_sender.send(message).await.unwrap(),
 				},
 				Err(err) => {
 					error!("Unexpected error receiving message: {:?}", err);
@@ -100,9 +112,8 @@ impl AnalyzerHost {
 		request_manager: RequestManager,
 		file_system: Arc<AnyEnumerableFileSystem>,
 		requests_receiver: Receiver<Message>,
-		cancel_token: Arc<CancellationToken>
-	) -> Result<(), OperationCanceled>
-	{
+		cancel_token: Arc<CancellationToken>,
+	) -> Result<(), OperationCanceled> {
 		let mut protocol_machine = LspProtocolMachine::new(self.trace_value.clone(), request_manager, file_system);
 
 		while protocol_machine.is_active() && !cancel_token.is_canceled() {
@@ -128,7 +139,7 @@ impl AnalyzerHost {
 					}
 					.instrument(request_message_span)
 					.await;
-				},
+				}
 				Err(err) => {
 					error!("Unexpected error receiving request or notification: {:?}", err);
 				}

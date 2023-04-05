@@ -42,18 +42,12 @@ pub struct Server {
 
 impl P4Analyzer {
 	#[allow(dead_code)]
-	pub fn from_env_or_exit() -> Self {
-		Self::from_env_or_exit_()
-	}
+	pub fn from_env_or_exit() -> Self { Self::from_env_or_exit_() }
 
 	#[allow(dead_code)]
-	pub fn from_env() -> xflags::Result<Self> {
-		Self::from_env_()
-	}
+	pub fn from_env() -> xflags::Result<Self> { Self::from_env_() }
 
 	#[allow(dead_code)]
-	pub fn from_vec(args: Vec<std::ffi::OsString>) -> xflags::Result<Self> {
-		Self::from_vec_(args)
-	}
+	pub fn from_vec(args: Vec<std::ffi::OsString>) -> xflags::Result<Self> { Self::from_vec_(args) }
 }
 // generated end

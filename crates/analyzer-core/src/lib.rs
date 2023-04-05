@@ -53,9 +53,7 @@ pub struct Fs {
 }
 
 impl Analyzer {
-	fn filesystem(&self) -> HashMap<FileId, Buffer> {
-		self.fs.map(|fs| fs.fs(&self.db)).unwrap_or_default()
-	}
+	fn filesystem(&self) -> HashMap<FileId, Buffer> { self.fs.map(|fs| fs.fs(&self.db)).unwrap_or_default() }
 
 	pub fn update(&mut self, file_id: FileId, input: String) {
 		let mut filesystem = self.filesystem();
@@ -68,9 +66,7 @@ impl Analyzer {
 		Some(buffer.contents(&self.db))
 	}
 
-	pub fn buffer(&self, file_id: FileId) -> Option<Buffer> {
-		self.filesystem().get(&file_id).copied()
-	}
+	pub fn buffer(&self, file_id: FileId) -> Option<Buffer> { self.filesystem().get(&file_id).copied() }
 
 	pub fn lexed(&self, file_id: FileId) -> Option<&Vec<(Token, Span)>> {
 		let lexed = lex(&self.db, file_id, *self.filesystem().get(&file_id)?);
@@ -99,17 +95,11 @@ impl Analyzer {
 		Some(())
 	}
 
-	pub fn file_id(&self, uri: &str) -> FileId {
-		FileId::new(&self.db, uri.to_string())
-	}
+	pub fn file_id(&self, uri: &str) -> FileId { FileId::new(&self.db, uri.to_string()) }
 
-	pub fn path(&self, id: FileId) -> String {
-		id.path(&self.db)
-	}
+	pub fn path(&self, id: FileId) -> String { id.path(&self.db) }
 
-	pub fn files(&self) -> Vec<String> {
-		self.filesystem().keys().map(|k| k.path(&self.db)).collect()
-	}
+	pub fn files(&self) -> Vec<String> { self.filesystem().keys().map(|k| k.path(&self.db)).collect() }
 }
 
 // TODO: trait for workspace logic?
@@ -125,9 +115,7 @@ struct Lextender<'a>(Box<dyn Iterator<Item = (Token, Span)> + 'a>);
 impl<'a> Iterator for Lextender<'a> {
 	type Item = (Token, Span);
 
-	fn next(&mut self) -> Option<Self::Item> {
-		self.0.next()
-	}
+	fn next(&mut self) -> Option<Self::Item> { self.0.next() }
 }
 
 trait Lextensions<'a, 'db>: Iterator<Item = (Token, Span)> {
@@ -147,9 +135,7 @@ where
 			match (&*state, &tk) {
 				(None, (Token::Error, span)) => *state = Some(span.clone()),
 				(None, _) => (),
-				(Some(err_span), (Token::Error, span)) => {
-					*state = Some(err_span.start..span.end)
-				}
+				(Some(err_span), (Token::Error, span)) => *state = Some(err_span.start..span.end),
 				// the following arm will also hit if the original stream ends with Token::Error,
 				// that's why we need to add one more token to the end of the stream (see below)
 				(Some(err_span), _) => {
@@ -221,15 +207,7 @@ pub fn preprocess(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec<(Fi
 	dbg!(&pp.errors);
 
 	for ((file, location), msg) in pp.errors {
-		Diagnostics::push(
-			db,
-			Diagnostic {
-				file,
-				location,
-				severity: Severity::Error,
-				message: msg,
-			},
-		);
+		Diagnostics::push(db, Diagnostic { file, location, severity: Severity::Error, message: msg });
 	}
 
 	Some(result)

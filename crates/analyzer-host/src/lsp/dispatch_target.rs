@@ -1,12 +1,8 @@
-use core::fmt::Debug;
-use std::{
-	future::Future,
-	pin::Pin,
-	sync::Arc,
-};
-use async_rwlock::RwLock as AsyncRwLock;
 use analyzer_abstractions::{async_trait::async_trait, tracing::error};
+use async_rwlock::RwLock as AsyncRwLock;
+use core::fmt::Debug;
 use serde::{de::DeserializeOwned, Serialize};
+use std::{future::Future, pin::Pin, sync::Arc};
 
 use crate::json_rpc::{
 	from_json,
@@ -34,23 +30,12 @@ pub(crate) struct HandlerError {
 impl HandlerError {
 	#[allow(dead_code)]
 	/// Initializes a new [`HandlerError`] with a given error message.
-	pub(crate) fn new(message: &'static str) -> Self {
-		Self {
-			message,
-			data: None,
-		}
-	}
+	pub(crate) fn new(message: &'static str) -> Self { Self { message, data: None } }
 
 	#[allow(dead_code)]
 	/// Initializes a new [`HandlerError`] with a given error message and serializable data.
-	pub(crate) fn new_with_data<TData: Serialize>(
-		message: &'static str,
-		data: Option<TData>,
-	) -> Self {
-		Self {
-			message,
-			data: data.map(|v| serde_json::to_value(v).unwrap()),
-		}
+	pub(crate) fn new_with_data<TData: Serialize>(message: &'static str, data: Option<TData>) -> Self {
+		Self { message, data: data.map(|v| serde_json::to_value(v).unwrap()) }
 	}
 }
 
@@ -66,7 +51,7 @@ pub(crate) type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 's
 #[clonable]
 pub(crate) trait AsyncRequestHandlerFn<TState, TParams, TResult>: Clone
 where
-	TState: Send + Sync
+	TState: Send + Sync,
 {
 	/// Invokes the request handler, returning a future that will yield a [`HandlerResult`].
 	fn call(
@@ -101,7 +86,7 @@ pub(crate) type AnyAsyncRequestHandlerFn<TState, TParams, TResult> =
 #[derive(Clone)]
 pub(crate) struct RequestDispatchTarget<TState, TParams, TResult>
 where
-	TState: Clone + Send + Sync
+	TState: Clone + Send + Sync,
 {
 	pub handler_fn: AnyAsyncRequestHandlerFn<TState, TParams, TResult>,
 	pub transition_target: LspTransitionTarget,
@@ -115,10 +100,7 @@ where
 {
 	/// Initializes a new [`RequestDispatchTarget`] for a given handler function.
 	pub fn new(handler_fn: Box<dyn (AsyncRequestHandlerFn<TState, TParams, TResult>) + Send + Sync>) -> Self {
-		Self {
-			handler_fn,
-			transition_target: LspTransitionTarget::Current,
-		}
+		Self { handler_fn, transition_target: LspTransitionTarget::Current }
 	}
 
 	fn next_state(&self, current_state: LspServerState) -> LspServerState {
@@ -146,28 +128,17 @@ where
 			Message::Request(request) => {
 				let method = request.method.as_str();
 				let params = from_json::<TParams>(&request.params)?;
-				let (response, next_state) =
-					match self.handler_fn.call(current_state, params, state).await {
-						Ok(result) => (
-							Response::new(request.id.clone(), result),
-							self.next_state(current_state),
-						),
-						Err(err) => {
-							error!(
-								method = method,
-								"Error processing request '{}': {}", method, err.message
-							);
+				let (response, next_state) = match self.handler_fn.call(current_state, params, state).await {
+					Ok(result) => (Response::new(request.id.clone(), result), self.next_state(current_state)),
+					Err(err) => {
+						error!(method = method, "Error processing request '{}': {}", method, err.message);
 
-							(
-								Response::new_error(
-									request.id.clone(),
-									ErrorCode::InternalError as i32,
-									err.message,
-								),
-								current_state,
-							)
-						}
-					};
+						(
+							Response::new_error(request.id.clone(), ErrorCode::InternalError as i32, err.message),
+							current_state,
+						)
+					}
+				};
 
 				Ok((Some(Message::Response(response)), next_state))
 			}
@@ -175,16 +146,14 @@ where
 		}
 	}
 
-	fn set_transition_target(&mut self, target: LspTransitionTarget) {
-		self.transition_target = target;
-	}
+	fn set_transition_target(&mut self, target: LspTransitionTarget) { self.transition_target = target; }
 }
 
 /// Processes a message that represents a notification.
 #[derive(Clone)]
 pub(crate) struct NotificationDispatchTarget<TState, TParams>
 where
-	TState: Send + Sync
+	TState: Send + Sync,
 {
 	pub handler_fn: AnyAsyncRequestHandlerFn<TState, TParams, ()>,
 	pub transition_target: LspTransitionTarget,
@@ -197,10 +166,7 @@ where
 {
 	/// Initializes a new [`NotificationDispatchTarget`] for a given handler function.
 	pub fn new(handler_fn: Box<dyn (AsyncRequestHandlerFn<TState, TParams, ()>) + Send + Sync>) -> Self {
-		Self {
-			handler_fn,
-			transition_target: LspTransitionTarget::Current,
-		}
+		Self { handler_fn, transition_target: LspTransitionTarget::Current }
 	}
 
 	fn next_state(&self, current_state: LspServerState) -> LspServerState {
@@ -243,7 +209,5 @@ where
 		}
 	}
 
-	fn set_transition_target(&mut self, target: LspTransitionTarget) {
-		self.transition_target = target;
-	}
+	fn set_transition_target(&mut self, target: LspTransitionTarget) { self.transition_target = target; }
 }
