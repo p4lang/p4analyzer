@@ -6,33 +6,22 @@ use lexer::*;
 use pretty_assertions::assert_eq;
 
 fn lex_str(s: &str) -> Vec<Token> {
-
 	let db = Database::default();
-
 	let buf = Buffer::new(&db, s.to_string());
-
 	let file_id = FileId::new(&db, "foo.p4".to_string());
-
 	let lexed = lex(&db, file_id, buf);
-
 	lexed.lexemes(&db).iter().map(|(tk, _)| tk).cloned().collect()
 }
 
 #[test]
-
 fn it_works() {
-
 	use Token::Identifier;
-
 	assert_eq!(lex_str("hello"), vec![Identifier("hello".to_string())]);
 }
 
 #[test]
-
 fn int_literals() {
-
 	use Token::{Integer, Whitespace};
-
 	assert_eq!(
 		lex_str(
 			r##"
@@ -57,9 +46,7 @@ fn int_literals() {
 }
 
 #[test]
-
 fn real_p4() {
-
 	use preprocessor::{PreprocessorDirective::*, *};
 	use PreprocessorQuotationStyle::*;
 	use Token::*;
@@ -157,9 +144,7 @@ fn real_p4() {
 }
 
 #[test]
-
 fn long_comment() {
-
 	use Token::*;
 
 	assert_eq!(
@@ -184,11 +169,8 @@ fn long_comment() {
 }
 
 #[test]
-
 fn unknown_directive() {
-
 	use Token::*;
-
 	assert_eq!(
 		lex_str(
 			r#"
@@ -204,9 +186,7 @@ fn unknown_directive() {
 }
 
 #[test]
-
 fn preprocessor_parser() {
-
 	use preprocessor::*;
 	use PreprocessorBinOp::*;
 	use PreprocessorExpression::*;
@@ -218,19 +198,16 @@ fn preprocessor_parser() {
 }
 
 #[test]
-
 fn includes() {
-
 	let foo = lex_str(
 		r##"
 		#include <bar.p4>
 		foo 321
-	"##
+	"##,
 	);
-
 	let bar = lex_str(
 		r##"
 		bar 123
-	"##
+	"##,
 	);
 }

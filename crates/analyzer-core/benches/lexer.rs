@@ -10,20 +10,14 @@ use logos::Span;
 fn baseline(input: String) -> Vec<char> { input.chars().into_iter().collect() }
 
 fn basic(input: String) -> Vec<(Token, Span)> {
-
 	let db = Database::default();
-
 	let buf = Buffer::new(&db, input);
-
 	let file_id = FileId::new(&db, "foo".to_string());
-
 	let lexed = lex(&db, file_id, buf);
-
 	lexed.lexemes(&db).clone()
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-
 	let input = r##"
 	// Include P4 core library
 	# include <core.p4>
@@ -243,13 +237,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 		TopDeparser()) main;
 	"##
 	.to_string();
-
 	let input = input.repeat(1000);
 
 	let mut group = c.benchmark_group("lex 200k lines of P4");
 
 	group.bench_function("baseline", |b| b.iter(|| baseline(black_box(input.clone()))));
-
 	group.bench_function("basic lexing", |b| b.iter(|| basic(black_box(input.clone()))));
 
 	group.finish()

@@ -1,19 +1,16 @@
 // A class for loading, running and testing premade or custom P4 files
 #[cfg(debug_assertions)]
-
 pub mod tester {
-
 	use gag::BufferRedirect;
 	use std::{
 		fs,
 		io::{stdout, Read, Write},
 		path::PathBuf,
 		sync::{RwLock, RwLockWriteGuard},
-		time::Duration
+		time::Duration,
 	};
 
 	use lazy_static::lazy_static;
-
 	lazy_static! {
 		// Is lazy_static because it's a runtime generated value
 		static ref PATH : String = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/").into_os_string().into_string().unwrap();
@@ -28,35 +25,26 @@ pub mod tester {
 
 	// uses the FILES[] index to load files without specifying the file name
 	pub fn load_file_num(file_number: usize) -> Option<String> {
-
 		if file_number >= FILES.len() {
-
 			return None;
 		}
-
 		load_file_str(FILES[file_number])
 	}
 
 	// Uses the name of the file instead but will check the file name is contained in the array
 	pub fn load_file_str(file_name: &str) -> Option<String> {
-
 		if !FILES.contains(&file_name) {
-
 			println!("File name not recognized");
-
 			return None;
 		}
 
 		let full_path = format!("{}{}", *PATH, file_name);
-
 		println!("Loading {}...", full_path);
 
 		match fs::read_to_string(full_path.clone()) {
 			Ok(content) => Some(content),
 			Err(_) => {
-
 				println!("Failed to open {}!!!", full_path);
-
 				None
 			}
 		}
@@ -131,29 +119,20 @@ pub mod tester {
 }
 
 #[cfg(test)]
-
 mod tests {
-
 	use super::tester;
 	use serial_test::serial; // This crate doesn't seem to work :(
 
 	#[test]
 	#[serial]
-
 	fn test_load() {
-
 		// invalid entreis
 		assert_eq!(tester::load_file_num(std::usize::MAX), None);
-
 		assert_eq!(tester::load_file_str("doesnt_exist"), None);
-
 		// check for a return
 		let content = tester::load_file_num(0);
-
 		assert!(content.is_some());
-
 		assert!(tester::load_file_str("example0.p4").is_some());
-
 		// check content
 		assert_eq!(content.unwrap(), "#include <core.p4>\r\n");
 	}
