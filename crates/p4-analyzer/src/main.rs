@@ -114,7 +114,7 @@ impl<C: Command> RunnableCommand<C> {
 	///
 	/// The supplied command will be invoked with a [`CancellationToken`] that is canceled upon receiving a 'Ctrl-C' signal (if
 	/// it is supported by the platform).
-	async fn run(self) {
+	async fn run(&self) {
 		let Self(cmd) = self;
 
 		let count = Arc::new(AtomicU8::new(0));
@@ -154,3 +154,7 @@ impl<C: Command> RunnableCommand<C> {
 		cmd.logging_layers::<Registry>()
 	}
 }
+
+// Unit test fixtures.
+#[cfg(test)]
+mod tests;

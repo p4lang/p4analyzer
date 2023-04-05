@@ -1,0 +1,2 @@
+[alias]
+t = "test -- --test-threads=1 --show-output --nocapture --color always"
