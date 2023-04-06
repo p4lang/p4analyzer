@@ -5,7 +5,7 @@ name: Build & test
 jobs:
   build_and_test:
     name:  push/pull build_and_test
-    runs-on: [ubuntu-latest,windows-latest]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v3
@@ -16,7 +16,11 @@ jobs:
           node-version: '18'
       - name: Install Rust
         run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      
+      - name: Install Wasm-Pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: 'latest'
+
       - name: building
         run: |
           npm i
