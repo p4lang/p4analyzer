@@ -57,8 +57,10 @@ Features  are captured and tracked on the [Features GitHub Project](https://gith
 ```mermaid
 stateDiagram-v2
 	Shaping --> Ready
-	Ready --> InProgress
-	InProgress --> Closed
+	Ready --> InDevelopment
+	InDevelopment --> Closed
+	Shaping --> Closed
+	Ready --> Closed
 ```
 
 |State|Description|
