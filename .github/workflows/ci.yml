@@ -45,6 +45,7 @@ jobs:
           npm ci
           npm run build
           npm run package
+          cargo build --all-targets
       
       - name: Save Build
         id: cache-build
