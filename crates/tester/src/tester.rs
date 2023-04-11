@@ -41,8 +41,8 @@ pub mod tester {
 		let full_path = format!("{}{}", *PATH, file_name);
 		println!("Loading {}...", full_path);
 
-		match fs::read_to_string(full_path.clone()) {
-			Ok(content) => Some(content),
+		match fs::read(full_path.clone()) {
+			Ok(content) => Some(String::from_utf8(content).unwrap()),
 			Err(_) => {
 				println!("Failed to open {}!!!", full_path);
 				None
@@ -134,7 +134,10 @@ mod tests {
 		assert!(content.is_some());
 		assert!(tester::load_file_str("example0.p4").is_some());
 		// check content
-		assert_eq!(content.unwrap(), "#include <core.p4>\r\n");
+		#[cfg(target_os = "windows")]
+		{	assert_eq!(content.unwrap(), "#include <core.p4>\r\n");	}	// Testing both CRLF and LF as Wasm & LSP is platform specific in EOL
+		#[cfg(not(target_os = "windows"))]
+		{	assert_eq!(content.unwrap(), "#include <core.p4>\n");	}
 	}
 	/*
 	fn simulate_message(string : &str) {
