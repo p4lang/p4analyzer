@@ -46,6 +46,7 @@ jobs:
           npm run build
           npm run package
           cargo build --all-targets
+          cargo build --release
       
       - name: Save Build
         id: cache-build

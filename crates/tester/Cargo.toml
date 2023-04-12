@@ -5,11 +5,9 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-gag = "1.0.0"
 lazy_static = "1.4.0"
 async-channel = "1.7.1"
 async-std = "1.12.0"
 
 [dev-dependencies]
-serial_test = "2.0.0"
 tokio = { version = "1.21.2", features = ["full"] }

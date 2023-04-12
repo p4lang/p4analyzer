@@ -1,6 +1,6 @@
 mod cli;
 mod commands;
-mod stdio;
+mod driver;
 
 use analyzer_abstractions::{
 	event_listener::Event,

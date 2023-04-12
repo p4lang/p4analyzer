@@ -1,13 +1,9 @@
 // A class for loading, running and testing premade or custom P4 files
 #[cfg(debug_assertions)]
 pub mod tester {
-	use gag::BufferRedirect;
 	use std::{
 		fs,
-		io::{stdout, Read, Write},
 		path::PathBuf,
-		sync::{RwLock, RwLockWriteGuard},
-		time::Duration,
 	};
 
 	use lazy_static::lazy_static;
@@ -121,10 +117,8 @@ pub mod tester {
 #[cfg(test)]
 mod tests {
 	use super::tester;
-	use serial_test::serial; // This crate doesn't seem to work :(
 
 	#[test]
-	#[serial]
 	fn test_load() {
 		// invalid entreis
 		assert_eq!(tester::load_file_num(std::usize::MAX), None);
@@ -146,7 +140,6 @@ mod tests {
 	}
 
 	#[tokio::test]
-	#[serial]
 	async fn test_stdout_capture() {
 		simulate_message("readable!");
 		let mut obj = tester::start_stdout_capture();

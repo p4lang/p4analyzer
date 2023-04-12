@@ -4,10 +4,8 @@ mod main_tests {
 		create_default_logging_layer, get_logfile_stem,
 	};
 	use analyzer_host::tracing::tracing_subscriber::Registry;
-	use serial_test::parallel;
 
 	#[test]
-	#[parallel]
 	fn test_create_default_logging_layer() {
 		let cmd = P4Analyzer {
 			logpath: None,
@@ -27,7 +25,6 @@ mod main_tests {
 	}
 
 	#[test]
-	#[parallel]
 	fn test_get_logfile_stem() {
 		// random generated string each time, so just make sure not empty
 		assert!(get_logfile_stem().contains("p4analyzer-"));
@@ -61,7 +58,6 @@ mod main_tests {
 	}
 
 	#[tokio::test]
-	#[serial]
 	async fn test_runnable_command() {
 		let lsp = LspServerCommand::new(Server{stdio:false});
 		let obj = RunnableCommand::<LspServerCommand>(lsp);
@@ -80,15 +76,18 @@ mod main_tests {
 	*/
 }
 
-mod stdio_tests {
-	use crate::stdio::ConsoleDriver;
-	use cancellation::CancellationTokenSource;
-	use serial_test::parallel;
+mod driver_tests {
+	use std::{net::{TcpStream, SocketAddr}, sync::{Arc, Mutex, RwLock}, io::{stdout, stdin, BufWriter,BufReader, self, Read, Write}};
+
+use crate::driver::{console_driver, http_driver, buffer_driver, BufferStruct};
+use analyzer_host::{json_rpc::message::{Message, Request, Notification, Response}, MessageChannel};
+use cancellation::CancellationTokenSource;
+extern crate queues;
+use queues::*;
 
 	#[tokio::test]
-	#[parallel]
 	async fn test_console_driver() {
-		let driver = ConsoleDriver::new();
+		let driver = console_driver();
 		let token = CancellationTokenSource::new();
 		let future = driver.start(token.token().clone());
 
@@ -105,31 +104,55 @@ mod stdio_tests {
 		let (res, _) = tokio::join!(future, test_future);
 		assert!(res.is_err());
 	}
-	/*
-	#[tokio::test]
-	#[serial]
-	async fn test_receive_task() {
-		let obj = ConsoleDriver::new();
-		let (sender, receiver) = obj.stdout_channel.clone();
-		let receiver_task = std::thread::spawn(move || ConsoleDriver::receiver_task(receiver));
 
-		let mess = Message::Notification(Notification{
-			method: "initialized".into(),
-			params: Value::Null,
+	async fn buffer_test(buffer: &mut BufferStruct, channels: MessageChannel) {
+		buffer.allow_read();	// Mimic Driver sending initialize message to Anaylzer Host
+		let mess = channels.1.recv().await.unwrap();	// Mimic reading Anaylzer Host buffer
+		assert_eq!(mess.to_string(), "initialize:0");
+
+		let message = Message::Response(Response{
+    		id: 0.into(),
+    		result: None,
+    		error: None,
 		});
+		channels.0.send(message).await.unwrap();	// Mimic Anaylzer Host sending message to Driver
+		let (mess, count) = buffer.get_output_buffer_blocking();	// Mimic reading driver buffer
+		assert_eq!(mess, "Content-Length: 24\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0}");
+		assert_eq!(count, 1);
 
-		let mut capture = start_stdout_capture();
-
-		sender.send(mess).await.unwrap();
-
-		let output = get_stdout_capture(&mut capture, 1).await;
-		assert_eq!(output.unwrap(), "Content-Length: 40\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"}");
-
-		stop_stdout_capture(capture);
-		sender.close();
-		receiver_task.join().unwrap();
+		// Anaylzer host is responsible for closing the channels that lets the driver know to shutdown
+		channels.0.close();
+		channels.1.close();
 	}
-	*/
+
+	#[tokio::test]
+	async fn test_buffer_driver() {
+		let mut queue: Queue<Message> = queue![];
+
+		let initialize_params = analyzer_abstractions::lsp_types::InitializeParams{ ..Default::default() };
+		let json = serde_json::json!(initialize_params);
+		let message = Message::Request(Request{
+			id: 0.into(),
+			method: String::from("initialize"),
+			params: json,
+		});
+		queue.add(message).unwrap();		
+		
+		let mut buffer = BufferStruct::new(queue);
+		let driver = buffer_driver(buffer.clone());
+
+		let token = CancellationTokenSource::new();
+		let future = driver.start(token.token().clone());
+		let test_future = buffer_test(&mut buffer, driver.get_message_channel());
+		let _ = tokio::join!(future, test_future);
+	}
+
+	#[tokio::test]
+	async fn test_http_driver() {
+		/*let socket_addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+		let stream = TcpStream::connect(socket_addr.clone()).unwrap();
+		let driver = http_driver(socket_addr.clone());*/
+	}
 }
 
 mod lsp_server_tests {

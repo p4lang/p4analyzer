@@ -1,4 +1,4 @@
-use crate::{cli::flags::Server, stdio::ConsoleDriver, Command, CommandInvocationError};
+use crate::{cli::flags::Server, driver::{Driver, console_driver}, Command, CommandInvocationError};
 use analyzer_abstractions::{async_trait::async_trait, tracing::Subscriber};
 use analyzer_host::{
 	tracing::{
@@ -13,14 +13,14 @@ use std::sync::{Arc, Mutex};
 /// A P4 Analyzer command that starts the Language Server Protocol (LSP) server implementation.
 pub struct LspServerCommand {
 	config: Server,
-	console_driver: ConsoleDriver,
+	console_driver: Driver,
 	trace_value: Mutex<Option<TraceValueAccessor>>,
 }
 
 impl LspServerCommand {
 	/// Initializes a new [`LspServerCommand`] instance.
 	pub fn new(config: Server) -> Self {
-		LspServerCommand { config, console_driver: ConsoleDriver::new(), trace_value: Mutex::new(None) }
+		LspServerCommand { config, console_driver: console_driver(), trace_value: Mutex::new(None) }
 	}
 
 	fn trace_value(&self) -> Option<TraceValueAccessor> {
