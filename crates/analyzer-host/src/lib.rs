@@ -161,3 +161,7 @@ impl AnalyzerHost {
 		Ok(())
 	}
 }
+
+// Unit test fixtures.
+#[cfg(test)]
+mod tests;
