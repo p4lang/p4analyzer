@@ -73,3 +73,31 @@ required for the Issue to progress.
 The core P4 Analyzer team will typically manage their day to day activities through the
 [PlannedWork GitHub Project](https://github.com/orgs/p4lang/projects/2/views/1).
 
+### Tips for Branching
+The core P4 Analyzer team will be able to push directly to the `p4lang/p4analyzer` repository. When working within
+this repository please try and remember the following tips:
+
+* Remember to ssign the Issue to yourself when you _pick up that work_.
+* If you're working on an Issue, then it should be in the PlannedWork GitHub Project, and in the `'InProgress'` state.
+* Create a descriptive branch name. Also consider incorporating at least the Issue ID/number in that branch name.
+* When creating a Pull Request for work based on an Issue, set the Pull Request title to be the same as the Issue and include the Issue ID/number.  
+
+It's OK to open a draft Pull Request. This may be worth considering if you anticipate your work being large.
+
+When making commits to your working branch, prefer using an imperative or present mood for your commit subject line.
+For more guidance on writing good commit messages, follow the steps documented here:
+https://cbea.ms/git-commit/
+
+### Tips for Merging Pull Requests
+* Prefer a 'Squash Merge'.
+* For the merge commit being created, if not already set, use the title and ID/number of the Issue that the Pull Request relates to for the subject line.
+* Use the additional commit lines to expand on what the change is. 
+
+The merge commit will likely be used when generating a changelog, or release notes. When using the additional
+commit lines to expand on what the change is, write it as if you were writing the release notes that an end user
+would read. For example, describe the new functionality or how it has changed rather than reporting what source
+elements have been modified (keep these details for the commits within the branch itself).
+
+When merging external Pull Requests, it may be required to summarize the changes into apprpriate release notes
+for the end user.
+
