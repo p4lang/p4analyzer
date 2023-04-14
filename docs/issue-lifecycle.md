@@ -1,18 +1,19 @@
 # Issue Life-Cycle
+The information here is mostly relevant to the core P4 Analyzer team. However, if you are considering submitting a
+proposal for a feature or an idea that you have, then the _Proposal Issues_ section will be of interest to you.
 
-
-## Pitch Issues
-'Pitch' issues are created to support _planned_ work, and capture suggestions for new features and/or improvements. 'Pitch' issues are captured on the [Pitches GitHub Project](https://github.com/orgs/p4lang/projects/1/views/1) and guided by the following states:
-
+## Proposal Issues
+'Proposal' issues are created to support _planned_ work, and capture suggestions for new features and/or improvements.
+Proposals are captured on the [Proposal GitHub Project](https://github.com/orgs/p4lang/projects/1/views/1)
+and guided by the following states:
 
 ```mermaid
 stateDiagram-v2
 	Active
 	state Active {
 		[*] --> Drafting
-		Drafting --> Shaping
+		Drafting --> Ready
 	}
-	Shaping --> Ready
 	Active --> Deferred
 	Active --> Closed
 	Deferred --> Closed
@@ -22,53 +23,53 @@ stateDiagram-v2
 
 |State|Description|
 |-----|-----------|
-| Active | A composite state (not physically represented or directly selectable), that means a pitch is being actively worked on.  |
-| Drafting /Active | The pitch is being proposed with _coarse_ level detail. |
-| Shaping /Active | The pitch is being shaped.  |
-| Ready | Enough detail has been presented via the pitch and associated 'feature' issues that work can now be scheduled and started.  |
-| Deferred | The pitch has been deprioritized or will not be actively worked on in the near term.  |
+| Active | A composite state (not physically represented or directly selectable), that means a proposal is being actively worked on.  |
+| Drafting /Active | The proposal is being drafted with _coarse_ level detail. |
+| Ready /Active | Enough detail has been captured and the proposed work can now be scheduled and started.  |
+| Deferred | The pitch has been deprioritized and will not be actively worked on in the near term.  |
 | Closed | The pitch has been closed. The labels associated with the pitch issue may provide more context.  |
 
-### Shaping Pitch Issues
-In the `'Drafting'` phase, the idea for a feature or a suggestion will likely not have the fidelity that is required for work to be planned or implemented against. A draft pitch may only contain a few lines of detail when it is being created. In its early existence, a pitch will need to provide enough information to convince the P4 Analyzer Team, and the supporting community, in supporting its development. Once this is done, a pitch firmly enters its `'Shaping'` phase where the focus now changes to how this _proposal_ can be delivered.
+When a proposal enters the `'Ready'` state, the core P4 Analyzer team will aim to assign it to a suitable milestone
+thereby including it in the roadmap.
 
-It is recommended that at least one 'Feature' issue be created and assocaited with the 'Pitch' issue to capture this _refinement_.
+### Elaborating Proposal Issues
+In the `'Drafting'` state, the idea for a feature or a suggestion will likely not have the fidelity that is required
+for work to be planned or implemented against. A draft proposal may only contain a few lines of detail when it is being
+created. In its early existence, a proposal will need to provide enough information to at least convince the P4
+Analyzer Team, and the supporting community, in supporting its development. 
 
-> **ℹ Note**  
-Keeping the 'Pitch' and 'Feature' issues separate allows for technical, design, and implementation conversations to be captured on the feature, and broader discussions to continue on the pitch.
+As proposals go through elaboration, the 'Proposal' Issue will be used to capture thoughts, discussions, and design
+decisions that can be used to inform its implementation. If the proposal gets large, then it may be best to convert
+it into a _tracking issue_ by adding the `'C-tracking'` label to it, and then breaking the detail down into other
+smaller GitHub Issues which are added to it via a 'Task List' on its description.
 
-## 'Feature' Issues
-
-The following diagram describes the relationship between a Pitch and a Feature:
-
-```mermaid
-classDiagram
-	Pitch  *--> "1..*" Feature: realized-by>
-    Feature *--> "0..*" Issue
-    <<tracking>> Pitch
-    <<tracking>> Feature
-```
-Ultimately, a pitch is fully realized through one or more features. Features may also be further segmented into other _smaller_ pieces of work if a feature is epic-like. When this happens, the 'Feature' issue (like a 'Pitch' issue) becomes a tracking issue and the segmented work is created as additional issues and associated with the 'Feature' issue.
-
-The aim is not to be too regimented since this is an open source project working with contributors outside of the core P4 Analyzer Team. The core team, however, will aim to follow these principles in order to be more accountable for their time.
-
-Features  are captured and tracked on the [Features GitHub Project](https://github.com/orgs/p4lang/projects/2/views/1) and guided by the following states:
+## General Issue Management
+Planned work for the core P4 Analyzer Team is captured and tracked on the private
+[PlannedWork GitHub Project](https://github.com/orgs/p4lang/projects/2/views/1) and guided by the following states:
 
 ```mermaid
 stateDiagram-v2
-	Shaping --> Ready
+  [*] --> Drafting
+  [*] --> Ready
+	Drafting --> Ready
 	Ready --> InDevelopment
 	InDevelopment --> Closed
-	Shaping --> Closed
+	Drafting --> Closed
 	Ready --> Closed
 ```
 
 |State|Description|
 |-----|-----------|
-| Shaping | The feature is being designed as part of its associated 'Pitch' shaping. |
-| Ready | The issue has all the elaborated information required for implementation in code.  |
+| Drafting | The issue is a `'C-proposal'` and is being elaborated on. |
+| Ready | The issue is ready to be assigned to and worked on. |
 | InDevelopment | Development work is currently in progress. Expect a PR shortly. |
-| Closed | The feature has been closed. The labels associated with the feature issue may provide more context. |
+| Closed | The issue has been closed. The labels associated with the issue may provide more context. |
 
-## Unplanned Work
-Unplanned work is either a reported Bug issue, or external Pull Requests that require review by a core P4 Analyzer Team member. These issues will also be tracked on the [Features GitHub Project](https://github.com/orgs/p4lang/projects/2/views/1) and guided by the same states.
+The starting state for an Issue can be `'Drafting'` or `'Ready'`. Typically `'Drafting'` will be used for Proposal
+Issues that are currently being elaborated, but it may also be applied to other Issues, if for example, there
+isn't enough detail on an Issue for work to continue. If this is the case, then other labels may indicate what is
+required for the Issue to progress.
+
+The core P4 Analyzer team will typically manage their day to day activities through the
+[PlannedWork GitHub Project](https://github.com/orgs/p4lang/projects/2/views/1).
+
