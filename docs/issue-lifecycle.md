@@ -41,7 +41,7 @@ Analyzer Team, and the supporting community, in supporting its development.
 As proposals go through elaboration, the 'Proposal' Issue will be used to capture thoughts, discussions, and design
 decisions that can be used to inform its implementation. If the proposal gets large, then it may be best to convert
 it into a _tracking issue_ by adding the `'C-tracking'` label to it, and then breaking the detail down into other
-smaller GitHub Issues which are added to it via a 'Task List' on its description.
+smaller GitHub Issues which are added to it via a 'Task List' on its description.
 
 ## General Issue Management
 Planned work for the core P4 Analyzer Team is captured and tracked on the private
@@ -77,10 +77,11 @@ The core P4 Analyzer team will typically manage their day to day activities thro
 The core P4 Analyzer team will be able to push directly to the `p4lang/p4analyzer` repository. When working within
 this repository please try and remember the following tips:
 
-* Remember to ssign the Issue to yourself when you _pick up that work_.
+* Remember to sign the Issue to yourself when you _pick up that work_.
 * If you're working on an Issue, then it should be in the PlannedWork GitHub Project, and in the `'InProgress'` state.
 * Create a descriptive branch name. Also consider incorporating at least the Issue ID/number in that branch name.
-* When creating a Pull Request for work based on an Issue, set the Pull Request title to be the same as the Issue and include the Issue ID/number.  
+* When creating a Pull Request for work based on an Issue, set the Pull Request title to be the same as the Issue and include the Issue ID/number.
+* It is OK to rebase your working branch on `main` (instead of merging), and then force pushing. We consider working branches to be transient.
 
 It's OK to open a draft Pull Request. This may be worth considering if you anticipate your work being large.
 
@@ -95,9 +96,8 @@ https://cbea.ms/git-commit/
 
 The merge commit will likely be used when generating a changelog, or release notes. When using the additional
 commit lines to expand on what the change is, write it as if you were writing the release notes that an end user
-would read. For example, describe the new functionality or how it has changed rather than reporting what source
-elements have been modified (keep these details for the commits within the branch itself).
+would read. For example, describe the new functionality or how something has changed, rather than reporting what source
+elements have been modified (keep these details for the commits within the working branch itself).
 
-When merging external Pull Requests, it may be required to summarize the changes into apprpriate release notes
+When merging external Pull Requests, it may be required to summarize the Pull Request into appropriate release notes
 for the end user.
-
