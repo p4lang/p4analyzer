@@ -1,27 +1,43 @@
-# P4 Language Server
-A language server for the P4 language equipped with wasm build and VScode extension. The language server, called P4 analyzer, is built in Rust under `crates` directory and compiled to WebAssembly (wasm) for use as a language server. The wasm and VScode extension is in typescript under `packages` directory.
+# P4 Analyzer
+A [Language Server Protocol](https://langserver.org/) (LSP) compliant analyzer for the P4 language.
 
-The language server plans to support:
+The analyzer is provided standalone (for integration with LSP clients supported in tools such as VIM and EMacs), or as
+an extension for Visual Studio Code that uses an in-built WebAssembly version of the analyzer. The Visual Studio Code
+extension can also be configured to use the standalone analyzer if required.
+
+Both the standalone and WebAssembly based analyzer is built from the same code and aims to support all LSP features,
+including:
+
 * Code Completion
 * Find References
 * Variable Information
 * Diagnostics
-* Jump to Def
+* Jump to Definition
 * Hover
 
-## Building
-The repository supports building on unix & windows systems.
+## Building the P4 Analyzer
+To begin, you will requrie the following prerequisites:
 
-### Prerequisites
-* [Rust](https://www.rust-lang.org/tools/install)
-* [Wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)
+* [Rust](https://www.rust-lang.org/tools/install)  
+If using `rustup` then the version configured in the root `rust-toolchain.toml` file will be installed.
+
+* [`wasm-pack`](https://rustwasm.github.io/wasm-pack/installer/)
+
 * [NodeJS](https://nodejs.org/en/download/)
-* `git clone` the repository
 
 ### Building using Nx
-[Nx](https://nx.dev/) is used as the build system as the repository contains WebAssembly as well as Rust projects. Once the prerequisites have been installed, run the following commands. This will install the required Node.js modules, build the Rust and TypeScript projects, and finally produce a `.vsix` package that can be installed into Visual Studio Code.
+This repository uses [Nx](https://nx.dev/) as a build system. Once the above prerequisites have been installed, run the
+following commands. This will install the required Node.js modules, build the Rust and TypeScript projects, and finally
+produce a `'.vsix'` package that can be installed into Visual Studio Code.
+
 ```bash
 npm ci
 npm run build
 npm run package
 ```
+> **ℹ Note**  
+The repository can be built on both Linux and Windows platforms.
+
+## Contributing
+Looking to contribute? Read the [Contributing to P4 Analyzer](./docs/contributing.md) guide to get started, and read
+the [Developer](./docs/README.md) guide for insight into how the code is structured and put together.
