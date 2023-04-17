@@ -77,15 +77,17 @@ The core P4 Analyzer team will typically manage their day to day activities thro
 The core P4 Analyzer team will be able to push directly to the `p4lang/p4analyzer` repository. When working within
 this repository please try and remember the following tips:
 
-* Remember to sign the Issue to yourself when you _pick up that work_.
+* Remember to assign the Issue to yourself when you _pick up that work_.
 * If you're working on an Issue, then it should be in the PlannedWork GitHub Project, and in the `'InProgress'` state.
-* Create a descriptive branch name. Also consider incorporating at least the Issue ID/number in that branch name.
+* Create a descriptive branch name. Also consider incorporating at least the Issue ID/number in that branch name. We
+recommend also including your GitHub username (i.e., "_timjroberts/100-tardis-refactor_").
 * When creating a Pull Request for work based on an Issue, set the Pull Request title to be the same as the Issue and include the Issue ID/number.
 * It is OK to rebase your working branch on `main` (instead of merging), and then force pushing. We consider working branches to be transient.
 
 It's OK to open a draft Pull Request. This may be worth considering if you anticipate your work being large.
 
-When making commits to your working branch, prefer using an imperative or present mood for your commit subject line.
+When making commits to your working branch, prefer using an imperative mood for your commit subject line. That is,
+start the message with a verb worded as a command (i.e., "_Merge origin/main into main_").
 For more guidance on writing good commit messages, follow the steps documented here:
 https://cbea.ms/git-commit/
 
