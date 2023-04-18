@@ -21,13 +21,10 @@ If possible, try and include an _isolated_ way in which the bug can be reproduce
 and actual behaviors. When creating your bug, please add the `'C-bug'` label to it.
 
 ## Have an idea for an improvement, or a new feature?
-We also accept _proposals_ for features or ideas as issues. When creating a _proposal_, please ensure to add the
-`'C-proposal'` label to it so that we can triage and track it on the
-[Proposal GitHub Project](https://github.com/orgs/p4lang/projects/1/views/1).
-
-We use the [Proposal GitHub Project](https://github.com/orgs/p4lang/projects/1/views/1) to roadmap planned development
-effort, and as proposals are drafted and then elaborated upon, we anticipate discussion and questions appearing on your
-particular _proposal_ issue in order to help with that process.
+We also accept _proposals_ for features or ideas as issues. Use the 'Proposal' Issue template to ensure that your new
+issue has the `'C-proposal'` label applied to it. Internally, we use private GitHub Projects to roadmap planned
+development and as proposals are drafted, and then elaborated upon, we anticipate discussion and questions appearing
+on your particular _proposal_ issue in order to help with that process.
 
 More information about how we process, manage and ultimately deliver proposals can be found in the
 [Issue Life-Cycle](./issue-lifecycle.md) under the _Proposal Issues_ section.
