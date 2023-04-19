@@ -2,15 +2,19 @@ use anyhow::{anyhow, Result};
 use parking_lot::{RwLock, RwLockReadGuard};
 use std::{collections::HashMap, rc::Rc};
 
+use crate::extensions::*;
+
+mod p4_grammar;
+
 #[derive(Debug, Default)]
-pub struct Parser<Token: Clone> {
+pub struct Parser<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> {
 	rules: Rc<HashMap<RuleName, Rule<Token>>>,
 	buffer: RwLock<Vec<Token>>,
 	memo_table: Vec<Column<Token>>,
 }
 
 #[derive(Debug)]
-pub struct Matcher<'a, Token: Clone> {
+pub struct Matcher<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> {
 	rules: Rc<HashMap<RuleName, Rule<Token>>>,
 	memo_table: &'a mut Vec<Column<Token>>,
 	input: RwLockReadGuard<'a, Vec<Token>>,
@@ -21,18 +25,18 @@ pub struct Matcher<'a, Token: Clone> {
 type RuleName = &'static str;
 
 #[derive(Debug, Clone)]
-struct Column<Token: Clone> {
+struct Column<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> {
 	memo: HashMap<RuleName, MemoTableEntry<Token>>,
 	max_examined_length: isize,
 }
 
-impl<T: Clone> Default for Column<T> {
+impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> Default for Column<T> {
 	fn default() -> Self { Self { memo: Default::default(), max_examined_length: -1 } }
 }
 
 #[derive(Debug, Clone)]
-struct MemoTableEntry<Token: Clone> {
-	existing_match: Option<ExistingMatch<Token>>,
+struct MemoTableEntry<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> {
+	existing_match: Result<ExistingMatch<Token>, ParserError<Token>>,
 	examined_length: usize,
 }
 
@@ -46,14 +50,24 @@ struct ExistingMatch<Token: Clone> {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 pub enum Cst<Token: Clone> {
 	Terminal(Rc<Vec<Token>>),
-	// TODO: switch to refcounting to share memoized stuff
 	Choice(RuleName, Rc<Cst<Token>>),
 	Sequence(Vec<Rc<Cst<Token>>>),
 	Repetition(Vec<Rc<Cst<Token>>>),
 	Not(RuleName),
+	Nothing,
 }
 
-impl<Token: Clone + PartialEq> Parser<Token> {
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+pub enum ParserError<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> {
+	Expected(RuleName, Box<ParserError<Token>>),
+	Unexpected(RuleName),
+	ExpectedOneOf(Vec<(RuleName, ParserError<Token>)>),
+	ExpectedEof,
+	ExpectedPatternMatch(&'static str),
+	ExpectedToken(Token),
+}
+
+impl<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Parser<Token> {
 	pub fn from_rules<R: Into<HashMap<RuleName, Rule<Token>>> + Clone>(
 		rules: &R,
 	) -> Result<impl FnOnce(RwLock<Vec<Token>>) -> Parser<Token>> {
@@ -63,11 +77,12 @@ impl<Token: Clone + PartialEq> Parser<Token> {
 		}
 
 		let neighbours = |rule: &Rule<Token>| match rule {
-			Rule::Terminal(_) => vec![],
+			Rule::Terminal(_) | Rule::TerminalPredicate(..) => vec![],
 			Rule::Choice(options) => options.clone(),
 			Rule::Sequence(parts) => parts.clone(),
 			Rule::Repetition(rule) => vec![*rule],
 			Rule::Not(rule) => vec![*rule],
+			Rule::Nothing => vec![],
 		};
 
 		for (k, rule) in rules.iter() {
@@ -79,7 +94,7 @@ impl<Token: Clone + PartialEq> Parser<Token> {
 		Ok(move |buffer| Parser { rules: rules.into(), memo_table: vec![], buffer })
 	}
 
-	pub fn _match(&mut self) -> Option<Cst<Token>> {
+	pub fn _match(&mut self) -> Result<Cst<Token>, ParserError<Token>> {
 		let mut matcher = Matcher {
 			rules: self.rules.clone(),
 			memo_table: &mut self.memo_table,
@@ -90,7 +105,9 @@ impl<Token: Clone + PartialEq> Parser<Token> {
 
 		matcher
 			.memoized_eval_rule("start")
-			.filter(|_| matcher.pos == matcher.input.len())
+			.filter(ParserError::ExpectedEof, |_| {
+				matcher.pos == matcher.input.len()
+			})
 			.map(|rc| (*rc).clone())
 	}
 
@@ -111,7 +128,7 @@ impl<Token: Clone + PartialEq> Parser<Token> {
 			}
 		}
 
-		fn invalidate_entries_in_column<Tk: Clone>(col: &mut Column<Tk>, pos: usize, start_pos: usize) {
+		fn invalidate_entries_in_column<Tk: std::fmt::Debug + PartialEq + PartialOrd + Clone>(col: &mut Column<Tk>, pos: usize, start_pos: usize) {
 			let mut new_max = 0;
 			let mut to_remove = vec![];
 			for (rule_name, entry) in &col.memo {
@@ -133,11 +150,11 @@ impl<Token: Clone + PartialEq> Parser<Token> {
 	}
 }
 
-impl<'a, Token: Clone + PartialEq> Matcher<'a, Token> {
+impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, Token> {
 	// originally under the (weird?) RuleApplication abstraction
-	fn memoized_eval_rule(&mut self, rule_name: RuleName) -> Option<Rc<Cst<Token>>> {
+	fn memoized_eval_rule(&mut self, rule_name: RuleName) -> Result<Rc<Cst<Token>>, ParserError<Token>> {
 		if let Some(cst) = self.use_memoized_result(rule_name) {
-			Some(cst)
+			cst
 		} else {
 			let orig_pos = self.pos;
 			let orig_max = self.max_examined_pos;
@@ -152,69 +169,85 @@ impl<'a, Token: Clone + PartialEq> Matcher<'a, Token> {
 	}
 
 	// originally a Rule method
-	fn eval_rule(&mut self, rule_name: RuleName) -> Option<Rc<Cst<Token>>> {
+	fn eval_rule(&mut self, rule_name: RuleName) -> Result<Rc<Cst<Token>>, ParserError<Token>> {
 		let rules = self.rules.clone();
 		match &rules[rule_name] {
+			Rule::Nothing => {
+				self.max_examined_pos = self.max_examined_pos.max(self.pos as isize - 1);
+				Ok(Cst::Nothing.into())
+			}
 			Rule::Terminal(vec) => {
 				for tk in vec.iter() {
 					if !self.consume(tk) {
-						return None;
+						return Err(ParserError::ExpectedToken(tk.clone()));
 					}
 				}
 
-				Some(Cst::Terminal(vec.clone()).into())
+				Ok(Cst::Terminal(vec.clone()).into())
 			}
+			Rule::TerminalPredicate(f, pattern) => self
+				.skip()
+				.cloned()
+				.filter(f)
+				.map(|tk| Rc::new(Cst::Terminal(vec![tk].into())))
+				.ok_or(ParserError::ExpectedPatternMatch(pattern)),
 			Rule::Choice(options) => {
 				let orig_pos = self.pos;
+				let mut errors = vec![];
+
 				for rule in options {
 					self.pos = orig_pos;
-					if let Some(cst) = self.memoized_eval_rule(rule) {
-						return Some(Cst::Choice(rule, cst).into());
+					match self.memoized_eval_rule(rule) {
+						Ok(cst) => return Ok(Cst::Choice(rule, cst).into()),
+						Err(e) => errors.push((*rule, e)),
 					}
 				}
-				None
+
+				Err(ParserError::ExpectedOneOf(errors))
 			}
 			Rule::Sequence(parts) => {
 				let mut matches = vec![];
 				for rule in parts {
-					if let Some(cst) = self.memoized_eval_rule(rule) {
-						if matches.capacity() == 0 {
-							matches.reserve_exact(parts.len())
-						}
+					let result = self.memoized_eval_rule(rule);
+					match result {
+						Ok(cst) => {
+							if matches.capacity() == 0 {
+								matches.reserve_exact(parts.len())
+							}
 
-						matches.push(cst);
-					} else {
-						return None;
+							matches.push(cst);
+						}
+						Err(e) => return Err(ParserError::Expected(rule, e.into())),
 					}
 				}
 
-				Some(Cst::Sequence(matches).into())
+				Ok(Cst::Sequence(matches).into())
 			}
 			Rule::Repetition(rule) => {
 				let mut matches = vec![];
 				loop {
 					let orig_pos = self.pos;
-					if let Some(cst) = self.memoized_eval_rule(rule) {
+					if let Ok(cst) = self.memoized_eval_rule(rule) {
 						matches.push(cst);
 					} else {
 						self.pos = orig_pos;
-						break Some(Cst::Repetition(matches).into());
+						break Ok(Cst::Repetition(matches).into());
 					}
 				}
 			}
 			Rule::Not(rule) => {
 				let orig_pos = self.pos;
-				if self.memoized_eval_rule(rule).is_some() {
-					None
+				if self.memoized_eval_rule(rule).is_ok() {
+					Err(ParserError::Unexpected(rule))
 				} else {
 					self.pos = orig_pos;
-					Some(Cst::Not(rule).into())
+					Ok(Cst::Not(rule).into())
 				}
 			}
 		}
 	}
 
-	fn memoize_result(&mut self, pos: usize, rule_name: RuleName, cst: Option<Rc<Cst<Token>>>) {
+	fn memoize_result(&mut self, pos: usize, rule_name: RuleName, cst: Result<Rc<Cst<Token>>, ParserError<Token>>) {
 		while self.memo_table.len() <= pos {
 			self.memo_table.push(Default::default());
 		}
@@ -229,15 +262,15 @@ impl<'a, Token: Clone + PartialEq> Matcher<'a, Token> {
 		col.max_examined_length = col.max_examined_length.max(examined_length as isize)
 	}
 
-	fn use_memoized_result(&mut self, rule_name: RuleName) -> Option<Rc<Cst<Token>>> {
+	fn use_memoized_result(&mut self, rule_name: RuleName) -> Option<Result<Rc<Cst<Token>>, ParserError<Token>>> {
 		self.memo_table.get(self.pos).and_then(|col| {
 			col.memo.get(rule_name).and_then(|entry| {
 				self.max_examined_pos = self.max_examined_pos.max((self.pos + entry.examined_length - 1) as isize);
 
-				entry.existing_match.clone().map(|m| {
+				Some(entry.existing_match.clone().map(|m| {
 					self.pos += m.match_length;
 					m.cst
-				})
+				}))
 			})
 		})
 	}
@@ -252,15 +285,28 @@ impl<'a, Token: Clone + PartialEq> Matcher<'a, Token> {
 			false
 		}
 	}
+
+	fn skip(&mut self) -> Option<&Token> {
+		self.max_examined_pos = self.max_examined_pos.max(self.pos as isize);
+
+		if let Some(tk) = self.input.get(self.pos) {
+			self.pos += 1;
+			Some(tk)
+		} else {
+			None
+		}
+	}
 }
 
 #[derive(Debug, Clone)]
 pub enum Rule<Token: Clone> {
 	Terminal(Rc<Vec<Token>>),
+	TerminalPredicate(for<'a> fn(&'a Token) -> bool, &'static str),
 	Choice(Vec<RuleName>),
 	Sequence(Vec<RuleName>),
 	Repetition(RuleName),
 	Not(RuleName),
+	Nothing,
 }
 
 #[macro_export]
@@ -308,7 +354,7 @@ mod test {
 			Parser::from_rules(&[("start", Rule::Terminal("foo".chars().collect::<Vec<_>>().into()))]).unwrap();
 
 		let result = matcher("foo".chars().collect::<Vec<_>>().into())._match();
-		assert_eq!(result, Some(Cst::Terminal("foo".chars().collect::<Vec<_>>().into())));
+		assert_eq!(result, Ok(Cst::Terminal("foo".chars().collect::<Vec<_>>().into())));
 	}
 
 	#[test]
@@ -327,19 +373,19 @@ mod test {
 		};
 
 		let input = "1".chars().collect::<Vec<_>>().into();
-		assert_eq!(mtch(input), Some(Cst::Choice("b", Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into())));
+		assert_eq!(mtch(input), Ok(Cst::Choice("b", Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into())));
 
 		let input = "2".chars().collect::<Vec<_>>().into();
 		assert_eq!(
 			mtch(input),
-			Some(Cst::Choice(
+			Ok(Cst::Choice(
 				"a",
 				Cst::Choice("x", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into()
 			))
 		);
 		assert_eq!(
 			mtch("3".chars().collect::<Vec<_>>().into()),
-			Some(Cst::Choice(
+			Ok(Cst::Choice(
 				"a",
 				Cst::Choice("y", Cst::Terminal("3".chars().collect::<Vec<_>>().into()).into()).into()
 			))
@@ -358,7 +404,7 @@ mod test {
 
 		assert_eq!(
 			matcher("1foo".chars().collect::<Vec<_>>().into())._match(),
-			Some(Cst::Sequence(vec![
+			Ok(Cst::Sequence(vec![
 				Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into(),
 				Cst::Choice("y", Cst::Terminal("foo".chars().collect::<Vec<_>>().into()).into()).into()
 			]))
@@ -398,7 +444,7 @@ mod test {
 
 		assert_eq!(
 			parser._match(),
-			Some(Cst::Choice(
+			Ok(Cst::Choice(
 				"subtraction",
 				Cst::Sequence(vec![
 					Cst::Sequence(vec![
@@ -425,7 +471,7 @@ mod test {
 
 		assert_eq!(
 			parser._match(),
-			Some(Cst::Choice(
+			Ok(Cst::Choice(
 				"subtraction",
 				Cst::Sequence(vec![
 					Cst::Sequence(vec![
@@ -453,7 +499,7 @@ mod test {
 
 		assert_eq!(
 			parser._match(),
-			Some(Cst::Choice(
+			Ok(Cst::Choice(
 				"addition",
 				Cst::Sequence(vec![
 					Cst::Sequence(vec![
@@ -479,13 +525,13 @@ mod test {
 
 		apply_edit(&mut parser, 3..4, "");
 		// "42+"
-		assert_eq!(parser._match(), None);
+		assert_eq!(parser._match(), Err(ParserError::ExpectedEof));
 
 		apply_edit(&mut parser, 3..3, "123");
 		// "42+123"
 		assert_eq!(
 			parser._match(),
-			Some(Cst::Choice(
+			Ok(Cst::Choice(
 				"addition",
 				Cst::Sequence(vec![
 					Cst::Sequence(vec![
@@ -517,7 +563,7 @@ mod test {
 		// "942+123"
 		assert_eq!(
 			parser._match(),
-			Some(Cst::Choice(
+			Ok(Cst::Choice(
 				"addition",
 				Cst::Sequence(vec![
 					Cst::Sequence(vec![
@@ -546,13 +592,13 @@ mod test {
 
 		apply_edit(&mut parser, 3..4, "_");
 		// "942_123"
-		assert_eq!(parser._match(), None,);
+		assert_eq!(parser._match(), Err(ParserError::ExpectedEof));
 
 		apply_edit(&mut parser, 3..4, "0-0");
 		// "9420-0123"
 		assert_eq!(
 			parser._match(),
-			Some(Cst::Choice(
+			Ok(Cst::Choice(
 				"subtraction",
 				Cst::Sequence(vec![
 					Cst::Sequence(vec![

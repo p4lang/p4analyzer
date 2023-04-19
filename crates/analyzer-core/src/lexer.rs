@@ -99,6 +99,9 @@ pub enum Token {
 	#[token("if")]
 	KwIf,
 
+	#[token("parser")]
+	KwParser,
+
 	#[token("return")]
 	KwReturn,
 
@@ -131,6 +134,9 @@ pub enum Token {
 
 	#[token(";")]
 	Semicolon,
+
+	#[token("@")]
+	AtSymbol,
 
 	#[regex(r"\s\s*")]
 	Whitespace,

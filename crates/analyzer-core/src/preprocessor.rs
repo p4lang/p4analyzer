@@ -522,7 +522,7 @@ mod test {
 
 	macro_rules! test_pp {
 		($str: literal, $vec: expr) => {
-			test_pp!($str, $vec, vec![]);
+			test_pp!($str, $vec, vec![])
 		};
 		($str: literal, $vec: expr, $errs: expr) => {{
 			let mut errors = vec![];
