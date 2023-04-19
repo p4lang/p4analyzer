@@ -10,6 +10,7 @@ mod main_tests {
 		let cmd = P4Analyzer {
 			logpath: None,
 			loglevel: None,
+			tcp: None,
 			subcommand: P4AnalyzerCmd::Server(flags::Server { stdio: false }),
 		};
 		let res = create_default_logging_layer::<Registry>(&cmd);
@@ -79,7 +80,7 @@ mod main_tests {
 mod driver_tests {
 	use std::{net::{TcpStream, SocketAddr}, sync::{Arc, Mutex, RwLock}, io::{stdout, stdin, BufWriter,BufReader, self, Read, Write}};
 
-use crate::driver::{console_driver, http_driver, buffer_driver, BufferStruct};
+use crate::driver::{console_driver, tcp_driver, buffer_driver, BufferStruct};
 use analyzer_host::{json_rpc::message::{Message, Request, Notification, Response}, MessageChannel};
 use cancellation::CancellationTokenSource;
 extern crate queues;
@@ -160,7 +161,7 @@ mod lsp_server_tests {
 
 	#[tokio::test]
 	async fn command_aborts_when_cancelled() {
-		let lsp = LspServerCommand::new(Server { stdio: false });
+		let lsp = LspServerCommand::new(Server { stdio: false }, crate::driver::DriverType::Console);
 		let token = CancellationTokenSource::new();
 		let (res, _) = tokio::join!(lsp.run(token.token().clone()), async { token.cancel() });
 		assert!(res.is_err());

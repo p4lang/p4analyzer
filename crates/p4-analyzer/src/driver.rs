@@ -1,10 +1,9 @@
 use analyzer_host::{json_rpc::message::Message, MessageChannel};
 use async_channel::{Receiver, Sender};
 use cancellation::{CancellationToken, OperationCanceled};
-use queues::*;
 use std::{
-	io::{stdin, stdout, BufReader, self},
-	sync::{Arc, RwLock}, net::{TcpStream, SocketAddr}, time::Duration,
+	io::{stdin, stdout, BufReader},
+	sync::Arc, net::{TcpStream, SocketAddr},
 };
 use tokio::task;
 
@@ -13,13 +12,13 @@ use tokio::task;
 pub struct Driver {
 	in_channel: MessageChannel,		// Input channel as an intermediate layer for input source -> Anaylzer host
 	out_channel: MessageChannel,	// Output channel as an intermediate layer for Anaylzer host -> output source
-	source_type: DriveType,			// Handles the connection for input/output of outside layer to intermediate layer
+	source_type: DriverType,		// Handles the connection for input/output of outside layer to intermediate layer
 }
 
 #[derive(Clone)]
-enum DriveType {
+pub enum DriverType {
 	Console,
-	Http(SocketAddr),
+	Tcp(SocketAddr),
 	#[cfg(test)] 
 	Buffer(BufferStruct),	// Only want to include this for testing
 }
@@ -28,19 +27,28 @@ pub fn console_driver() -> Driver {
 	Driver {
 		in_channel: async_channel::unbounded::<Message>(),
 		out_channel: async_channel::unbounded::<Message>(),
-		source_type: DriveType::Console,
+		source_type: DriverType::Console,
 	}
 }
 
-pub fn http_driver(ip: SocketAddr) -> Driver {
+pub fn tcp_driver(ip: SocketAddr) -> Driver {
 	Driver {
 		in_channel: async_channel::unbounded::<Message>(),
 		out_channel: async_channel::unbounded::<Message>(),
-		source_type: DriveType::Http(ip),
+		source_type: DriverType::Tcp(ip),
 	}
 }
 
 impl Driver {
+	pub fn new(driver_type: DriverType) -> Driver {
+		match driver_type {
+			DriverType::Console => console_driver(),
+			DriverType::Tcp(socket) => tcp_driver(socket),
+			#[cfg(test)]
+			DriverType::Buffer(buffer) => buffer_driver(buffer),
+		}
+	}
+
 	/// Retrieves a [`MessageChannel`] from which [`Message`] instances can be received from (i.e., `stdin`) and sent to (i.e., `stdout`).
 	pub fn get_message_channel(&self) -> MessageChannel {
 		let (sender, _) = self.out_channel.clone();
@@ -49,13 +57,13 @@ impl Driver {
 		(sender, receiver)
 	}
 
-	fn sender_task(sender: Sender<Message>,	input_source: DriveType) {
+	fn sender_task(sender: Sender<Message>,	input_source: DriverType) {
 		let match_func = || {
 			match input_source.clone() {
-				DriveType::Console => Message::read(&mut stdin().lock()),
-				DriveType::Http(ip) => Message::read(&mut BufReader::new(TcpStream::connect(ip).unwrap())),	// inefficient as it needs to reconnect for every message
+				DriverType::Console => Message::read(&mut stdin().lock()),
+				DriverType::Tcp(ip) => Message::read(&mut BufReader::new(TcpStream::connect(ip).unwrap())),	// inefficient as it needs to reconnect for every message
 				#[cfg(test)] 
-				DriveType::Buffer(mut buffer) => buffer.message_read(),
+				DriverType::Buffer(mut buffer) => buffer.message_read(),
 		}};
 
 		while let Ok(Some(message)) = match_func() {
@@ -65,13 +73,13 @@ impl Driver {
 		}
 	}
 
-	fn receiver_task(receiver: Receiver<Message>, output_source: DriveType) {
+	fn receiver_task(receiver: Receiver<Message>, output_source: DriverType) {
 		let message_send = |message: Message| {
 			match output_source.clone() {
-				DriveType::Console => message.write(&mut stdout()),
-				DriveType::Http(ip) => message.write(&mut TcpStream::connect(ip).unwrap()),	// inefficient as it needs to reconnect for every message
+				DriverType::Console => message.write(&mut stdout()),
+				DriverType::Tcp(ip) => message.write(&mut TcpStream::connect(ip).unwrap()),	// inefficient as it needs to reconnect for every message
 				#[cfg(test)] 
-				DriveType::Buffer(mut buffer) => buffer.message_write(message),
+				DriverType::Buffer(mut buffer) => buffer.message_write(message),
 		}};
 
 		while let Ok(message) = receiver.recv_blocking() {
@@ -122,11 +130,20 @@ impl Driver {
 /// This type is used for testing but due to needing of talking between threads it has a heavy implementation
 
 #[cfg(test)]
+use queues::*;
+#[cfg(test)]
+use std::{
+		io::{self},
+		sync::RwLock,
+		time::Duration
+	};
+
+#[cfg(test)]
 pub fn buffer_driver(buffer: BufferStruct) -> Driver {
 	Driver {
 		in_channel: async_channel::unbounded::<Message>(),
 		out_channel: async_channel::unbounded::<Message>(),
-		source_type: DriveType::Buffer(buffer),
+		source_type: DriverType::Buffer(buffer),
 	}
 }
 #[cfg(test)]
