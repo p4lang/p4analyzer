@@ -20,7 +20,7 @@ pub struct Driver {
 enum DriveType {
 	Console,
 	Http(SocketAddr),
-	#[cfg(debug_assertions)] 
+	#[cfg(test)] 
 	Buffer(BufferStruct),	// Only want to include this for testing
 }
 
@@ -54,7 +54,7 @@ impl Driver {
 			match input_source.clone() {
 				DriveType::Console => Message::read(&mut stdin().lock()),
 				DriveType::Http(ip) => Message::read(&mut BufReader::new(TcpStream::connect(ip).unwrap())),	// inefficient as it needs to reconnect for every message
-				#[cfg(debug_assertions)] 
+				#[cfg(test)] 
 				DriveType::Buffer(mut buffer) => buffer.message_read(),
 		}};
 
@@ -70,7 +70,7 @@ impl Driver {
 			match output_source.clone() {
 				DriveType::Console => message.write(&mut stdout()),
 				DriveType::Http(ip) => message.write(&mut TcpStream::connect(ip).unwrap()),	// inefficient as it needs to reconnect for every message
-				#[cfg(debug_assertions)] 
+				#[cfg(test)] 
 				DriveType::Buffer(mut buffer) => buffer.message_write(message),
 		}};
 
@@ -121,7 +121,7 @@ impl Driver {
 /// All code below is for DriveType::Buffer(BufferStruct)
 /// This type is used for testing but due to needing of talking between threads it has a heavy implementation
 
-#[cfg(debug_assertions)]
+#[cfg(test)]
 pub fn buffer_driver(buffer: BufferStruct) -> Driver {
 	Driver {
 		in_channel: async_channel::unbounded::<Message>(),
@@ -129,19 +129,19 @@ pub fn buffer_driver(buffer: BufferStruct) -> Driver {
 		source_type: DriveType::Buffer(buffer),
 	}
 }
-#[cfg(debug_assertions)]
+#[cfg(test)]
 struct BufferStructData {
 	input_queue: Queue<Message>,	// stores the messages to be send
 	output_buffer: Vec<u8>,			// stores the recieved messages(write! doesn't seperate each message)
 	output_count: usize,			// Tell you how many messages recieved
 	read_queue_count: usize,		// Tells the thread to send a message if var isn't 0
 }
-#[cfg(debug_assertions)]
+#[cfg(test)]
 #[derive(Clone)]
 pub struct BufferStruct {
 	data: Arc<RwLock<BufferStructData>>		// wraps the data in the necessary containers  
 }
-#[cfg(debug_assertions)]
+#[cfg(test)]
 impl BufferStruct{
 	pub fn new(inputs: Queue<Message>) -> BufferStruct {
 		BufferStruct {

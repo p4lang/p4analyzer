@@ -84,6 +84,7 @@ use analyzer_host::{json_rpc::message::{Message, Request, Notification, Response
 use cancellation::CancellationTokenSource;
 extern crate queues;
 use queues::*;
+use ::tester::tester::tester::default_initialize_message;
 
 	#[tokio::test]
 	async fn test_console_driver() {
@@ -129,13 +130,7 @@ use queues::*;
 	async fn test_buffer_driver() {
 		let mut queue: Queue<Message> = queue![];
 
-		let initialize_params = analyzer_abstractions::lsp_types::InitializeParams{ ..Default::default() };
-		let json = serde_json::json!(initialize_params);
-		let message = Message::Request(Request{
-			id: 0.into(),
-			method: String::from("initialize"),
-			params: json,
-		});
+		let message = default_initialize_message();
 		queue.add(message).unwrap();		
 		
 		let mut buffer = BufferStruct::new(queue);
