@@ -173,14 +173,14 @@ impl BufferStruct{
 	}
 
 	pub fn read_queue_blocking(&mut self) -> io::Result<Option<Message>> {
-		if self.data.read().unwrap().input_queue.size() == 0 {	// return if empty
-			return Ok(None);
-		}
-
 		loop {
 			match self.data.try_write() {
 				Ok(mut guard) =>	{
 					if guard.read_queue_count == 0 { drop(guard); std::thread::sleep(Duration::from_millis(1)); continue; }	// Not ready to read, so continue looping
+					if guard.input_queue.size() == 0 {	// return if empty
+						return Ok(None);
+					}
+					
 					let ret = Some(guard.input_queue.remove().unwrap());
 					guard.read_queue_count -= 1;
 					return Ok(ret);
@@ -190,7 +190,7 @@ impl BufferStruct{
 		}
 	}
 	
-	pub fn allow_read(&mut self) {
+	pub fn allow_read_blocking(&mut self) {
 		self.data.write().unwrap().read_queue_count += 1;
 	}
 
@@ -228,6 +228,16 @@ impl BufferStruct{
 				},
 				Err(_) => std::thread::sleep(Duration::from_millis(1)),
 			}
+		}
+	}
+
+	// Not advised as if driver attempt a read when emtpy, it will close
+	// Also requires lock to remain thread safe
+	// proper way is to create a Queue with items already in stack, and pass to BufferStruct::new()
+	fn add_to_queue_blocking(&mut self, mut add : Queue<Message>) {
+		let mut lock  = self.data.write().unwrap();
+		while let Ok(mess) = add.remove() {
+			lock.input_queue.add(mess).unwrap();
 		}
 	}
 }	

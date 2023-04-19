@@ -1,4 +1,5 @@
 // A class for loading, running and testing premade or custom P4 files
+#[cfg(debug_assertions)]
 pub mod tester {
 	use std::{
 		fs,
@@ -7,6 +8,7 @@ pub mod tester {
 	use analyzer_host::json_rpc::message::{Message, Request, Notification};
 	use lazy_static::lazy_static;
 	use serde_json::Value;
+	use queues::*;
 
 	lazy_static! {
 		// Is lazy_static because it's a runtime generated value
@@ -75,6 +77,24 @@ pub mod tester {
 			method: String::from("exit"),
 			params: Value::Null,
 		})
+	}
+
+	pub fn start_black_box() {
+		let mut queue: Queue<Message> = queue![];
+
+		queue.add(default_initialize_message()).unwrap();		
+		queue.add(default_initialized_message()).unwrap();			
+
+		/*let mut buffer = BufferStruct::new(queue);
+
+		let lsp = LspServerCommand::new(Server{stdio:false}, DriverType::Buffer(buffer.clone()));
+		let obj = RunnableCommand::<LspServerCommand>(lsp);
+		
+		let future = RunnableCommand::<LspServerCommand>::run(&obj);
+	*/}
+
+	pub fn stop_black_box() {
+
 	}
 }
 

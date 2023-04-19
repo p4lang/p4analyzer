@@ -10,6 +10,7 @@ jobs:
   build_and_test:
     name:  Push/Pull build_and_test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout sources
         uses: actions/checkout@v3
@@ -47,7 +48,11 @@ jobs:
           npm run package
           cargo build --all-targets
           cargo build --release
-      
+
+      - name: Testing
+        run: cargo test
+        timeout-minutes: 1 
+
       - name: Save Build
         id: cache-build
         uses: actions/cache/save@v3
@@ -59,9 +64,6 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ steps.cache-restore.outputs.cache-primary-key }}
-
-      - name: Testing
-        run: cargo test
 
       - name: Artifact vsix file 
         uses: actions/upload-artifact@v3
