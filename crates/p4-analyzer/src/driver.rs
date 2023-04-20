@@ -1,5 +1,7 @@
 use analyzer_host::{json_rpc::message::Message, MessageChannel};
 use async_channel::{Receiver, Sender};
+#[cfg(test)]
+use async_std::task::block_on;
 use cancellation::{CancellationToken, OperationCanceled};
 use std::{
 	io::{stdin, stdout, BufReader},
@@ -63,7 +65,7 @@ impl Driver {
 				DriverType::Console => Message::read(&mut stdin().lock()),
 				DriverType::Tcp(ip) => Message::read(&mut BufReader::new(TcpStream::connect(ip).unwrap())),	// inefficient as it needs to reconnect for every message
 				#[cfg(test)] 
-				DriverType::Buffer(mut buffer) => buffer.message_read(),
+				DriverType::Buffer(mut buffer) => block_on(buffer.message_read()),
 		}};
 
 		while let Ok(Some(message)) = match_func() {
@@ -79,7 +81,7 @@ impl Driver {
 				DriverType::Console => message.write(&mut stdout()),
 				DriverType::Tcp(ip) => message.write(&mut TcpStream::connect(ip).unwrap()),	// inefficient as it needs to reconnect for every message
 				#[cfg(test)] 
-				DriverType::Buffer(mut buffer) => buffer.message_write(message),
+				DriverType::Buffer(mut buffer) => block_on(buffer.message_write(message)),
 		}};
 
 		while let Ok(message) = receiver.recv_blocking() {
@@ -172,11 +174,11 @@ impl BufferStruct{
 		}
 	}
 
-	pub fn read_queue_blocking(&mut self) -> io::Result<Option<Message>> {
+	pub async fn read_queue(&mut self) -> io::Result<Option<Message>> {
 		loop {
 			match self.data.try_write() {
 				Ok(mut guard) =>	{
-					if guard.read_queue_count == 0 { drop(guard); std::thread::sleep(Duration::from_millis(1)); continue; }	// Not ready to read, so continue looping
+					if guard.read_queue_count == 0 { drop(guard); async_std::task::sleep(Duration::from_millis(1)).await; continue; }	// Not ready to read, so continue looping
 					if guard.input_queue.size() == 0 {	// return if empty
 						return Ok(None);
 					}
@@ -185,7 +187,7 @@ impl BufferStruct{
 					guard.read_queue_count -= 1;
 					return Ok(ret);
 				},
-				Err(_) => std::thread::sleep(Duration::from_millis(1)),	// couldn't get lock, so wait
+				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,	// couldn't get lock, so wait
 			}
 		}
 	}
@@ -194,39 +196,39 @@ impl BufferStruct{
 		self.data.write().unwrap().read_queue_count += 1;
 	}
 
-	pub fn get_output_buffer_blocking(&mut self) -> (String, usize) {
+	pub async fn get_output_buffer(&mut self) -> (String, usize) {
 		loop {
 			match self.data.try_write() {
 				Ok(mut guard) => {
-					if guard.output_count == 0 {drop(guard); std::thread::sleep(Duration::from_millis(1)); continue;}
+					if guard.output_count == 0 {drop(guard); async_std::task::sleep(Duration::from_millis(1)).await; continue;}
 					let ret = guard.output_buffer.clone();
 					guard.output_buffer.clear();
 					let count = guard.output_count;
 					guard.output_count = 0;
 					return (String::from_utf8(ret).unwrap(), count);
 				},
-				Err(_) => std::thread::sleep(Duration::from_millis(1)),
+				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,
 			}
 		}
 	}
 
-	fn message_read(&mut self) -> io::Result<Option<Message>> {
+	async fn message_read(&mut self) -> io::Result<Option<Message>> {
 		loop {
-			match self.read_queue_blocking() {
+			match self.read_queue().await {
 				Ok(guard) => return Ok(guard),
-				Err(_) => std::thread::sleep(Duration::from_millis(1)),
+				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,
 			}
 		}
 	} 
 
-	fn message_write(&mut self, message : Message) -> io::Result<()> {
+	async fn message_write(&mut self, message : Message) -> io::Result<()> {
 		loop {
 			match self.data.try_write() {
 				Ok(mut guard) => {	
 					guard.output_count += 1;
 					return message.write(&mut guard.output_buffer)
 				},
-				Err(_) => std::thread::sleep(Duration::from_millis(1)),
+				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,
 			}
 		}
 	}

@@ -36,19 +36,19 @@ mod main_tests {
 
 	async fn lsp_test_messages(buffer : &mut BufferStruct ) {
 		buffer.allow_read_blocking();
-		buffer.allow_read_blocking();
-		buffer.allow_read_blocking();
-		buffer.allow_read_blocking();
-		let resp0 = buffer.get_output_buffer_blocking();
-	
-		buffer.allow_read_blocking();
-		let resp1 = buffer.get_output_buffer_blocking();
-		
-		buffer.allow_read_blocking();
-		let resp2 = buffer.get_output_buffer_blocking();
+		let resp0 = buffer.get_output_buffer().await;
+		println!("{}", resp0.0);
+		assert_eq!(resp0.1, 1);
 
 		buffer.allow_read_blocking();
-		let resp3 = buffer.get_output_buffer_blocking();
+		//let resp1 = buffer.get_output_buffer().await;
+		
+		buffer.allow_read_blocking();
+		let resp2 = buffer.get_output_buffer().await;
+		println!("{}", resp2.0);
+		assert_eq!(resp2.1, 1);
+		buffer.allow_read_blocking();
+		//let resp3 = buffer.get_output_buffer().await;
 	}
 
 	#[tokio::test]
@@ -113,7 +113,7 @@ use ::tester::tester::tester::default_initialize_message;
     		error: None,
 		});
 		channels.0.send(message).await.unwrap();	// Mimic Anaylzer Host sending message to Driver
-		let (mess, count) = buffer.get_output_buffer_blocking();	// Mimic reading driver buffer
+		let (mess, count) = buffer.get_output_buffer().await;	// Mimic reading driver buffer
 		assert_eq!(mess, "Content-Length: 24\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0}");
 		assert_eq!(count, 1);
 

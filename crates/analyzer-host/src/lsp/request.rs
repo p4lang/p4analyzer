@@ -83,6 +83,7 @@ impl RequestManager {
 				}
 				Err(err) => {
 					error!("Unexpected error receiving response: {:?}", err);
+					break;
 				}
 			}
 		}
