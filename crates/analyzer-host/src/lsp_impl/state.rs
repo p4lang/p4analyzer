@@ -1,49 +1,44 @@
-use std::sync::{Arc, RwLock, LockResult, RwLockWriteGuard};
+use std::sync::Arc;
 
 use analyzer_abstractions::{
 	fs::AnyEnumerableFileSystem,
-	lsp_types::{TextDocumentIdentifier, TraceValue}, BoxFuture,
+	futures::future::join_all,
+	futures_extensions::async_extensions::AsyncPool,
+	lsp_types::{TraceValue, Url},
+	tracing::info,
 };
-use analyzer_core::base_abstractions::FileId;
+use analyzer_core::base_abstractions::{FileId, IncludedDependency};
+use async_channel::{Receiver, Sender};
 
 use crate::{
 	lsp::{
 		analyzer::{Analyzer, AnyAnalyzer},
 		progress::{Progress, ProgressManager},
 		request::RequestManager,
-		workspace::WorkspaceManager,
+		workspace::{File, IndexError, WorkspaceManager},
 		LspProtocolError,
 	},
 	tracing::TraceValueAccessor,
 };
 
-pub(crate) struct AnalyzerWrapper(std::cell::RefCell<analyzer_core::Analyzer>);
+pub(crate) struct AnalyzerWrapper {
+	inner: std::cell::RefCell<analyzer_core::Analyzer>,
+	background_channel: Sender<Arc<File>>,
+}
 
 unsafe impl Sync for AnalyzerWrapper {}
 unsafe impl Send for AnalyzerWrapper {}
 
+impl AnalyzerWrapper {
+	pub fn new(background_channel: Sender<Arc<File>>) -> Self { Self { inner: Default::default(), background_channel } }
+}
+
 impl Analyzer for AnalyzerWrapper {
-	fn unwrap(&self) -> std::cell::RefMut<analyzer_core::Analyzer> { self.0.borrow_mut() }
+	fn unwrap(&self) -> std::cell::RefMut<analyzer_core::Analyzer> { self.inner.borrow_mut() }
 
-	fn parse_text_document_contents<'a>(&'a self, document_identifier: TextDocumentIdentifier, contents: String) -> BoxFuture<'a, FileId> {
-		async fn parse_text_document_contents(s: &AnalyzerWrapper, document_identifier: TextDocumentIdentifier, contents: String) -> FileId {
-			let mut analyzer = s.unwrap();
-
-			let file_id = analyzer.file_id(document_identifier.uri.as_str());
-
-			analyzer.update(file_id, contents);
-			analyzer.preprocessed(file_id);
-
-			let includes = analyzer.include_dependencies(file_id);
-
-			if !includes.is_empty() {
-
-			}
-
-			file_id
-		}
-
-		Box::pin(parse_text_document_contents(self, document_identifier, contents))
+	fn background_analyze(&self, file: Arc<File>) {
+		// Enqueue the received file onto the background channel for processing.
+		self.background_channel.send_blocking(file.clone()).unwrap();
 	}
 }
 
@@ -67,6 +62,9 @@ pub(crate) struct State {
 
 	/// A [`WorkspaceManager`] that can be used to coordinate workspace and file operations.
 	workspace_manager: Option<WorkspaceManager>,
+
+	/// A [`FileChannel`] where sent files will be parsed in the background.
+	background_parse_channel: (Sender<Arc<File>>, Receiver<Arc<File>>),
 }
 
 impl State {
@@ -76,19 +74,19 @@ impl State {
 		request_manager: RequestManager,
 		file_system: Arc<AnyEnumerableFileSystem>,
 	) -> Self {
+		let background_parse_channel = async_channel::unbounded::<Arc<File>>();
+		let (sender, _) = background_parse_channel.clone();
+
 		Self {
 			trace_value,
-			analyzer: Arc::new(Box::new(AnalyzerWrapper(Default::default()))),
+			analyzer: Arc::new(Box::new(AnalyzerWrapper::new(sender))),
 			file_system,
 			request_manager,
 			progress_manager: None,
 			workspace_manager: None,
+			background_parse_channel,
 		}
 	}
-
-	// pub fn analyzer(&self) -> RwLockWriteGuard<'_, AnyAnalyzer> {
-	// 	self.analyzer.write().unwrap()
-	// }
 
 	/// If available, sets the supplied [`TraceValue`] on the [`TraceValueAccessor`] thereby modifying the trace
 	/// value used by the LSP tracing layer.
@@ -131,9 +129,17 @@ impl State {
 	/// [`'initialize'`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#initialize)
 	/// request from the LSP client.
 	pub(crate) fn set_workspaces(&mut self, workspace_manager: WorkspaceManager) {
-		// self.analyzer.write().unwrap().set_workspaces(workspace_manager.clone());
 		self.workspace_manager.replace(workspace_manager);
 
+		// With the WorkspaceManager now in place, we can now also start processing background analyze requests for files.
+		let (_, receiver) = self.background_parse_channel.clone();
+
+		AsyncPool::spawn_work(State::process_background_analyze_requests(
+			receiver,
+			self.file_system.clone(),
+			self.workspaces().clone(),
+			self.analyzer.clone(),
+		));
 	}
 
 	/// Sets the current [`ProgressManager`] for the current instance of the P4 Analyzer.
@@ -143,5 +149,65 @@ impl State {
 	/// request from the LSP client.
 	pub(crate) fn set_progress(&mut self, progress_manager: ProgressManager) {
 		self.progress_manager = Some(progress_manager);
+	}
+
+	async fn process_background_analyze_requests(
+		receiver: Receiver<Arc<File>>,
+		file_system: Arc<AnyEnumerableFileSystem>,
+		workspace_manager: WorkspaceManager,
+		analyzer: Arc<AnyAnalyzer>,
+	) {
+		fn analyze_source_text(analyzer: &AnyAnalyzer, uri: &str, text: String) -> (FileId, Vec<IncludedDependency>) {
+			let mut analyzer = analyzer.unwrap();
+			let file_id = analyzer.file_id(uri);
+
+			analyzer.update(file_id, text);
+			analyzer.preprocessed(file_id);
+
+			(file_id, analyzer.include_dependencies(file_id))
+		}
+
+		loop {
+			match receiver.recv().await {
+				Ok(file) => {
+					info!(file_uri = file.document_identifier.uri.as_str(), "Background parsing");
+
+					// If the file has been opened in the IDE during the time taken to start this background
+					// analyze, then simply ignore it. The IDE is now the source of truth for this file.
+					if file.is_open_in_ide() {
+						continue;
+					}
+
+					match file_system.file_contents(file.document_identifier.uri.clone()).await {
+						Some(text) => {
+							info!(file_uri = file.document_identifier.uri.as_str(), "Got text: {}", text);
+
+							// If the file has been opened in the IDE during the fetching of its contents, then simply
+							// throw it all away. The IDE is now the source of truth for this file. Otherwise, update its
+							// parsed unit.
+							if !file.is_open_in_ide() {
+								let (file_id, file_includes) =
+									analyze_source_text(&analyzer, file.document_identifier.uri.as_str(), text);
+
+								if !file_includes.is_empty() {
+									let file_include_resolvers = file_includes.iter().map(|include| async {
+										let file =
+											workspace_manager.get_file(Url::parse(&include.include_path).unwrap());
+
+										file.get_parsed_unit().await
+									});
+
+									join_all(file_include_resolvers).await;
+								}
+
+								file.set_parsed_unit(file_id, None);
+							}
+						}
+						None => file.set_index_error(IndexError::NotFound), // The file was not found
+					}
+				}
+				Err(_) => break,
+			}
+		}
 	}
 }

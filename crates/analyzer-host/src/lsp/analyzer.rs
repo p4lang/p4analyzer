@@ -1,15 +1,16 @@
-use std::cell::RefMut;
+use std::{cell::RefMut, sync::Arc};
 
-use analyzer_abstractions::{lsp_types::TextDocumentIdentifier, BoxFuture};
 use analyzer_core::base_abstractions::FileId;
+
+use super::workspace::File;
 
 pub(crate) type ParsedUnit = FileId;
 
 pub(crate) trait Analyzer {
 	fn unwrap(&self) -> RefMut<analyzer_core::Analyzer>;
 
-	fn parse_text_document_contents<'a>(&'a self, document_identifier: TextDocumentIdentifier, contents: String)
-		-> BoxFuture<'a, ParsedUnit>;
+	/// Enqueues a [`File`] for background analyzing.
+	fn background_analyze(&self, file: Arc<File>);
 }
 
 pub(crate) type AnyAnalyzer = Box<dyn Analyzer + Send + Sync + 'static>;
