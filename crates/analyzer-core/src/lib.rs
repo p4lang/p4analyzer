@@ -27,6 +27,7 @@ pub struct Jar(
 	Diagnostics,
 	Fs,
 	LexedFs,
+	IncludedDependencies,
 	// gotta include salsa functions as well
 	lex,
 	preprocess,
@@ -85,6 +86,11 @@ impl Analyzer {
 		} else {
 			vec![]
 		}
+	}
+
+	/// Retrieves the included dependencies for a given source [`FileId`].
+	pub fn include_dependencies(&self, id: FileId) -> Vec<IncludedDependency> {
+		preprocess::accumulated::<IncludedDependencies>(&self.db, self.fs.unwrap(), id)
 	}
 
 	pub fn delete(&mut self, uri: &str) -> Option<()> {
@@ -189,12 +195,16 @@ pub fn lex(db: &dyn crate::Db, file_id: FileId, buf: Buffer) -> LexedBuffer {
 #[salsa::tracked(return_ref)]
 pub fn preprocess(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec<(FileId, Token, Span)>> {
 	let mut pp = PreprocessorState::new(
-		|path: String| FileId::new(db, path),
-		|file_id| {
-			fs.fs(db).get(&file_id).map(|&buf| {
-				let lexed = lex(db, file_id, buf);
-				lexed.lexemes(db)
-			})
+		|path: &str| FileId::new(db, path.into()),
+		|file_id, path: &str| {
+			match fs.fs(db).get(&file_id) {
+				Some(buf) => Some(lex(db, file_id, *buf).lexemes(db)),
+				None => {
+					IncludedDependencies::push(db, IncludedDependency { file: file_id, include_path: path.into() });
+
+					None
+				}
+			}
 		},
 	);
 

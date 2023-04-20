@@ -71,7 +71,7 @@ impl WorkspaceManager {
 	/// files may be made in contexts in which no workspace folders were opened. If this is the case, then the file will
 	/// be retrieved relative to the 'catch-all' workspace which is not indexed.
 	///
-	/// The overall state of the file can be determined from its [`File::get_compiled_unit`] method which will
+	/// The overall state of the file can be determined from its [`File::get_parsed_unit`] method which will
 	/// inform its final state.
 	pub fn get_file(&self, uri: Url) -> Arc<File> {
 		fn is_descendant_path(base: &Url, target: &Url) -> bool {
@@ -335,7 +335,7 @@ async fn background_analyze(
 						// parsed unit.
 						if !file.is_open_in_ide() {
 							let parsed_unit =
-								analyzer.parse_text_document_contents(file.document_identifier.clone(), contents);
+								analyzer.parse_text_document_contents(file.document_identifier.clone(), contents).await;
 
 							file.set_parsed_unit(parsed_unit, None);
 						}

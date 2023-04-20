@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock, LockResult, RwLockWriteGuard};
 
 use analyzer_abstractions::{
 	fs::AnyEnumerableFileSystem,
-	lsp_types::{TextDocumentIdentifier, TraceValue},
+	lsp_types::{TextDocumentIdentifier, TraceValue}, BoxFuture,
 };
 use analyzer_core::base_abstractions::FileId;
 
@@ -25,14 +25,25 @@ unsafe impl Send for AnalyzerWrapper {}
 impl Analyzer for AnalyzerWrapper {
 	fn unwrap(&self) -> std::cell::RefMut<analyzer_core::Analyzer> { self.0.borrow_mut() }
 
-	fn parse_text_document_contents(&self, document_identifier: TextDocumentIdentifier, contents: String) -> FileId {
-		let mut analyzer = self.unwrap();
+	fn parse_text_document_contents<'a>(&'a self, document_identifier: TextDocumentIdentifier, contents: String) -> BoxFuture<'a, FileId> {
+		async fn parse_text_document_contents(s: &AnalyzerWrapper, document_identifier: TextDocumentIdentifier, contents: String) -> FileId {
+			let mut analyzer = s.unwrap();
 
-		let file_id = analyzer.file_id(document_identifier.uri.as_str());
+			let file_id = analyzer.file_id(document_identifier.uri.as_str());
 
-		analyzer.update(file_id, contents);
+			analyzer.update(file_id, contents);
+			analyzer.preprocessed(file_id);
 
-		file_id
+			let includes = analyzer.include_dependencies(file_id);
+
+			if !includes.is_empty() {
+
+			}
+
+			file_id
+		}
+
+		Box::pin(parse_text_document_contents(self, document_identifier, contents))
 	}
 }
 
@@ -67,13 +78,17 @@ impl State {
 	) -> Self {
 		Self {
 			trace_value,
-			analyzer: Arc::new(Box::new(AnalyzerWrapper(Default::default()))), // AnalyzerWrapper(Default::default()).into(),
+			analyzer: Arc::new(Box::new(AnalyzerWrapper(Default::default()))),
 			file_system,
 			request_manager,
 			progress_manager: None,
 			workspace_manager: None,
 		}
 	}
+
+	// pub fn analyzer(&self) -> RwLockWriteGuard<'_, AnyAnalyzer> {
+	// 	self.analyzer.write().unwrap()
+	// }
 
 	/// If available, sets the supplied [`TraceValue`] on the [`TraceValueAccessor`] thereby modifying the trace
 	/// value used by the LSP tracing layer.
@@ -116,7 +131,9 @@ impl State {
 	/// [`'initialize'`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#initialize)
 	/// request from the LSP client.
 	pub(crate) fn set_workspaces(&mut self, workspace_manager: WorkspaceManager) {
-		self.workspace_manager = Some(workspace_manager);
+		// self.analyzer.write().unwrap().set_workspaces(workspace_manager.clone());
+		self.workspace_manager.replace(workspace_manager);
+
 	}
 
 	/// Sets the current [`ProgressManager`] for the current instance of the P4 Analyzer.
