@@ -256,9 +256,18 @@ impl File {
 	}
 
 	pub async fn get_parsed_unit(&self) -> Result<ParsedUnit, IndexError> {
-		let state = self.state.try_read().unwrap();
+		async fn get_parsed_unit_completion_source(file: &File) -> FutureCompletionSource<Arc<RwLock<ParsedUnit>>, IndexError> {
+			let state = file.state.read().await;
 
-		match state.parsed_unit.future().await {
+			state.parsed_unit.clone()
+		}
+
+		// Get the parsed unit from the state _and then_ await on its Future. Keeping these two routines separate
+		// prevents the state from being read-locked while awaiting for the parsed unit to be set (potentially
+		// blocking anything else from taking a write-lock). We should always try to release locks early.
+		let parsed_unit = get_parsed_unit_completion_source(self).await;
+
+		match parsed_unit.future().await {
 			Ok(current_parsed_unit) => Ok(current_parsed_unit.read().unwrap().clone()),
 			Err(err) => Err(err),
 		}

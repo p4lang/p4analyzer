@@ -9,6 +9,7 @@ use analyzer_abstractions::{
 };
 use analyzer_core::base_abstractions::{FileId, IncludedDependency};
 use async_channel::{Receiver, Sender};
+use itertools::Itertools;
 
 use crate::{
 	lsp::{
@@ -170,41 +171,57 @@ impl State {
 		loop {
 			match receiver.recv().await {
 				Ok(file) => {
-					info!(file_uri = file.document_identifier.uri.as_str(), "Background parsing");
+					let file_system = file_system.clone();
+					let workspace_manager = workspace_manager.clone();
+					let analyzer = analyzer.clone();
 
-					// If the file has been opened in the IDE during the time taken to start this background
-					// analyze, then simply ignore it. The IDE is now the source of truth for this file.
-					if file.is_open_in_ide() {
-						continue;
-					}
+					AsyncPool::spawn_work(async move {
+						info!(file_uri = file.document_identifier.uri.as_str(), "Started background analyzing.");
 
-					match file_system.file_contents(file.document_identifier.uri.clone()).await {
-						Some(text) => {
-							info!(file_uri = file.document_identifier.uri.as_str(), "Got text: {}", text);
-
-							// If the file has been opened in the IDE during the fetching of its contents, then simply
-							// throw it all away. The IDE is now the source of truth for this file. Otherwise, update its
-							// parsed unit.
-							if !file.is_open_in_ide() {
-								let (file_id, file_includes) =
-									analyze_source_text(&analyzer, file.document_identifier.uri.as_str(), text);
-
-								if !file_includes.is_empty() {
-									let file_include_resolvers = file_includes.iter().map(|include| async {
-										let file =
-											workspace_manager.get_file(Url::parse(&include.include_path).unwrap());
-
-										file.get_parsed_unit().await
-									});
-
-									join_all(file_include_resolvers).await;
-								}
-
-								file.set_parsed_unit(file_id, None);
-							}
+						// If the file has been opened in the IDE during the time taken to start this background
+						// analyze, then simply ignore it. The IDE is now the source of truth for this file.
+						if file.is_open_in_ide() {
+							return;
 						}
-						None => file.set_index_error(IndexError::NotFound), // The file was not found
-					}
+
+						match file_system.file_contents(file.document_identifier.uri.clone()).await {
+							Some(text) => {
+								info!(file_uri = file.document_identifier.uri.as_str(), "Got text: {}", text);
+
+								// If the file has been opened in the IDE during the fetching of its contents, then simply
+								// throw it all away. The IDE is now the source of truth for this file. Otherwise, update its
+								// parsed unit.
+								if !file.is_open_in_ide() {
+									let (file_id, file_includes) =
+										analyze_source_text(&analyzer, file.document_identifier.uri.as_str(), text);
+
+									if !file_includes.is_empty() {
+										let file_include_resolvers = file_includes.iter().map(|include| async {
+											let file =
+												workspace_manager.get_file(Url::parse(&format!("file://{}", &include.include_path)).unwrap());
+
+											let _ = file.get_parsed_unit().await; // We don't care about the result.
+										});
+
+										join_all(file_include_resolvers).await;
+
+										info!(
+											file_uri = file.document_identifier.uri.as_str(),
+											file_includes =
+												file_includes.iter().map(|i| i.include_path.as_str()).join(", "),
+											"Resolved {} included dependencies.",
+											file_includes.len()
+										);
+									}
+
+									file.set_parsed_unit(file_id, None);
+								}
+							}
+							None => file.set_index_error(IndexError::NotFound), // The file was not found
+						}
+
+						info!(file_uri = file.document_identifier.uri.as_str(), "Finished background analyzing.");
+					});
 				}
 				Err(_) => break,
 			}
