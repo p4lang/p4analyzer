@@ -35,20 +35,19 @@ mod main_tests {
 	}
 
 	async fn lsp_test_messages(buffer : &mut BufferStruct ) {
-		buffer.allow_read_blocking();
+		buffer.allow_read_blocking();	// Initialize Message sent
 		let resp0 = buffer.get_output_buffer().await;
-		println!("{}", resp0.0);
+		assert!(resp0.0.contains("{\"jsonrpc\":\"2.0\",\"id\":0,\"result\""));
 		assert_eq!(resp0.1, 1);
 
-		buffer.allow_read_blocking();
-		//let resp1 = buffer.get_output_buffer().await;
+		buffer.allow_read_blocking();	// Initialized Message sent
 		
-		buffer.allow_read_blocking();
-		let resp2 = buffer.get_output_buffer().await;
-		println!("{}", resp2.0);
-		assert_eq!(resp2.1, 1);
-		buffer.allow_read_blocking();
-		//let resp3 = buffer.get_output_buffer().await;
+		buffer.allow_read_blocking();	// Shutdown Message sent
+		let resp1 = buffer.get_output_buffer().await;
+		assert_eq!(resp1.0, "Content-Length: 38\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":null}");
+		assert_eq!(resp1.1, 1);
+		
+		buffer.allow_read_blocking();	// Exit Message sent
 	}
 
 	#[tokio::test]
