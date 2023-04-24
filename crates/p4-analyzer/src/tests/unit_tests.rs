@@ -1,7 +1,7 @@
 mod main_tests {
 	use crate::{
 		cli::flags::{self, P4Analyzer, P4AnalyzerCmd, Server},
-		create_default_logging_layer, get_logfile_stem, driver::{BufferStruct, buffer_driver, DriverType}, commands::lsp_server::LspServerCommand, RunnableCommand,
+		create_default_logging_layer, get_logfile_stem, driver::{BufferStruct, DriverType}, commands::lsp_server::LspServerCommand, RunnableCommand,
 	};
 	use analyzer_host::{tracing::tracing_subscriber::Registry, json_rpc::message::Message};
 	extern crate queues;
@@ -13,7 +13,6 @@ mod main_tests {
 		let cmd = P4Analyzer {
 			logpath: None,
 			loglevel: None,
-			tcp: None,
 			subcommand: P4AnalyzerCmd::Server(flags::Server { stdio: false }),
 		};
 		let res = create_default_logging_layer::<Registry>(&cmd);
@@ -72,10 +71,9 @@ mod main_tests {
 }
 
 mod driver_tests {
-	use std::{net::{TcpStream, SocketAddr}, sync::{Arc, Mutex, RwLock}, io::{stdout, stdin, BufWriter,BufReader, self, Read, Write}};
 
-use crate::driver::{console_driver, tcp_driver, buffer_driver, BufferStruct};
-use analyzer_host::{json_rpc::message::{Message, Request, Notification, Response}, MessageChannel};
+use crate::driver::{console_driver, buffer_driver, BufferStruct};
+use analyzer_host::{json_rpc::message::{Message, Response}, MessageChannel};
 use cancellation::CancellationTokenSource;
 extern crate queues;
 use queues::*;
@@ -135,13 +133,6 @@ use ::tester::tester::tester::default_initialize_message;
 		let future = driver.start(token.token().clone());
 		let test_future = buffer_test(&mut buffer, driver.get_message_channel());
 		let _ = tokio::join!(future, test_future);
-	}
-
-	#[tokio::test]
-	async fn test_http_driver() {
-		/*let socket_addr = SocketAddr::from(([127, 0, 0, 1], 8080));
-		let stream = TcpStream::connect(socket_addr.clone()).unwrap();
-		let driver = http_driver(socket_addr.clone());*/
 	}
 }
 

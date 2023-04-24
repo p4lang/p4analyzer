@@ -13,11 +13,6 @@ xflags::xflags! {
 		/// Optional log level to apply when writing to the log file. Defaults to 'debug'.
 		optional --loglevel level: String
 
-		/// Optional argumant for changing input/output source to a tcp connection instead of stdio.
-		/// Example:
-		/// --tcp 192.168.0.10:8080
-		optional --tcp addr: String
-
 		/// Starts executing the LSP server (default command).
 		default cmd server {
 			/// Use the 'stdio' transport (default).
@@ -30,36 +25,29 @@ xflags::xflags! {
 // Run `env UPDATE_XFLAGS=1 cargo build` to regenerate.
 #[derive(Debug)]
 pub struct P4Analyzer {
-    pub logpath: Option<PathBuf>,
-    pub loglevel: Option<String>,
-    pub tcp: Option<String>,
-    pub subcommand: P4AnalyzerCmd,
+	pub logpath: Option<PathBuf>,
+	pub loglevel: Option<String>,
+	pub subcommand: P4AnalyzerCmd,
 }
 
 #[derive(Debug)]
 pub enum P4AnalyzerCmd {
-    Server(Server),
+	Server(Server),
 }
 
 #[derive(Debug)]
 pub struct Server {
-    pub stdio: bool,
+	pub stdio: bool,
 }
 
 impl P4Analyzer {
-    #[allow(dead_code)]
-    pub fn from_env_or_exit() -> Self {
-        Self::from_env_or_exit_()
-    }
+	#[allow(dead_code)]
+	pub fn from_env_or_exit() -> Self { Self::from_env_or_exit_() }
 
-    #[allow(dead_code)]
-    pub fn from_env() -> xflags::Result<Self> {
-        Self::from_env_()
-    }
+	#[allow(dead_code)]
+	pub fn from_env() -> xflags::Result<Self> { Self::from_env_() }
 
-    #[allow(dead_code)]
-    pub fn from_vec(args: Vec<std::ffi::OsString>) -> xflags::Result<Self> {
-        Self::from_vec_(args)
-    }
+	#[allow(dead_code)]
+	pub fn from_vec(args: Vec<std::ffi::OsString>) -> xflags::Result<Self> { Self::from_vec_(args) }
 }
 // generated end

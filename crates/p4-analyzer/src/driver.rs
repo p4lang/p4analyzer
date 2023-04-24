@@ -4,8 +4,8 @@ use async_channel::{Receiver, Sender};
 use async_std::task::block_on;
 use cancellation::{CancellationToken, OperationCanceled};
 use std::{
-	io::{stdin, stdout, BufReader},
-	sync::Arc, net::{TcpStream, SocketAddr},
+	io::{stdin, stdout},
+	sync::Arc,
 };
 use tokio::task;
 
@@ -20,7 +20,6 @@ pub struct Driver {
 #[derive(Clone)]
 pub enum DriverType {
 	Console,
-	Tcp(SocketAddr),
 	#[cfg(test)] 
 	Buffer(BufferStruct),	// Only want to include this for testing
 }
@@ -33,19 +32,10 @@ pub fn console_driver() -> Driver {
 	}
 }
 
-pub fn tcp_driver(ip: SocketAddr) -> Driver {
-	Driver {
-		in_channel: async_channel::unbounded::<Message>(),
-		out_channel: async_channel::unbounded::<Message>(),
-		source_type: DriverType::Tcp(ip),
-	}
-}
-
 impl Driver {
 	pub fn new(driver_type: DriverType) -> Driver {
 		match driver_type {
 			DriverType::Console => console_driver(),
-			DriverType::Tcp(socket) => tcp_driver(socket),
 			#[cfg(test)]
 			DriverType::Buffer(buffer) => buffer_driver(buffer),
 		}
@@ -63,7 +53,6 @@ impl Driver {
 		let match_func = || {
 			match input_source.clone() {
 				DriverType::Console => Message::read(&mut stdin().lock()),
-				DriverType::Tcp(ip) => Message::read(&mut BufReader::new(TcpStream::connect(ip).unwrap())),	// inefficient as it needs to reconnect for every message
 				#[cfg(test)] 
 				DriverType::Buffer(mut buffer) => block_on(buffer.message_read()),
 		}};
@@ -79,7 +68,6 @@ impl Driver {
 		let message_send = |message: Message| {
 			match output_source.clone() {
 				DriverType::Console => message.write(&mut stdout()),
-				DriverType::Tcp(ip) => message.write(&mut TcpStream::connect(ip).unwrap()),	// inefficient as it needs to reconnect for every message
 				#[cfg(test)] 
 				DriverType::Buffer(mut buffer) => block_on(buffer.message_write(message)),
 		}};

@@ -35,14 +35,8 @@ pub async fn main() {
 			let default_logging_layer = create_default_logging_layer::<Registry>(&cmd);
 			let mut layers = if let Some((layer, _)) = default_logging_layer { vec![layer] } else { vec![] };
 
-			let driver_type = if let Some(addr) = cmd.tcp {		// handles if `--tcp <ip:socket>` argument passed in
-				driver::DriverType::Tcp(addr.parse().expect("Unable to parse socket address"))
-			} else {
-				driver::DriverType::Console
-			};
-
 			let cmd = match cmd.subcommand {
-				P4AnalyzerCmd::Server(config) => RunnableCommand(LspServerCommand::new(config, driver_type)),
+				P4AnalyzerCmd::Server(config) => RunnableCommand(LspServerCommand::new(config, driver::DriverType::Console)),
 				_ => unreachable!(),
 			};
 
