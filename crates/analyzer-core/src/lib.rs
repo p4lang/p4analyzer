@@ -11,10 +11,20 @@ use base_abstractions::*;
 use lexer::*;
 use preprocessor::*;
 
-#[derive(Default)]
+// #[derive(Default)]
 #[salsa::db(crate::Jar)]
 pub struct Database {
 	storage: salsa::Storage<Self>,
+	resolver_fn: Box<dyn Fn(&str, &str) -> Result<String, String> + 'static>
+}
+
+impl Database {
+	pub fn new(resolver_fn: impl Fn(&str, &str) -> Result<String, String> + 'static) -> Self {
+		Self {
+			storage: Default::default(),
+			resolver_fn: Box::new(resolver_fn),
+		}
+	}
 }
 
 impl salsa::Database for Database {}
@@ -33,11 +43,17 @@ pub struct Jar(
 	preprocess,
 );
 
-pub trait Db: salsa::DbWithJar<Jar> {}
+pub trait Db: salsa::DbWithJar<Jar> {
+	fn resolve_path(&self, base: &str, path: &str) -> String;
+}
 
-impl<DB> Db for DB where DB: ?Sized + salsa::DbWithJar<Jar> {}
+// impl<DB> Db for DB where DB: ?Sized + salsa::DbWithJar<Jar> {
+impl Db for Database {
+	fn resolve_path(&self, base: &str, path: &str) -> String {
+		(self.resolver_fn)(base, path).expect("failed to resolve a path")
+	}
+}
 
-#[derive(Default)]
 pub struct Analyzer {
 	db: Database,
 	fs: Option<Fs>,
@@ -54,6 +70,13 @@ pub struct Fs {
 }
 
 impl Analyzer {
+	pub fn new(resolver_fn: impl Fn(&str, &str) -> Result<String, String> + 'static) -> Self {
+		Self {
+			db: Database::new(resolver_fn),
+			fs: Default::default(),
+		}
+	}
+
 	fn filesystem(&self) -> HashMap<FileId, Buffer> { self.fs.map(|fs| fs.fs(&self.db)).unwrap_or_default() }
 
 	pub fn update(&mut self, file_id: FileId, input: String) {
@@ -193,10 +216,19 @@ pub fn lex(db: &dyn crate::Db, file_id: FileId, buf: Buffer) -> LexedBuffer {
 }
 
 #[salsa::tracked(return_ref)]
-pub fn preprocess(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec<(FileId, Token, Span)>> {
+pub fn preprocess<'a>(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec<(FileId, Token, Span)>> {
 	let mut pp = PreprocessorState::new(
-		|path: &str| FileId::new(db, path.into()),
-		|file_id, path: &str| {
+		|path: &str| {
+			// Return a `FileId` with an absolute path resolved relative to the file being preprocessed. If the path
+			// is already absolute then `resolve_path` will return it as is.
+			let base_url = file_id.path(db);
+			let target_path = db.resolve_path(&base_url, path);
+
+			FileId::new(db, target_path)
+		},
+		|file_id| {
+			let path = file_id.path(db); // Get the path from the `FileId` and ensure its stored for the dependency.
+
 			match fs.fs(db).get(&file_id) {
 				Some(buf) => Some(lex(db, file_id, *buf).lexemes(db)),
 				None => {

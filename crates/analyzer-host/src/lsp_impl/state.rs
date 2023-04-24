@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+	cell::{RefCell, RefMut},
+	sync::Arc,
+};
 
 use analyzer_abstractions::{
 	fs::AnyEnumerableFileSystem,
@@ -31,15 +34,31 @@ unsafe impl Sync for AnalyzerWrapper {}
 unsafe impl Send for AnalyzerWrapper {}
 
 impl AnalyzerWrapper {
-	pub fn new(background_channel: Sender<Arc<File>>) -> Self { Self { inner: Default::default(), background_channel } }
+	pub fn new(background_channel: Sender<Arc<File>>) -> Self {
+		Self { inner: RefCell::new(analyzer_core::Analyzer::new(resolve_path)), background_channel }
+	}
 }
 
 impl Analyzer for AnalyzerWrapper {
-	fn unwrap(&self) -> std::cell::RefMut<analyzer_core::Analyzer> { self.inner.borrow_mut() }
+	fn unwrap(&self) -> RefMut<analyzer_core::Analyzer> { self.inner.borrow_mut() }
 
 	fn background_analyze(&self, file: Arc<File>) {
 		// Enqueue the received file onto the background channel for processing.
 		self.background_channel.send_blocking(file.clone()).unwrap();
+	}
+}
+
+/// Resolves a given path relative to an absolute base URL.
+fn resolve_path(absolute_base_url: &str, path: &str) -> Result<String, String> {
+	if let Ok(absolute_target_url) = Url::parse(path) {
+		return Ok(absolute_target_url.as_str().into());
+	}
+
+	let base_url = Url::parse(absolute_base_url).unwrap();
+
+	match base_url.join(path) {
+		Ok(target_url) => Ok(target_url.as_str().into()),
+		Err(err) => Err(format!("Could not find path '{}' (relative to '{}'). {}", path, absolute_base_url, err)),
 	}
 }
 
@@ -195,26 +214,33 @@ impl State {
 									let (file_id, file_includes) =
 										analyze_source_text(&analyzer, file.document_identifier.uri.as_str(), text);
 
-									if !file_includes.is_empty() {
-										let file_include_resolvers = file_includes.iter().map(|include| async {
-											let file =
-												workspace_manager.get_file(Url::parse(&format!("file://{}", &include.include_path)).unwrap());
+									file.set_parsed_unit(file_id, None);
 
-											let _ = file.get_parsed_unit().await; // We don't care about the result.
-										});
-
-										join_all(file_include_resolvers).await;
-
-										info!(
-											file_uri = file.document_identifier.uri.as_str(),
-											file_includes =
-												file_includes.iter().map(|i| i.include_path.as_str()).join(", "),
-											"Resolved {} included dependencies.",
-											file_includes.len()
-										);
+									// If the file contains dependencies, then ensure they are also resolved. To do this, we'll get
+									// the file from the Workspace Manager. If the file has not yet been resolved then it will also
+									// come through this background process.
+									if file_includes.is_empty() {
+										return;
 									}
 
-									file.set_parsed_unit(file_id, None);
+									let file_include_resolvers = file_includes.iter().map(|include| async {
+										let file = workspace_manager.get_file(
+											Url::parse(&format!("file://{}", &include.include_path)).unwrap(),
+										);
+
+										// We don't care about the result only that it recurses through this process.
+										let _ = file.get_parsed_unit().await;
+									});
+
+									join_all(file_include_resolvers).await;
+
+									info!(
+										file_uri = file.document_identifier.uri.as_str(),
+										file_includes =
+											file_includes.iter().map(|i| i.include_path.as_str()).join(", "),
+										"Resolved {} included dependencies.",
+										file_includes.len()
+									);
 								}
 							}
 							None => file.set_index_error(IndexError::NotFound), // The file was not found

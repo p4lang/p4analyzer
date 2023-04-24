@@ -248,7 +248,7 @@ pub struct PreprocessorState<'a> {
 	to_id: Box<dyn FnMut(&str) -> FileId + 'a>,
 }
 
-type LexFn<'a> = dyn FnMut(FileId, &str) -> Option<&'a Vec<(Token, Span)>> + 'a;
+type LexFn<'a> = dyn FnMut(FileId) -> Option<&'a Vec<(Token, Span)>> + 'a;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum VertexState {
@@ -257,7 +257,7 @@ enum VertexState {
 }
 
 impl<'a> PreprocessorState<'a> {
-	pub fn new<Idlyzer: FnMut(&str) -> FileId + 'a, FLex: FnMut(FileId, &str) -> Option<&'a Vec<(Token, Span)>> + 'a>(
+	pub fn new<Idlyzer: FnMut(&str) -> FileId + 'a, FLex: FnMut(FileId) -> Option<&'a Vec<(Token, Span)>> + 'a>(
 		to_id: Idlyzer,
 		lex: FLex,
 	) -> PreprocessorState<'a> {
@@ -294,7 +294,7 @@ impl<'a> PreprocessorState<'a> {
 						let file_id = (self.to_id)(&path); // TODO: path resolution here or in to_id
 						if self.state.get(&file_id).is_some() {
 							self.error(id, span, recursive_err);
-						} else if let Some(tokens) = (self.lex)(file_id, &path) as Option<&Vec<(Token, Span)>> {
+						} else if let Some(tokens) = (self.lex)(file_id) as Option<&Vec<(Token, Span)>> {
 							self.state.insert(file_id, VertexState::Open);
 							input.reserve(input.len() + tokens.len());
 							tokens
@@ -568,8 +568,8 @@ mod test {
 	}
 
 	fn preprocess(s: &str, errors: &mut Vec<String>) -> Vec<Token> {
-		let db = Database::default();
-		let mut pp = PreprocessorState::new(|path| FileId::new(&db, path.into()), |_, _| unreachable!());
+		let db = Database::new(|base, _| Ok(base.into()));
+		let mut pp = PreprocessorState::new(|path| FileId::new(&db, path.into()), |_| unreachable!());
 
 		let test_id = FileId::new(&db, "<test-code>.p4".into());
 		let input = Buffer::new(&db, s.into());
@@ -651,7 +651,7 @@ mod test {
 
 	#[test]
 	fn complex_conditions() {
-		let pp = PreprocessorState::new(|_| unimplemented!(), |_, _| unimplemented!());
+		let pp = PreprocessorState::new(|_| unimplemented!(), |_| unimplemented!());
 
 		let expr = expression("1 - ( 2 ) + 1").unwrap().1;
 		assert_eq!(pp.interpret_pp_expr(&expr), Some(0));
