@@ -2,6 +2,7 @@ pub mod base_abstractions;
 pub mod lexer;
 pub mod parser;
 pub mod preprocessor;
+pub mod lsp_position_struct;
 
 use std::collections::HashMap;
 
