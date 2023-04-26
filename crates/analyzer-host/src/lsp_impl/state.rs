@@ -177,14 +177,23 @@ impl State {
 		workspace_manager: WorkspaceManager,
 		analyzer: Arc<AnyAnalyzer>,
 	) {
-		fn analyze_source_text(analyzer: &AnyAnalyzer, uri: &str, text: String) -> (FileId, Vec<IncludedDependency>) {
+		fn analyze_source_text(analyzer: &AnyAnalyzer, uri: &str, text: String) -> (FileId, Vec<Url>) {
 			let mut analyzer = analyzer.unwrap();
 			let file_id = analyzer.file_id(uri);
 
 			analyzer.update(file_id, text);
 			analyzer.preprocessed(file_id);
 
-			(file_id, analyzer.include_dependencies(file_id))
+			let includes = analyzer.include_dependencies(file_id);
+
+			(
+				file_id,
+				includes
+					.iter()
+					.filter(|include| !include.is_resolved)
+					.map(|include| Url::parse(&analyzer.path(include.file_id)).unwrap())
+					.collect(),
+			)
 		}
 
 		loop {
@@ -211,34 +220,34 @@ impl State {
 								// throw it all away. The IDE is now the source of truth for this file. Otherwise, update its
 								// parsed unit.
 								if !file.is_open_in_ide() {
-									let (file_id, file_includes) =
+									let (file_id, unresolved_file_include_urls) =
 										analyze_source_text(&analyzer, file.document_identifier.uri.as_str(), text);
 
 									file.set_parsed_unit(file_id, None);
 
-									// If the file contains dependencies, then ensure that they are also resolved. To do this,
-									// we'll get the file from the Workspace Manager. If the file has not yet been resolved then
-									// it will also come through this background process.
-									if file_includes.is_empty() {
+									// If the file contains unresolved dependencies, then try resolving them. To do this,
+									// we simply need to get the file from the Workspace Manager which will schedule the
+									// file for the same background processing as the current file.
+									if unresolved_file_include_urls.is_empty() {
 										return;
 									}
 
-									let file_include_resolvers = file_includes.iter().map(|include| async {
-										let file =
-											workspace_manager.get_file(Url::parse(&include.include_path).unwrap());
-
-										// We don't care about the result only that it recurses through this process.
-										let _ = file.get_parsed_unit().await;
-									});
+									let file_include_resolvers =
+										unresolved_file_include_urls.iter().map(|file_include_url| async {
+											let _ = workspace_manager
+												.get_file(file_include_url.clone())
+												.get_parsed_unit()
+												.await;
+										});
 
 									join_all(file_include_resolvers).await;
 
 									info!(
 										file_uri = file.document_identifier.uri.as_str(),
-										file_includes =
-											file_includes.iter().map(|i| i.include_path.as_str()).join(", "),
+										file_include_uri =
+											unresolved_file_include_urls.iter().map(|url| url).join(", "),
 										"Resolved {} included dependencies.",
-										file_includes.len()
+										unresolved_file_include_urls.len()
 									);
 								}
 							}

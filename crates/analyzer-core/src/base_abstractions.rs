@@ -38,9 +38,9 @@ pub struct Diagnostic {
 /// Represents an included dependency.
 #[derive(Clone, PartialEq, Eq)]
 pub struct IncludedDependency {
-	/// The [`FileId`] of the included target.
-	pub file: FileId,
+	/// The [`FileId`] identifying the dependency.
+	pub file_id: FileId,
 
-	/// The path of the included target.
-	pub include_path: String,
+	/// A flag indicating the resolved state of the dependency.
+	pub is_resolved: bool,
 }

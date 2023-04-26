@@ -15,15 +15,12 @@ use preprocessor::*;
 #[salsa::db(crate::Jar)]
 pub struct Database {
 	storage: salsa::Storage<Self>,
-	resolver_fn: Box<dyn Fn(&str, &str) -> Result<String, String> + 'static>
+	resolver_fn: Box<dyn Fn(&str, &str) -> Result<String, String> + 'static>,
 }
 
 impl Database {
 	pub fn new(resolver_fn: impl Fn(&str, &str) -> Result<String, String> + 'static) -> Self {
-		Self {
-			storage: Default::default(),
-			resolver_fn: Box::new(resolver_fn),
-		}
+		Self { storage: Default::default(), resolver_fn: Box::new(resolver_fn) }
 	}
 }
 
@@ -71,10 +68,7 @@ pub struct Fs {
 
 impl Analyzer {
 	pub fn new(resolver_fn: impl Fn(&str, &str) -> Result<String, String> + 'static) -> Self {
-		Self {
-			db: Database::new(resolver_fn),
-			fs: Default::default(),
-		}
+		Self { db: Database::new(resolver_fn), fs: Default::default() }
 	}
 
 	fn filesystem(&self) -> HashMap<FileId, Buffer> { self.fs.map(|fs| fs.fs(&self.db)).unwrap_or_default() }
@@ -113,7 +107,9 @@ impl Analyzer {
 
 	/// Retrieves the included dependencies for a given source [`FileId`].
 	pub fn include_dependencies(&self, id: FileId) -> Vec<IncludedDependency> {
-		self.fs.map(|fs| preprocess::accumulated::<IncludedDependencies>(&self.db, fs, id)).unwrap_or_default()
+		self.fs
+			.map(|fs| preprocess::accumulated::<IncludedDependencies>(&self.db, fs, id))
+			.unwrap_or_default()
 	}
 
 	pub fn delete(&mut self, uri: &str) -> Option<()> {
@@ -227,16 +223,14 @@ pub fn preprocess<'a>(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec
 			FileId::new(db, target_path)
 		},
 		|file_id| {
-			let path = file_id.path(db); // Get the path from the `FileId` and ensure its stored for the dependency.
+			let lexemes = fs.fs(db).get(&file_id).map(|&buf| {
+				let lexed = lex(db, file_id, buf);
+				lexed.lexemes(db)
+			});
 
-			match fs.fs(db).get(&file_id) {
-				Some(buf) => Some(lex(db, file_id, *buf).lexemes(db)),
-				None => {
-					IncludedDependencies::push(db, IncludedDependency { file: file_id, include_path: path.into() });
+			IncludedDependencies::push(db, IncludedDependency { file_id, is_resolved: lexemes.is_some() });
 
-					None
-				}
-			}
+			lexemes
 		},
 	);
 
