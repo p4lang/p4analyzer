@@ -5,7 +5,7 @@ use async_std::task::block_on;
 use cancellation::{CancellationToken, OperationCanceled};
 use std::{
 	io::{stdin, stdout},
-	sync::Arc,
+	sync::{Arc},
 };
 use tokio::task;
 
@@ -122,7 +122,7 @@ use queues::*;
 #[cfg(test)]
 use std::{
 	io::{self},
-	sync::RwLock,
+	sync::{RwLock, Mutex},
 	time::Duration,
 };
 
@@ -138,12 +138,12 @@ pub fn buffer_driver(buffer: BufferStruct) -> Driver {
 struct BufferStructData {
 	input_queue: Queue<Message>, // stores the messages to be sent
 	output_buffer: Vec<Vec<u8>>, // stores the received messages
-	read_queue_count: usize,     // tells the thread to send a message if field isn't 0 then decrements by 1
 }
 #[cfg(test)]
 #[derive(Clone)]
 pub struct BufferStruct {
 	data: Arc<RwLock<BufferStructData>>, // wraps the data in the necessary containers
+	read_queue_count: Arc<Mutex<usize>>, // reading the counter is a major blocking point for read_queue() so given it's own Lock 
 }
 #[cfg(test)]
 impl BufferStruct {
@@ -152,27 +152,32 @@ impl BufferStruct {
 			data: Arc::new(RwLock::new(BufferStructData {
 				input_queue: inputs,
 				output_buffer: Vec::new(),
-				read_queue_count: 0,
 			})),
+			read_queue_count: Arc::new(Mutex::new(0)),
 		}
 	}
 
 	pub async fn read_queue(&mut self) -> io::Result<Option<Message>> {
 		loop {
-			match self.data.try_write() {
+			match self.read_queue_count.try_lock() {
 				Ok(mut guard) => {
-					if guard.read_queue_count == 0 {
+					if *guard == 0 {
 						drop(guard);
 						async_std::task::sleep(Duration::from_millis(1)).await;
 						continue;
 					} // Not ready to read, so continue looping
-					if guard.input_queue.size() == 0 {
+					
+					*guard -= 1;	// confirm we're doing a Read
+					drop(guard);	// drop lock to avoid dead locks
+					// now wait for data lock because we're been give the all clear
+					let mut lock = self.data.write().unwrap();
+
+					if lock.input_queue.size() == 0 {
 						// return if empty
 						return Ok(None);
 					}
 
-					let ret = Some(guard.input_queue.remove().unwrap());
-					guard.read_queue_count -= 1;
+					let ret = Some(lock.input_queue.remove().unwrap());
 					return Ok(ret);
 				}
 				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await, // couldn't get lock, so wait
@@ -180,7 +185,7 @@ impl BufferStruct {
 		}
 	}
 
-	pub fn allow_read_blocking(&mut self) { self.data.write().unwrap().read_queue_count += 1; }
+	pub fn allow_read_blocking(&mut self) { *self.read_queue_count.lock().unwrap() += 1; }
 
 	pub async fn get_output_buffer(&mut self) -> Vec<String> {
 		loop {
