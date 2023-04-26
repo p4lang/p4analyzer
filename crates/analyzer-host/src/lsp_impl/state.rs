@@ -216,17 +216,16 @@ impl State {
 
 									file.set_parsed_unit(file_id, None);
 
-									// If the file contains dependencies, then ensure they are also resolved. To do this, we'll get
-									// the file from the Workspace Manager. If the file has not yet been resolved then it will also
-									// come through this background process.
+									// If the file contains dependencies, then ensure that they are also resolved. To do this,
+									// we'll get the file from the Workspace Manager. If the file has not yet been resolved then
+									// it will also come through this background process.
 									if file_includes.is_empty() {
 										return;
 									}
 
 									let file_include_resolvers = file_includes.iter().map(|include| async {
-										let file = workspace_manager.get_file(
-											Url::parse(&format!("file://{}", &include.include_path)).unwrap(),
-										);
+										let file =
+											workspace_manager.get_file(Url::parse(&include.include_path).unwrap());
 
 										// We don't care about the result only that it recurses through this process.
 										let _ = file.get_parsed_unit().await;

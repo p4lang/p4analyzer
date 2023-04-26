@@ -113,7 +113,7 @@ impl Analyzer {
 
 	/// Retrieves the included dependencies for a given source [`FileId`].
 	pub fn include_dependencies(&self, id: FileId) -> Vec<IncludedDependency> {
-		preprocess::accumulated::<IncludedDependencies>(&self.db, self.fs.unwrap(), id)
+		self.fs.map(|fs| preprocess::accumulated::<IncludedDependencies>(&self.db, fs, id)).unwrap_or_default()
 	}
 
 	pub fn delete(&mut self, uri: &str) -> Option<()> {
