@@ -1,4 +1,8 @@
-use crate::{cli::flags::Server, driver::{Driver, console_driver, DriverType}, Command, CommandInvocationError};
+use crate::{
+	cli::flags::Server,
+	driver::{Driver, DriverType},
+	Command, CommandInvocationError,
+};
 use analyzer_abstractions::{async_trait::async_trait, tracing::Subscriber};
 use analyzer_host::{
 	tracing::{

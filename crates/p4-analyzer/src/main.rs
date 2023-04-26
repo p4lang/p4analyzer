@@ -2,9 +2,7 @@ mod cli;
 mod commands;
 mod driver;
 
-use analyzer_abstractions::{
-	tracing::{subscriber, Level, Subscriber},
-};
+use analyzer_abstractions::tracing::{subscriber, Level, Subscriber};
 use analyzer_host::tracing::tracing_subscriber::{
 	fmt::{layer, writer::MakeWriterExt},
 	prelude::__tracing_subscriber_SubscriberExt,
@@ -36,7 +34,9 @@ pub async fn main() {
 			let mut layers = if let Some((layer, _)) = default_logging_layer { vec![layer] } else { vec![] };
 
 			let cmd = match cmd.subcommand {
-				P4AnalyzerCmd::Server(config) => RunnableCommand(LspServerCommand::new(config, driver::DriverType::Console)),
+				P4AnalyzerCmd::Server(config) => {
+					RunnableCommand(LspServerCommand::new(config, driver::DriverType::Console))
+				}
 				_ => unreachable!(),
 			};
 

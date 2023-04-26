@@ -1,14 +1,11 @@
 // A class for loading, running and testing premade or custom P4 files
 #[cfg(debug_assertions)]
 pub mod tester {
-	use std::{
-		fs,
-		path::PathBuf,
-	};
-	use analyzer_host::json_rpc::message::{Message, Request, Notification};
+	use analyzer_host::json_rpc::message::{Message, Notification, Request};
 	use lazy_static::lazy_static;
-	use serde_json::Value;
 	use queues::*;
+	use serde_json::Value;
+	use std::{fs, path::PathBuf};
 
 	lazy_static! {
 		// Is lazy_static because it's a runtime generated value
@@ -46,56 +43,41 @@ pub mod tester {
 	}
 
 	pub fn default_initialize_message() -> Message {
-		let initialize_params = analyzer_abstractions::lsp_types::InitializeParams{ ..Default::default() };
+		let initialize_params = analyzer_abstractions::lsp_types::InitializeParams { ..Default::default() };
 		let json = serde_json::json!(initialize_params);
-		Message::Request(Request{
-			id: 0.into(),
-			method: String::from("initialize"),
-			params: json,
-		})
+		Message::Request(Request { id: 0.into(), method: String::from("initialize"), params: json })
 	}
 
 	pub fn default_initialized_message() -> Message {
-		let initialized_params = analyzer_abstractions::lsp_types::InitializedParams{};
+		let initialized_params = analyzer_abstractions::lsp_types::InitializedParams {};
 		let json = serde_json::json!(initialized_params);
-		Message::Notification(Notification{
-			method: String::from("initialized"),
-			params: json,
-		})
+		Message::Notification(Notification { method: String::from("initialized"), params: json })
 	}
 
 	pub fn default_shutdown_message() -> Message {
-		Message::Request(Request{
-			id: 0.into(),
-			method: String::from("shutdown"),
-			params: Value::Null,
-		})
+		Message::Request(Request { id: 0.into(), method: String::from("shutdown"), params: Value::Null })
 	}
 
 	pub fn default_exit_message() -> Message {
-		Message::Notification(Notification{
-			method: String::from("exit"),
-			params: Value::Null,
-		})
+		Message::Notification(Notification { method: String::from("exit"), params: Value::Null })
 	}
 
 	pub fn start_black_box() {
 		let mut queue: Queue<Message> = queue![];
 
-		queue.add(default_initialize_message()).unwrap();		
-		queue.add(default_initialized_message()).unwrap();			
+		queue.add(default_initialize_message()).unwrap();
+		queue.add(default_initialized_message()).unwrap();
 
 		/*let mut buffer = BufferStruct::new(queue);
 
-		let lsp = LspServerCommand::new(Server{stdio:false}, DriverType::Buffer(buffer.clone()));
-		let obj = RunnableCommand::<LspServerCommand>(lsp);
-		
-		let future = RunnableCommand::<LspServerCommand>::run(&obj);
-	*/}
+			let lsp = LspServerCommand::new(Server{stdio:false}, DriverType::Buffer(buffer.clone()));
+			let obj = RunnableCommand::<LspServerCommand>(lsp);
 
-	pub fn stop_black_box() {
-
+			let future = RunnableCommand::<LspServerCommand>::run(&obj);
+		*/
 	}
+
+	pub fn stop_black_box() {}
 }
 
 #[cfg(test)]
@@ -113,8 +95,12 @@ mod tests {
 		assert!(tester::load_file_str("example0.p4").is_some());
 		// check content
 		#[cfg(target_os = "windows")]
-		{	assert_eq!(content.unwrap(), "#include <core.p4>\r\n");	}	// Testing both CRLF and LF as Wasm & LSP is platform specific in EOL
+		{
+			assert_eq!(content.unwrap(), "#include <core.p4>\r\n");
+		} // Testing both CRLF and LF as Wasm & LSP is platform specific in EOL
 		#[cfg(not(target_os = "windows"))]
-		{	assert_eq!(content.unwrap(), "#include <core.p4>\n");	}
+		{
+			assert_eq!(content.unwrap(), "#include <core.p4>\n");
+		}
 	}
 }
