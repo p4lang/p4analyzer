@@ -39,15 +39,15 @@ mod main_tests {
 	async fn lsp_test_messages(buffer: &mut BufferStruct) {
 		buffer.allow_read_blocking(); // Initialize Message sent
 		let resp0 = buffer.get_output_buffer().await;
-		assert!(resp0.0.contains("{\"jsonrpc\":\"2.0\",\"id\":0,\"result\""));
-		assert_eq!(resp0.1, 1);
+		assert_eq!(resp0.len(), 1);
+		assert!(resp0[0].contains("{\"jsonrpc\":\"2.0\",\"id\":0,\"result\""));
 
 		buffer.allow_read_blocking(); // Initialized Message sent
 
 		buffer.allow_read_blocking(); // Shutdown Message sent
 		let resp1 = buffer.get_output_buffer().await;
-		assert_eq!(resp1.0, "Content-Length: 38\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":null}");
-		assert_eq!(resp1.1, 1);
+		assert_eq!(resp1.len(), 1);
+		assert_eq!(resp1[0], "Content-Length: 38\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":null}");
 
 		buffer.allow_read_blocking(); // Exit Message sent
 	}
@@ -112,9 +112,9 @@ mod driver_tests {
 
 		let message = Message::Response(Response { id: 0.into(), result: None, error: None });
 		channels.0.send(message).await.unwrap(); // Mimic Analyzer Host sending message to Driver
-		let (mess, count) = buffer.get_output_buffer().await; // Mimic reading driver buffer
-		assert_eq!(mess, "Content-Length: 24\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0}");
-		assert_eq!(count, 1);
+		let mess = buffer.get_output_buffer().await; // Mimic reading driver buffer
+		assert_eq!(mess.len(), 1);
+		assert_eq!(mess[0], "Content-Length: 24\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0}");
 
 		// Analyzer host is normally responsible for closing the channels that lets the driver know it should shut down
 		channels.0.close();

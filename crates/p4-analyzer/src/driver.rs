@@ -137,9 +137,8 @@ pub fn buffer_driver(buffer: BufferStruct) -> Driver {
 #[cfg(test)]
 struct BufferStructData {
 	input_queue: Queue<Message>, // stores the messages to be sent
-	output_buffer: Vec<u8>,      // stores the received messages (write! doesn't seperate each messages)
-	output_count: usize,         // the number of messages received so far
-	read_queue_count: usize,     // tells the thread to send a message if var isn't 0
+	output_buffer: Vec<Vec<u8>>, // stores the received messages
+	read_queue_count: usize,     // tells the thread to send a message if field isn't 0 then decrements by 1
 }
 #[cfg(test)]
 #[derive(Clone)]
@@ -153,7 +152,6 @@ impl BufferStruct {
 			data: Arc::new(RwLock::new(BufferStructData {
 				input_queue: inputs,
 				output_buffer: Vec::new(),
-				output_count: 0,
 				read_queue_count: 0,
 			})),
 		}
@@ -184,20 +182,21 @@ impl BufferStruct {
 
 	pub fn allow_read_blocking(&mut self) { self.data.write().unwrap().read_queue_count += 1; }
 
-	pub async fn get_output_buffer(&mut self) -> (String, usize) {
+	pub async fn get_output_buffer(&mut self) -> Vec<String> {
 		loop {
 			match self.data.try_write() {
 				Ok(mut guard) => {
-					if guard.output_count == 0 {
+					if guard.output_buffer.len() == 0 {
 						drop(guard);
 						async_std::task::sleep(Duration::from_millis(1)).await;
 						continue;
 					}
-					let ret = guard.output_buffer.clone();
+					let mut ret = Vec::<String>::new();
+					for elm in guard.output_buffer.clone() {
+						ret.push(String::from_utf8(elm).unwrap());
+					}
 					guard.output_buffer.clear();
-					let count = guard.output_count;
-					guard.output_count = 0;
-					return (String::from_utf8(ret).unwrap(), count);
+					return ret;
 				}
 				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,
 			}
@@ -217,8 +216,10 @@ impl BufferStruct {
 		loop {
 			match self.data.try_write() {
 				Ok(mut guard) => {
-					guard.output_count += 1;
-					return message.write(&mut guard.output_buffer);
+					let mut buf = Vec::<u8>::new();
+					let res =  message.write(&mut buf);
+					guard.output_buffer.push(buf);
+					return res;
 				}
 				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,
 			}
