@@ -53,6 +53,9 @@ impl LspPos {
         if addition_lsp.is_empty() {
             addition_lsp.push(std::ops::Range{start: 0, end: 0})
         }
+        if changes.text.ends_with("\n") {  // parse_string() doesn't create new row for trailing end_line but we do
+            addition_lsp.push(std::ops::Range{start: addition_lsp.last().unwrap().end, end: addition_lsp.last().unwrap().end})
+        }
         let addition = addition_lsp.last().unwrap().end;
         let start_byte = self.lsp_to_byte(start_pos);
         for elm in &mut addition_lsp {

@@ -1,4 +1,6 @@
 extern crate analyzer_core;
+use std::time::{Instant, Duration};
+
 use analyzer_abstractions::lsp_types::{Position, TextDocumentContentChangeEvent, Range};
 use analyzer_core::lsp_position_struct::LspPos;
 
@@ -230,3 +232,46 @@ fn test_lazy_add() {
     let res = std::panic::catch_unwind(move|| lsp.lazy_add(&event));   // catch panic
     assert!(res.is_err());  // make sure it paniced
 }
+
+/*
+#[test]
+fn exhaustive_lazy_add() {
+    let original = "012\n456\n\n9\nbcde\n".to_string();    // Test String
+    let original_lsp = LspPos::parse_file(&original.clone());   // Create default LspPos
+    let mut lazy_timer = Duration::new(0, 0);
+    let mut parse_timer = Duration::new(0, 0);
+    let test_changes = ["", "x", "xy", "xyz", "\n", "\n\n", "\n\n\n", "\nx\n"];
+    for change in test_changes {
+        for size in 0..original.len() {
+            for start_byte in 0..(original.len() - size) {
+                // generate Event
+                let start = original_lsp.byte_to_lsp(start_byte);
+                let end = original_lsp.byte_to_lsp(start_byte + size);
+                let (l1, c1) = (start.line, start.character);
+                let (l2, c2) = (end.line, end.character);
+                let event = change_event((l1, c1), (l2, c2), change.to_string());
+
+                let mut lsp = original_lsp.clone();
+
+                let clock = Instant::now();
+                lsp.lazy_add(&event);
+                lazy_timer += clock.elapsed();
+
+                // generate expected file
+                let mut str = original.clone();
+                str.replace_range(start_byte..start_byte + size, change);
+
+                let clock = Instant::now();
+                let expected_lsp = LspPos::parse_file(&str);
+                parse_timer += clock.elapsed();
+
+                if expected_lsp.get_ranges() != lsp.get_ranges() {
+                    println!("Lazy time:    {}ns", lazy_timer.as_nanos());
+                    println!("Parser time:  {}ns", parse_timer.as_nanos());
+                    println!("expected string {:?}\nchange: {:?}\nsize: {}\nstart_byte: {}\n", str.as_bytes(), change.as_bytes(), size, start_byte);
+                    assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
+                }
+            }
+        }
+    }
+}*/
