@@ -41,13 +41,13 @@ pub struct Jar(
 );
 
 pub trait Db: salsa::DbWithJar<Jar> {
-	fn resolve_path(&self, base: &str, path: &str) -> String;
+	fn resolve_path(&self, file_id: FileId, path: &str) -> String;
 }
 
 // impl<DB> Db for DB where DB: ?Sized + salsa::DbWithJar<Jar> {
 impl Db for Database {
-	fn resolve_path(&self, base: &str, path: &str) -> String {
-		(self.resolver_fn)(base, path).expect("failed to resolve a path")
+	fn resolve_path(&self, file_id: FileId, path: &str) -> String {
+		(self.resolver_fn)(&file_id.path(self), path).expect("failed to resolve a path")
 	}
 }
 
@@ -217,10 +217,7 @@ pub fn preprocess<'a>(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec
 		|path: &str| {
 			// Return a `FileId` with an absolute path resolved relative to the file being preprocessed. If the path
 			// is already absolute then `resolve_path` will return it as is.
-			let base_url = file_id.path(db);
-			let target_path = db.resolve_path(&base_url, path);
-
-			FileId::new(db, target_path)
+			FileId::new(db, db.resolve_path(file_id, path))
 		},
 		|file_id| {
 			let lexemes = fs.fs(db).get(&file_id).map(|&buf| {

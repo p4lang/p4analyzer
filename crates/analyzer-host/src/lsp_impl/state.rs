@@ -184,11 +184,10 @@ impl State {
 			analyzer.update(file_id, text);
 			analyzer.preprocessed(file_id);
 
-			let includes = analyzer.include_dependencies(file_id);
-
+			// Return the FileId and the set of unresolved included paths.
 			(
 				file_id,
-				includes
+				analyzer.include_dependencies(file_id)
 					.iter()
 					.filter(|include| !include.is_resolved)
 					.map(|include| Url::parse(&analyzer.path(include.file_id)).unwrap())
