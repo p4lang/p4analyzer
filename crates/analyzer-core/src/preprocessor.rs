@@ -514,7 +514,7 @@ mod test {
 		base_abstractions::{Buffer, FileId},
 		lex,
 		lexer::Token,
-		Database,
+		Database, lsp_position_struct::LspPos,
 	};
 
 	use super::{parser::*, PreprocessorBinOp as Op, PreprocessorExpression::*, PreprocessorState};
@@ -573,7 +573,7 @@ mod test {
 		let mut pp = PreprocessorState::new(|path| FileId::new(&db, path), |_id| unreachable!());
 
 		let test_id = FileId::new(&db, "<test-code>.p4".into());
-		let input = Buffer::new(&db, s.into());
+		let input = Buffer::new(&db, s.into(), LspPos::parse_file(&s.to_string()));
 		let lexed = lex(&db, test_id, input);
 		let mut lexemes = lexed.lexemes(&db).iter().cloned().map(|(tk, span)| (test_id, tk, span)).collect();
 

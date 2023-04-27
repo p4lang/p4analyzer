@@ -10,6 +10,7 @@ use logos::Logos;
 
 use base_abstractions::*;
 use lexer::*;
+use lsp_position_struct::LspPos;
 use preprocessor::*;
 
 #[derive(Default)]
@@ -58,7 +59,8 @@ impl Analyzer {
 
 	pub fn update(&mut self, file_id: FileId, input: String) {
 		let mut filesystem = self.filesystem();
-		filesystem.insert(file_id, Buffer::new(&self.db, input));
+		let lsp_pos = LspPos::parse_file(&input);
+		filesystem.insert(file_id, Buffer::new(&self.db, input, lsp_pos));
 		self.fs = Fs::new(&self.db, filesystem).into();
 	}
 
@@ -101,6 +103,10 @@ impl Analyzer {
 	pub fn path(&self, id: FileId) -> String { id.path(&self.db) }
 
 	pub fn files(&self) -> Vec<String> { self.filesystem().keys().map(|k| k.path(&self.db)).collect() }
+
+	pub fn get_lsp_pos(&self, id: FileId) -> &LspPos {
+		self.buffer(id).unwrap().byte_position(&self.db)
+	}
 }
 
 // TODO: trait for workspace logic?

@@ -1,10 +1,14 @@
 pub use logos::Span;
 
+use crate::lsp_position_struct::LspPos;
+
 /// The input buffer.
 #[salsa::input]
 pub struct Buffer {
 	#[return_ref]
 	pub contents: String,
+	#[return_ref]
+	pub byte_position: LspPos,
 }
 
 #[salsa::interned]

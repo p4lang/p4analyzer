@@ -1,6 +1,6 @@
 use analyzer_abstractions::lsp_types::{self, TextDocumentContentChangeEvent, Position};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LspPos {
     ranges: Vec<std::ops::Range<usize>>
 }

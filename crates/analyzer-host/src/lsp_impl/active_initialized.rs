@@ -160,10 +160,11 @@ async fn on_text_document_did_change(
 		}
 	};
 
+	let lsp = analyzer.get_lsp_pos(file_id);
 	for change in params.content_changes {
 		let analyzer_abstractions::lsp_types::TextDocumentContentChangeEvent { range, range_length: _, text } = change;
 		if let Some(range) = range {
-			let range = lsp_range_to_byte_range(&input, range);
+			let range = lsp.lsp_range_to_byte_range(&range);
 			info!("replacing range {:?} of {:?} with {:?}", range, &input[range.clone()], text);
 			input.replace_range(range, &text);
 		} else {
@@ -254,7 +255,7 @@ fn process_diagnostics(
 	input: &str,
 ) -> Vec<analyzer_abstractions::lsp_types::Diagnostic> {
 	let diagnostics = analyzer.diagnostics(file_id);
-
+	let lsp = analyzer.get_lsp_pos(file_id);
 	diagnostics
 		.into_iter()
 		.map(|d| {
@@ -262,7 +263,7 @@ fn process_diagnostics(
 			use analyzer_core::base_abstractions::Severity;
 
 			Diagnostic {
-				range: byte_range_to_lsp_range(input, d.location),
+				range: lsp.byte_range_to_lsp_range(&d.location),
 				severity: Some(match d.severity {
 					Severity::Info => DiagnosticSeverity::INFORMATION,
 					Severity::Hint => DiagnosticSeverity::HINT,
@@ -274,47 +275,4 @@ fn process_diagnostics(
 			}
 		})
 		.collect()
-}
-
-fn lsp_range_to_byte_range(input: &str, range: analyzer_abstractions::lsp_types::Range) -> std::ops::Range<usize> {
-	let start = position_to_byte_offset(input, range.start);
-	let end = position_to_byte_offset(input, range.end);
-	start..end
-}
-
-fn byte_range_to_lsp_range(input: &str, range: std::ops::Range<usize>) -> analyzer_abstractions::lsp_types::Range {
-	let start = byte_offset_to_position(input, range.start);
-	let end = byte_offset_to_position(input, range.end);
-	analyzer_abstractions::lsp_types::Range::new(start, end)
-}
-
-// FIXME: UTF8?
-fn position_to_byte_offset(input: &str, pos: Position) -> usize {
-	let Position { line: line_index, character } = pos;
-	let line_index = line_index as usize;
-
-	let mut offset = 0;
-	for (index, line) in input.split_inclusive('\n').enumerate() {
-		if index == line_index {
-			offset += line.as_bytes().len().min(character as usize);
-			break;
-		}
-		offset += line.as_bytes().len()
-	}
-	offset
-}
-
-fn byte_offset_to_position(input: &str, offset: usize) -> Position {
-	let mut line_number = 0;
-	let mut offset_counter = 0;
-
-	for (index, line) in input.split_inclusive('\n').enumerate() {
-		line_number = index;
-		if offset_counter + line.len() > offset {
-			break;
-		}
-		offset_counter += line.len();
-	}
-
-	Position::new(line_number as u32, (offset - offset_counter) as u32)
 }
