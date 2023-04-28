@@ -54,6 +54,7 @@ impl Db for Database {
 pub struct Analyzer {
 	db: Database,
 	fs: Option<Fs>,
+	require_fn: Box<dyn Fn(&str) -> () + 'static>,
 }
 
 #[salsa::tracked]
@@ -67,8 +68,11 @@ pub struct Fs {
 }
 
 impl Analyzer {
-	pub fn new(resolver_fn: impl Fn(&str, &str) -> Result<String, String> + 'static) -> Self {
-		Self { db: Database::new(resolver_fn), fs: Default::default() }
+	pub fn new(
+		resolver_fn: impl Fn(&str, &str) -> Result<String, String> + 'static,
+		require_fn: impl Fn(&str) -> () + 'static,
+	) -> Self {
+		Self { db: Database::new(resolver_fn), fs: Default::default(), require_fn: Box::new(require_fn) }
 	}
 
 	fn filesystem(&self) -> HashMap<FileId, Buffer> { self.fs.map(|fs| fs.fs(&self.db)).unwrap_or_default() }
@@ -92,7 +96,14 @@ impl Analyzer {
 	}
 
 	pub fn preprocessed(&self, file_id: FileId) -> Option<&Vec<(FileId, Token, Span)>> {
-		preprocess(&self.db, self.fs?, file_id).as_ref()
+		let result = preprocess(&self.db, self.fs?, file_id).as_ref();
+
+		// Require any unresolved dependencies.
+		for unresolved_include in self.include_dependencies(file_id).iter().filter(|a| !a.is_resolved) {
+			(self.require_fn)(&self.path(unresolved_include.file_id))
+		}
+
+		result
 	}
 
 	pub fn diagnostics(&self, id: FileId) -> Vec<Diagnostic> {
