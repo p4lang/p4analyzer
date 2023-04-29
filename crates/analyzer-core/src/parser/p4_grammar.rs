@@ -124,9 +124,9 @@ mod test {
 		let source_lock = RwLock::new(source);
 		let mut parser: Parser<Token> = mk_parser(source_lock);
 
-		let r = parser._match();
+		let r = parser.parse();
 		eprint!("here it is {r:#?}");
-		assert_eq!(r, Ok(Cst::Repetition(vec![])));
+		assert_eq!(r, Ok(ExistingMatch { cst: Cst::Repetition(vec![]).into(), match_length: 0 }));
 
 		Ok(())
 	}

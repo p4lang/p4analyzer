@@ -11,7 +11,7 @@ fn baseline(make: impl FnOnce(String) -> Parser<char>, input: &str) -> Parser<ch
 }
 
 fn parse(make: impl FnOnce(String) -> Parser<char>, input: &str) -> Cst<char> {
-	make(input.to_string())._match().unwrap()
+	make(input.to_string()).parse().unwrap()
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
@@ -63,7 +63,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 	};
 
 	let mut matcher = Parser::from_rules(&rules).unwrap()(input.chars().collect::<Vec<_>>().into());
-	assert!(matcher._match().is_some());
+	assert!(matcher.parse().is_some());
 
 	group.bench_function("baseline", |b| {
 		b.iter(|| {
