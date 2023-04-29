@@ -4,7 +4,9 @@ use std::{collections::HashMap, rc::Rc};
 
 use crate::extensions::*;
 
+mod ast;
 mod p4_grammar;
+mod simplifier;
 
 #[derive(Debug, Default)]
 pub struct Parser<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> {

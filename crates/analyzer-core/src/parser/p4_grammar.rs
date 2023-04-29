@@ -110,6 +110,17 @@ pub fn p4_parser() -> impl FnOnce(RwLock<Vec<Token>>) -> Parser<Token> {
 #[cfg(test)]
 mod test {
 	use super::*;
+	use pretty_assertions::{assert_eq, assert_ne};
+
+	fn lex_str(s: &str) -> Vec<Token> {
+		use crate::*;
+
+		let db = Database::default();
+		let buf = Buffer::new(&db, s.to_string());
+		let file_id = FileId::new(&db, "foo.p4".to_string());
+		let lexed = lex(&db, file_id, buf);
+		lexed.lexemes(&db).iter().map(|(tk, _)| tk).cloned().collect()
+	}
 
 	#[test]
 	fn basic() -> Result<()> {
@@ -125,8 +136,23 @@ mod test {
 		let mut parser: Parser<Token> = mk_parser(source_lock);
 
 		let r = parser.parse();
-		eprint!("here it is {r:#?}");
+		eprintln!("here it is {r:#?}");
 		assert_eq!(r, Ok(ExistingMatch { cst: Cst::Repetition(vec![]).into(), match_length: 0 }));
+
+		Ok(())
+	}
+
+	#[test]
+	fn with_lexer() -> Result<()> {
+		let mk_parser = p4_parser();
+		let stream = lex_str(r"
+			parser test_parser(@annotation in type int_param);
+		");
+
+		let source_lock = RwLock::new(stream);
+		let mut parser = mk_parser(source_lock);
+
+		assert_eq!(Err(ParserError::ExpectedEof), parser.parse());
 
 		Ok(())
 	}
