@@ -1,4 +1,3 @@
-
 use anyhow::Result;
 use lazy_static::lazy_static;
 use parking_lot::RwLock;
@@ -13,7 +12,8 @@ lazy_static! {
 		(",", Token::Comma),
 		("(", Token::OpenParen),
 		(")", Token::CloseParen),
-	]).into();
+	])
+	.into();
 }
 
 macro_rules! rule_rhs {
@@ -25,16 +25,16 @@ macro_rules! rule_rhs {
 		}
 	};
 	($name:ident | $($names:ident)|+) => {
-		Rule::Choice(vec![stringify!($name), $(stringify!($names)),+])
+		Rule::Choice(vec![$name, $($names),+])
 	};
 	($name:ident, $($names:ident),+) => {
-		Rule::Sequence(vec![stringify!($name), $(stringify!($names)),+])
+		Rule::Sequence(vec![$name, $($names),+])
 	};
 	($name:ident rep) => {
-		Rule::Repetition(stringify!($name))
+		Rule::Repetition($name)
 	};
 	($name:ident) => {
-		Rule::Sequence(vec![stringify!($name)])
+		Rule::Sequence(vec![$name])
 	};
 	((Token::$name:ident)) => {
 		// TODO: keep Rc's in a lookup table
@@ -58,11 +58,50 @@ macro_rules! grammar {
 		$(, $($seq:tt),+)?
 		$($rep:ident)?
 	);+$(;)?) => {
-		[$((stringify!($name), rule_rhs!($prefix $(| $($or)|+)? $(, $($seq),+)? $($rep)?))),+]
+		[$(($name, rule_rhs!($prefix $(| $($or)|+)? $(, $($seq),+)? $($rep)?))),+]
 	};
 }
 
-pub fn p4_parser() -> impl FnOnce(RwLock<Vec<Token>>) -> Parser<Token> {
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum P4GrammarRules {
+	annotation,
+	annotations,
+	at_symbol,
+	close_paren,
+	comma,
+	dir_in,
+	dir_inout,
+	dir_out,
+	direction,
+	ident,
+	maybe_annotation,
+	maybe_comma,
+	maybe_direction,
+	nothing,
+	open_paren,
+	opt_type_params,
+	p4program,
+	parameter_comma,
+	parameter_list,
+	parameter_seq_rep,
+	parameter_seq,
+	parameter,
+	parser_decl,
+	parser_kw,
+	start,
+	top_level_decl,
+	top_level_decls_end,
+	top_level_decls_rep,
+	top_level_decls,
+	typ,
+	whitespace,
+	ws,
+}
+
+pub fn p4_parser() -> impl FnOnce(RwLock<Vec<Token>>) -> Parser<P4GrammarRules, Token> {
+	use P4GrammarRules::*;
+
 	let rules = grammar! {
 		start => p4program;
 		ws => whitespace rep;
@@ -104,12 +143,15 @@ pub fn p4_parser() -> impl FnOnce(RwLock<Vec<Token>>) -> Parser<Token> {
 		typ => ident; // TODO: full type syntax
 	};
 
-	Parser::from_rules(&rules).unwrap()
+	Parser::from_rules(start, &rules).unwrap()
 }
 
 #[cfg(test)]
 mod test {
-	use super::*;
+	use super::{
+		super::{ast::*, simplifier::simplify},
+		*,
+	};
 	use pretty_assertions::{assert_eq, assert_ne};
 
 	fn lex_str(s: &str) -> Vec<Token> {
@@ -133,7 +175,7 @@ mod test {
 			Token::CloseParen,
 		];
 		let source_lock = RwLock::new(source);
-		let mut parser: Parser<Token> = mk_parser(source_lock);
+		let mut parser: Parser<P4GrammarRules, Token> = mk_parser(source_lock);
 
 		let r = parser.parse();
 		eprintln!("here it is {r:#?}");
@@ -145,14 +187,41 @@ mod test {
 	#[test]
 	fn with_lexer() -> Result<()> {
 		let mk_parser = p4_parser();
-		let stream = lex_str(r"
+		let stream = lex_str(
+			r"
 			parser test_parser(@annotation in type int_param);
-		");
+		",
+		);
 
 		let source_lock = RwLock::new(stream);
 		let mut parser = mk_parser(source_lock);
 
-		assert_eq!(Err(ParserError::ExpectedEof), parser.parse());
+		let parsed = parser.parse();
+		// assert_eq!(Err(ParserError::ExpectedEof), parsed);
+
+		assert_eq!(
+			simplify(parsed.unwrap()),
+			P4Program {
+				top_level_declarations: vec![TopLevelDeclaration {
+					annotations: vec![],
+					kind: TopLevelDeclarationKind::Parser(ParserDeclaration {
+						parameters: ParameterList {
+							list: vec![Parameter {
+								annotations: vec![Annotation::Unknown("annotation".into())],
+								direction: Some(Direction::In),
+								typ: Type {
+									name: Identifier { name: "type".to_string().into(), length: 1 },
+									params: None
+								},
+								name: Identifier { name: "int_param".to_string().into(), length: 1 },
+								length: 7
+							}]
+						}
+					}),
+					length: 13
+				}]
+			}
+		);
 
 		Ok(())
 	}

@@ -6,11 +6,11 @@ use parser::*;
 
 use criterion::{black_box, Criterion};
 
-fn baseline(make: impl FnOnce(String) -> Parser<char>, input: &str) -> Parser<char> {
+fn baseline(make: impl FnOnce(String) -> Parser<&'static str, char>, input: &str) -> Parser<&'static str, char> {
 	make(input.chars().into_iter().collect())
 }
 
-fn parse(make: impl FnOnce(String) -> Parser<char>, input: &str) -> ExistingMatch<char> {
+fn parse(make: impl FnOnce(String) -> Parser<&'static str, char>, input: &str) -> ExistingMatch<&'static str, char> {
 	make(input.to_string()).parse().unwrap()
 }
 
@@ -62,12 +62,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 		buf
 	};
 
-	let mut matcher = Parser::from_rules(&rules).unwrap()(input.chars().collect::<Vec<_>>().into());
+	let mut matcher = Parser::from_rules("start", &rules).unwrap()(input.chars().collect::<Vec<_>>().into());
 	assert!(matcher.parse().is_ok());
 
 	group.bench_function("baseline", |b| {
 		b.iter(|| {
-			let make_matcher = Parser::from_rules(&rules).unwrap();
+			let make_matcher = Parser::from_rules("start", &rules).unwrap();
 			let make = black_box(|s: String| make_matcher(s.chars().collect::<Vec<_>>().into()));
 			baseline(make, black_box(&input))
 		});
@@ -75,7 +75,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
 	group.bench_function("parsing", |b| {
 		b.iter(|| {
-			let make_matcher = Parser::from_rules(&rules).unwrap();
+			let make_matcher = Parser::from_rules("start", &rules).unwrap();
 			let make = black_box(|s: String| make_matcher(s.chars().collect::<Vec<_>>().into()));
 			parse(make, black_box(&input))
 		});

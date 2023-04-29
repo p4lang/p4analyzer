@@ -15,7 +15,9 @@ pub struct TopLevelDeclaration {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Annotation {}
+pub enum Annotation {
+	Unknown(String),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TopLevelDeclarationKind {

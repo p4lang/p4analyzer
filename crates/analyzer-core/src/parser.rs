@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use parking_lot::{RwLock, RwLockReadGuard};
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, fmt::Debug, hash::Hash, rc::Rc};
 
 use crate::extensions::*;
 
@@ -9,94 +9,98 @@ mod p4_grammar;
 mod simplifier;
 
 #[derive(Debug, Default)]
-pub struct Parser<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> {
-	rules: Rc<HashMap<RuleName, Rule<Token>>>,
+pub struct Parser<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
+	rules: Rc<HashMap<RuleName, Rule<RuleName, Token>>>,
 	buffer: RwLock<Vec<Token>>,
-	memo_table: Vec<Column<Token>>,
+	memo_table: Vec<Column<RuleName, Token>>,
+	start: RuleName,
 }
 
 #[derive(Debug)]
-pub struct Matcher<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> {
-	rules: Rc<HashMap<RuleName, Rule<Token>>>,
-	memo_table: &'a mut Vec<Column<Token>>,
+pub struct Matcher<'a, RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
+	rules: Rc<HashMap<RuleName, Rule<RuleName, Token>>>,
+	memo_table: &'a mut Vec<Column<RuleName, Token>>,
 	input: RwLockReadGuard<'a, Vec<Token>>,
 	pos: usize,
 	max_examined_pos: isize,
 }
 
-type RuleName = &'static str;
-
 #[derive(Debug, Clone)]
-struct Column<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> {
-	memo: HashMap<RuleName, MemoTableEntry<Token>>,
+struct Column<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
+	memo: HashMap<RuleName, MemoTableEntry<RuleName, Token>>,
 	max_examined_length: isize,
 }
 
-impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> Default for Column<T> {
+impl<RN, T: Debug + PartialEq + PartialOrd + Clone> Default for Column<RN, T> {
 	fn default() -> Self { Self { memo: Default::default(), max_examined_length: -1 } }
 }
 
 #[derive(Debug, Clone)]
-struct MemoTableEntry<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> {
-	existing_match: Result<Rc<ExistingMatch<Token>>, ParserError<Token>>,
+struct MemoTableEntry<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
+	existing_match: Result<Rc<ExistingMatch<RuleName, Token>>, ParserError<RuleName, Token>>,
 	examined_length: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ExistingMatch<Token: Clone> {
-	cst: Cst<Token>,
+pub struct ExistingMatch<RuleName, Token: Clone> {
+	cst: Cst<RuleName, Token>,
 	match_length: usize,
 }
 
 /// The concrete syntax tree type exactly mirrors the structure of the grammar.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
-pub enum Cst<Token: Clone> {
+pub enum Cst<RuleName, Token: Clone> {
 	Terminal(Rc<Vec<Token>>),
-	Choice(RuleName, Rc<ExistingMatch<Token>>),
-	Sequence(Vec<Rc<ExistingMatch<Token>>>),
-	Repetition(Vec<Rc<ExistingMatch<Token>>>),
+	Choice(RuleName, Rc<ExistingMatch<RuleName, Token>>),
+	Sequence(Vec<Rc<ExistingMatch<RuleName, Token>>>),
+	Repetition(Vec<Rc<ExistingMatch<RuleName, Token>>>),
 	Not(RuleName),
 	Nothing,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
-pub enum ParserError<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> {
-	Expected(RuleName, Box<ParserError<Token>>),
+pub enum ParserError<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
+	Expected(RuleName, Box<ParserError<RuleName, Token>>),
 	Unexpected(RuleName),
-	ExpectedOneOf(Vec<(RuleName, ParserError<Token>)>),
+	ExpectedOneOf(Vec<(RuleName, ParserError<RuleName, Token>)>),
 	ExpectedEof,
 	ExpectedPatternMatch(&'static str),
 	ExpectedToken(Token),
 }
 
-impl<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Parser<Token> {
-	pub fn from_rules<R: Into<HashMap<RuleName, Rule<Token>>> + Clone>(
+impl<
+		RuleName: Eq + Hash + Debug + Clone,
+		Token: Debug + PartialEq + PartialOrd + Clone,
+	> Parser<RuleName, Token>
+{
+	pub fn from_rules<R: Into<HashMap<RuleName, Rule<RuleName, Token>>> + Clone>(
+		start: RuleName,
 		rules: &R,
-	) -> Result<impl FnOnce(RwLock<Vec<Token>>) -> Parser<Token>> {
+	) -> Result<impl FnOnce(RwLock<Vec<Token>>) -> Parser<RuleName, Token>> {
 		let rules: HashMap<_, _> = rules.clone().into();
-		if !rules.contains_key("start") {
+		if !rules.contains_key(&start) {
 			return Err(anyhow!("Missing initial non-terminal 'start'"));
 		}
 
-		let neighbours = |rule: &Rule<Token>| match rule {
+		let neighbours = |rule: &Rule<RuleName, Token>| match rule {
 			Rule::Terminal(_) | Rule::TerminalPredicate(..) => vec![],
 			Rule::Choice(options) => options.clone(),
 			Rule::Sequence(parts) => parts.clone(),
-			Rule::Repetition(rule) => vec![*rule],
-			Rule::Not(rule) => vec![*rule],
+			Rule::Repetition(rule_name) => vec![rule_name.clone()],
+			Rule::Not(rule_name) => vec![rule_name.clone()],
 			Rule::Nothing => vec![],
 		};
 
 		for (k, rule) in rules.iter() {
 			if let Some(n) = neighbours(rule).iter().find(|name| !rules.contains_key(*name)) {
-				return Err(anyhow!("Rule '{k}' references undefined '{n}'"));
+				return Err(anyhow!("Rule '{k:?}' references undefined '{n:?}'"));
 			}
 		}
 
-		Ok(move |buffer| Parser { rules: rules.into(), memo_table: vec![], buffer })
+		Ok(move |buffer| Parser { rules: rules.into(), memo_table: vec![], buffer, start })
 	}
 
-	pub fn parse(&mut self) -> Result<ExistingMatch<Token>, ParserError<Token>> {
+	pub fn parse(&mut self) -> Result<ExistingMatch<RuleName, Token>, ParserError<RuleName, Token>> {
 		let mut matcher = Matcher {
 			rules: self.rules.clone(),
 			memo_table: &mut self.memo_table,
@@ -106,7 +110,7 @@ impl<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Parser<Token> {
 		};
 
 		matcher
-			.memoized_eval_rule("start")
+			.memoized_eval_rule(&self.start)
 			.filter(ParserError::ExpectedEof, |_| matcher.pos == matcher.input.len())
 			.map(|rc| (*rc).clone())
 	}
@@ -128,8 +132,8 @@ impl<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Parser<Token> {
 			}
 		}
 
-		fn invalidate_entries_in_column<Tk: std::fmt::Debug + PartialEq + PartialOrd + Clone>(
-			col: &mut Column<Tk>,
+		fn invalidate_entries_in_column<RuleName: Eq + Clone + Hash, Tk: Debug + PartialEq + PartialOrd + Clone>(
+			col: &mut Column<RuleName, Tk>,
 			pos: usize,
 			start_pos: usize,
 		) {
@@ -138,7 +142,7 @@ impl<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Parser<Token> {
 			for (rule_name, entry) in &col.memo {
 				if pos + entry.examined_length > start_pos {
 					// this entry's "input range" overlaps the edit
-					to_remove.push(*rule_name);
+					to_remove.push(rule_name.clone());
 				} else if entry.examined_length > new_max {
 					new_max = entry.examined_length;
 				}
@@ -154,9 +158,14 @@ impl<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Parser<Token> {
 	}
 }
 
-impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, Token> {
+impl<'a, RuleName: Eq + Hash + Clone, Token: Debug + PartialEq + PartialOrd + Clone>
+	Matcher<'a, RuleName, Token>
+{
 	// originally under the (weird?) RuleApplication abstraction
-	fn memoized_eval_rule(&mut self, rule_name: RuleName) -> Result<Rc<ExistingMatch<Token>>, ParserError<Token>> {
+	fn memoized_eval_rule(
+		&mut self,
+		rule_name: &RuleName,
+	) -> Result<Rc<ExistingMatch<RuleName, Token>>, ParserError<RuleName, Token>> {
 		if let Some(cst) = self.use_memoized_result(rule_name) {
 			cst
 		} else {
@@ -173,7 +182,7 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 	}
 
 	// originally a Rule method
-	fn eval_rule(&mut self, rule_name: RuleName) -> Result<Cst<Token>, ParserError<Token>> {
+	fn eval_rule(&mut self, rule_name: &RuleName) -> Result<Cst<RuleName, Token>, ParserError<RuleName, Token>> {
 		let rules = self.rules.clone();
 		match &rules[rule_name] {
 			Rule::Nothing => {
@@ -202,8 +211,8 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 				for rule in options {
 					self.pos = orig_pos;
 					match self.memoized_eval_rule(rule) {
-						Ok(cst) => return Ok(Cst::Choice(rule, cst)),
-						Err(e) => errors.push((*rule, e)),
+						Ok(cst) => return Ok(Cst::Choice(rule.clone(), cst)),
+						Err(e) => errors.push((rule.clone(), e)),
 					}
 				}
 
@@ -221,7 +230,7 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 
 							matches.push(cst);
 						}
-						Err(e) => return Err(ParserError::Expected(rule, e.into())),
+						Err(e) => return Err(ParserError::Expected(rule.clone(), e.into())),
 					}
 				}
 
@@ -242,10 +251,10 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 			Rule::Not(rule) => {
 				let orig_pos = self.pos;
 				if self.memoized_eval_rule(rule).is_ok() {
-					Err(ParserError::Unexpected(rule))
+					Err(ParserError::Unexpected(rule.clone()))
 				} else {
 					self.pos = orig_pos;
-					Ok(Cst::Not(rule))
+					Ok(Cst::Not(rule.clone()))
 				}
 			}
 		}
@@ -254,9 +263,9 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 	fn memoize_result(
 		&mut self,
 		pos: usize,
-		rule_name: RuleName,
-		cst: Result<Cst<Token>, ParserError<Token>>,
-	) -> Result<Rc<ExistingMatch<Token>>, ParserError<Token>> {
+		rule_name: &RuleName,
+		cst: Result<Cst<RuleName, Token>, ParserError<RuleName, Token>>,
+	) -> Result<Rc<ExistingMatch<RuleName, Token>>, ParserError<RuleName, Token>> {
 		while self.memo_table.len() <= pos {
 			self.memo_table.push(Default::default());
 		}
@@ -267,7 +276,7 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 
 		let entry = MemoTableEntry { existing_match: existing_match.clone(), examined_length };
 
-		col.memo.insert(rule_name, entry);
+		col.memo.insert(rule_name.to_owned(), entry);
 		col.max_examined_length = col.max_examined_length.max(examined_length as isize);
 
 		existing_match
@@ -275,8 +284,8 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 
 	fn use_memoized_result(
 		&mut self,
-		rule_name: RuleName,
-	) -> Option<Result<Rc<ExistingMatch<Token>>, ParserError<Token>>> {
+		rule_name: &RuleName,
+	) -> Option<Result<Rc<ExistingMatch<RuleName, Token>>, ParserError<RuleName, Token>>> {
 		self.memo_table.get(self.pos).and_then(|col| {
 			col.memo.get(rule_name).and_then(|entry| {
 				self.max_examined_pos = self.max_examined_pos.max((self.pos + entry.examined_length - 1) as isize);
@@ -313,7 +322,7 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 }
 
 #[derive(Debug, Clone)]
-pub enum Rule<Token: Clone> {
+pub enum Rule<RuleName, Token: Clone> {
 	Terminal(Rc<Vec<Token>>),
 	TerminalPredicate(for<'a> fn(&'a Token) -> bool, &'static str),
 	Choice(Vec<RuleName>),
@@ -365,7 +374,8 @@ mod test {
 	#[test]
 	fn terminal() {
 		let matcher =
-			Parser::from_rules(&[("start", Rule::Terminal("foo".chars().collect::<Vec<_>>().into()))]).unwrap();
+			Parser::from_rules("start", &[("start", Rule::Terminal("foo".chars().collect::<Vec<_>>().into()))])
+				.unwrap();
 
 		let result = matcher("foo".chars().collect::<Vec<_>>().into()).parse();
 		assert_eq!(
@@ -377,14 +387,17 @@ mod test {
 	#[test]
 	fn choice_of_terminals() {
 		let mtch = |input| {
-			Parser::from_rules(&[
-				("start", Rule::Choice(vec!["a", "b", "c"])),
-				("a", Rule::Choice(vec!["x", "y"])),
-				("b", Rule::Terminal("1".chars().collect::<Vec<_>>().into())),
-				("c", Rule::Choice(vec!["b", "y"])),
-				("x", Rule::Terminal("2".chars().collect::<Vec<_>>().into())),
-				("y", Rule::Terminal("3".chars().collect::<Vec<_>>().into())),
-			])
+			Parser::from_rules(
+				"start",
+				&[
+					("start", Rule::Choice(vec!["a", "b", "c"])),
+					("a", Rule::Choice(vec!["x", "y"])),
+					("b", Rule::Terminal("1".chars().collect::<Vec<_>>().into())),
+					("c", Rule::Choice(vec!["b", "y"])),
+					("x", Rule::Terminal("2".chars().collect::<Vec<_>>().into())),
+					("y", Rule::Terminal("3".chars().collect::<Vec<_>>().into())),
+				],
+			)
 			.unwrap()(input)
 			.parse()
 		};
@@ -450,12 +463,15 @@ mod test {
 
 	#[test]
 	fn full_grammar() {
-		let matcher = Parser::from_rules(&grammar! {
-			start => a, b;
-			b => a | y;
-			a => "1";
-			y => "foo";
-		})
+		let matcher = Parser::from_rules(
+			"start",
+			&grammar! {
+				start => a, b;
+				b => a | y;
+				a => "1";
+				y => "foo";
+			},
+		)
 		.unwrap();
 
 		assert_eq!(
