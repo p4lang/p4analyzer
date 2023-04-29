@@ -44,7 +44,7 @@ struct MemoTableEntry<Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ExistingMatch<Token: Clone> {
-	cst: Rc<Cst<Token>>,
+	cst: Cst<Token>,
 	match_length: usize,
 }
 
@@ -165,7 +165,7 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 			self.max_examined_pos = -1;
 
 			let cst = self.eval_rule(rule_name);
-			let r = self.memoize_result(orig_pos, rule_name, cst.clone());
+			let r = self.memoize_result(orig_pos, rule_name, cst);
 
 			self.max_examined_pos = self.max_examined_pos.max(orig_max);
 			r
@@ -173,12 +173,12 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 	}
 
 	// originally a Rule method
-	fn eval_rule(&mut self, rule_name: RuleName) -> Result<Rc<Cst<Token>>, ParserError<Token>> {
+	fn eval_rule(&mut self, rule_name: RuleName) -> Result<Cst<Token>, ParserError<Token>> {
 		let rules = self.rules.clone();
 		match &rules[rule_name] {
 			Rule::Nothing => {
 				self.max_examined_pos = self.max_examined_pos.max(self.pos as isize - 1);
-				Ok(Cst::Nothing.into())
+				Ok(Cst::Nothing)
 			}
 			Rule::Terminal(vec) => {
 				for tk in vec.iter() {
@@ -187,13 +187,13 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 					}
 				}
 
-				Ok(Cst::Terminal(vec.clone()).into())
+				Ok(Cst::Terminal(vec.clone()))
 			}
 			Rule::TerminalPredicate(f, pattern) => self
 				.skip()
 				.cloned()
 				.filter(f)
-				.map(|tk| Rc::new(Cst::Terminal(vec![tk].into())))
+				.map(|tk| Cst::Terminal(vec![tk].into()))
 				.ok_or(ParserError::ExpectedPatternMatch(pattern)),
 			Rule::Choice(options) => {
 				let orig_pos = self.pos;
@@ -202,7 +202,7 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 				for rule in options {
 					self.pos = orig_pos;
 					match self.memoized_eval_rule(rule) {
-						Ok(cst) => return Ok(Cst::Choice(rule, cst).into()),
+						Ok(cst) => return Ok(Cst::Choice(rule, cst)),
 						Err(e) => errors.push((*rule, e)),
 					}
 				}
@@ -225,7 +225,7 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 					}
 				}
 
-				Ok(Cst::Sequence(matches).into())
+				Ok(Cst::Sequence(matches))
 			}
 			Rule::Repetition(rule) => {
 				let mut matches = vec![];
@@ -235,7 +235,7 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 						matches.push(cst);
 					} else {
 						self.pos = orig_pos;
-						break Ok(Cst::Repetition(matches).into());
+						break Ok(Cst::Repetition(matches));
 					}
 				}
 			}
@@ -245,7 +245,7 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 					Err(ParserError::Unexpected(rule))
 				} else {
 					self.pos = orig_pos;
-					Ok(Cst::Not(rule).into())
+					Ok(Cst::Not(rule))
 				}
 			}
 		}
@@ -255,7 +255,7 @@ impl<'a, Token: std::fmt::Debug + PartialEq + PartialOrd + Clone> Matcher<'a, To
 		&mut self,
 		pos: usize,
 		rule_name: RuleName,
-		cst: Result<Rc<Cst<Token>>, ParserError<Token>>,
+		cst: Result<Cst<Token>, ParserError<Token>>,
 	) -> Result<Rc<ExistingMatch<Token>>, ParserError<Token>> {
 		while self.memo_table.len() <= pos {
 			self.memo_table.push(Default::default());
@@ -395,13 +395,9 @@ mod test {
 			Ok(ExistingMatch {
 				cst: Cst::Choice(
 					"b",
-					ExistingMatch {
-						cst: Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into(),
-						match_length: 1,
-					}
-					.into()
-				)
-				.into(),
+					ExistingMatch { cst: Cst::Terminal("1".chars().collect::<Vec<_>>().into()), match_length: 1 }
+						.into()
+				),
 				match_length: 1,
 			})
 		);
@@ -416,17 +412,15 @@ mod test {
 						cst: Cst::Choice(
 							"x",
 							ExistingMatch {
-								cst: Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into(),
+								cst: Cst::Terminal("2".chars().collect::<Vec<_>>().into()),
 								match_length: 1,
 							}
 							.into()
-						)
-						.into(),
+						),
 						match_length: 1,
 					}
 					.into()
-				)
-				.into(),
+				),
 				match_length: 1,
 			})
 		);
@@ -440,17 +434,15 @@ mod test {
 						cst: Cst::Choice(
 							"y",
 							ExistingMatch {
-								cst: Cst::Terminal("3".chars().collect::<Vec<_>>().into()).into(),
+								cst: Cst::Terminal("3".chars().collect::<Vec<_>>().into()),
 								match_length: 1
 							}
 							.into()
-						)
-						.into(),
+						),
 						match_length: 1,
 					}
 					.into()
-				)
-				.into(),
+				),
 				match_length: 1,
 			})
 		);

@@ -8,7 +8,7 @@ use super::ast::*;
 use super::p4_grammar::*;
 
 pub fn simplify(cst: ExistingMatch<Token>) -> P4Program {
-	match &*cst.cst {
+	match cst.cst {
 		Cst::Terminal(_) => todo!(),
 		Cst::Choice(_, _) => todo!(),
 		Cst::Sequence(_) => todo!(),

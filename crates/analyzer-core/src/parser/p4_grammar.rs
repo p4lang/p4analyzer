@@ -137,7 +137,7 @@ mod test {
 
 		let r = parser.parse();
 		eprintln!("here it is {r:#?}");
-		assert_eq!(r, Ok(ExistingMatch { cst: Cst::Repetition(vec![]).into(), match_length: 0 }));
+		assert_eq!(r, Ok(ExistingMatch { cst: Cst::Repetition(vec![]), match_length: 0 }));
 
 		Ok(())
 	}
