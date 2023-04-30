@@ -1,8 +1,11 @@
-use std::rc::Rc;
+use std::{
+	collections::{BTreeMap, HashMap},
+	rc::Rc,
+};
 
 use crate::lexer::Token;
 
-use super::{p4_grammar::P4GrammarRules, Cst, ExistingMatch};
+use super::{p4_grammar::P4GrammarRules, Cst, ExistingMatch, Rule};
 
 // TODO: we want to mirror rust-analyzer's way of doing things. Both with the
 // dynamically typed CST (less ceremony than what we have right now) and with
@@ -19,8 +22,11 @@ pub struct GreenNode(pub Rc<ExistingMatch<P4GrammarRules, Token>>);
 #[derive(Debug, Clone, Eq, PartialOrd, Ord, Hash)]
 pub struct SyntaxNode(pub Rc<SyntaxData>);
 
+pub type Grammar = Rc<BTreeMap<P4GrammarRules, Rule<P4GrammarRules, Token>>>;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SyntaxData {
+	grammar: Grammar,
 	offset: usize,
 	node: GreenNode,
 	pub parent: Option<SyntaxNode>,
@@ -39,19 +45,26 @@ impl GreenNode {
 }
 
 impl SyntaxNode {
-	pub fn new_root(node: GreenNode) -> SyntaxNode { SyntaxNode(Rc::new(SyntaxData { offset: 0, node, parent: None })) }
+	pub fn new_root(grammar: Grammar, node: GreenNode) -> SyntaxNode {
+		SyntaxNode(Rc::new(SyntaxData { grammar, offset: 0, node, parent: None }))
+	}
 
 	pub fn parent(&self) -> Option<SyntaxNode> { self.0.parent.clone() }
 
-	pub fn children<'a>(&'a self) -> impl Iterator<Item = SyntaxNode> + 'a {
+	pub fn children(&self) -> impl Iterator<Item = SyntaxNode> + '_ {
 		self.0.node.children().map(|child| {
-			SyntaxNode(Rc::new(SyntaxData { offset: self.0.offset, node: child, parent: Some(self.clone()) }))
+			SyntaxNode(Rc::new(SyntaxData {
+				grammar: self.0.grammar.clone(),
+				offset: self.0.offset,
+				node: child,
+				parent: Some(self.clone()),
+			}))
 		})
 	}
 
 	pub fn length(&self) -> usize { self.0.node.0.match_length }
 
-	pub fn kind(&self) -> P4GrammarRules {  }
+	pub fn kind(&self) -> P4GrammarRules { todo!() }
 }
 
 impl PartialEq for SyntaxNode {

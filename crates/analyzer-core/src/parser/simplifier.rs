@@ -7,7 +7,7 @@ use anyhow::Result;
 use super::{ast::*, p4_grammar::*, Cst, ExistingMatch, Rule};
 use crate::Token;
 
-pub fn simplify(grammar: Rc<HashMap<P4GrammarRules, Rule<P4GrammarRules, Token>>>, cst: ExistingMatch<P4GrammarRules, Token>) -> P4Program {
+pub fn simplify(grammar: Grammar, cst: ExistingMatch<P4GrammarRules, Token>) -> P4Program {
 	simplify_internal(P4GrammarRules::start, &grammar[&P4GrammarRules::start], cst)
 }
 

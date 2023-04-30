@@ -1,9 +1,9 @@
 //! Incremental packrat parsing producing concrete syntax trees. Submodules
-//! implement a P4 grammar and simplification into ASTs.
+//! provide a P4 grammar and an AST-like API.
 
 use anyhow::{anyhow, Result};
 use parking_lot::{RwLock, RwLockReadGuard};
-use std::{collections::HashMap, fmt::Debug, hash::Hash, rc::Rc};
+use std::{collections::{HashMap, BTreeMap}, fmt::Debug, hash::Hash, rc::Rc};
 
 use crate::extensions::*;
 
@@ -13,7 +13,7 @@ mod simplifier;
 
 #[derive(Debug, Default)]
 pub struct Parser<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
-	pub rules: Rc<HashMap<RuleName, Rule<RuleName, Token>>>,
+	pub rules: Rc<BTreeMap<RuleName, Rule<RuleName, Token>>>,
 	buffer: RwLock<Vec<Token>>,
 	memo_table: Vec<Column<RuleName, Token>>,
 	start: RuleName,
@@ -21,7 +21,7 @@ pub struct Parser<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
 
 #[derive(Debug)]
 pub struct Matcher<'a, RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
-	rules: Rc<HashMap<RuleName, Rule<RuleName, Token>>>,
+	rules: Rc<BTreeMap<RuleName, Rule<RuleName, Token>>>,
 	memo_table: &'a mut Vec<Column<RuleName, Token>>,
 	input: RwLockReadGuard<'a, Vec<Token>>,
 	pos: usize,
@@ -71,12 +71,12 @@ pub enum ParserError<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
 	ExpectedToken(Token),
 }
 
-impl<RuleName: Eq + Hash + Debug + Clone, Token: Debug + PartialEq + PartialOrd + Clone> Parser<RuleName, Token> {
-	pub fn from_rules<R: Into<HashMap<RuleName, Rule<RuleName, Token>>> + Clone>(
+impl<RuleName: Eq + Ord + Hash + Debug + Clone, Token: Debug + PartialEq + PartialOrd + Clone> Parser<RuleName, Token> {
+	pub fn from_rules<R: Into<BTreeMap<RuleName, Rule<RuleName, Token>>> + Clone>(
 		start: RuleName,
 		rules: &R,
 	) -> Result<impl FnOnce(RwLock<Vec<Token>>) -> Parser<RuleName, Token>> {
-		let rules: HashMap<_, _> = rules.clone().into();
+		let rules: BTreeMap<_, _> = rules.clone().into();
 		if !rules.contains_key(&start) {
 			return Err(anyhow!("Missing initial non-terminal '{start:?}'"));
 		}
@@ -158,7 +158,7 @@ impl<RuleName: Eq + Hash + Debug + Clone, Token: Debug + PartialEq + PartialOrd 
 	}
 }
 
-impl<'a, RuleName: Eq + Hash + Clone, Token: Debug + PartialEq + PartialOrd + Clone> Matcher<'a, RuleName, Token> {
+impl<'a, RuleName: Eq + Ord + Hash + Clone, Token: Debug + PartialEq + PartialOrd + Clone> Matcher<'a, RuleName, Token> {
 	// originally under the (weird?) RuleApplication abstraction
 	fn memoized_eval_rule(
 		&mut self,
@@ -319,7 +319,7 @@ impl<'a, RuleName: Eq + Hash + Clone, Token: Debug + PartialEq + PartialOrd + Cl
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Rule<RuleName, Token: Clone> {
 	Terminal(Rc<Vec<Token>>),
 	TerminalPredicate(for<'a> fn(&'a Token) -> bool, &'static str),
@@ -711,7 +711,7 @@ mod test {
 		);
 
 		apply_edit(&mut parser, 0..4, "42+");
-		// the string is now "42+7"
+		assert_eq!(parser.buffer.read().iter().collect::<String>(), "42+7".to_string());
 
 		assert_eq!(
 			parser.parse(),
@@ -788,7 +788,8 @@ mod test {
 		);
 
 		apply_edit(&mut parser, 3..4, "");
-		// "42+"
+		assert_eq!(parser.buffer.read().iter().collect::<String>(), "42+".to_string());
+
 		assert_eq!(
 			parser.parse(),
 			Err(ExpectedOneOf(vec![
@@ -820,7 +821,8 @@ mod test {
 		);
 
 		apply_edit(&mut parser, 3..3, "123");
-		// "42+123"
+		assert_eq!(parser.buffer.read().iter().collect::<String>(), "42+123".to_string());
+
 		assert_eq!(
 			parser.parse(),
 			Ok(ExistingMatch {
@@ -925,7 +927,8 @@ mod test {
 		);
 
 		apply_edit(&mut parser, 0..0, "9");
-		// "942+123"
+		assert_eq!(parser.buffer.read().iter().collect::<String>(), "942+123".to_string());
+
 		assert_eq!(
 			parser.parse(),
 			Ok(ExistingMatch {
@@ -1044,7 +1047,8 @@ mod test {
 		);
 
 		apply_edit(&mut parser, 3..4, "_");
-		// "942_123"
+		assert_eq!(parser.buffer.read().iter().collect::<String>(), "942_123".to_string());
+
 		assert_eq!(
 			parser.parse(),
 			Err(ParserError::ExpectedOneOf(vec![
@@ -1054,7 +1058,8 @@ mod test {
 		);
 
 		apply_edit(&mut parser, 3..4, "0-0");
-		// "9420-0123"
+		assert_eq!(parser.buffer.read().iter().collect::<String>(), "9420-0123".to_string());
+
 		assert_eq!(
 			parser.parse(),
 			Ok(ExistingMatch {
