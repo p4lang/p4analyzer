@@ -3,7 +3,12 @@
 
 use anyhow::{anyhow, Result};
 use parking_lot::{RwLock, RwLockReadGuard};
-use std::{collections::{HashMap, BTreeMap}, fmt::Debug, hash::Hash, rc::Rc};
+use std::{
+	collections::{BTreeMap, HashMap},
+	fmt::Debug,
+	hash::Hash,
+	rc::Rc,
+};
 
 use crate::extensions::*;
 
@@ -11,17 +16,23 @@ mod ast;
 mod p4_grammar;
 mod simplifier;
 
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Grammar<RuleName, Token: Clone> {
+	/// The initial non-terminal.
+	pub initial: RuleName,
+	pub rules: BTreeMap<RuleName, Rule<RuleName, Token>>,
+}
+
 #[derive(Debug, Default)]
 pub struct Parser<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
-	pub rules: Rc<BTreeMap<RuleName, Rule<RuleName, Token>>>,
+	pub grammar: Rc<Grammar<RuleName, Token>>,
 	buffer: RwLock<Vec<Token>>,
 	memo_table: Vec<Column<RuleName, Token>>,
-	start: RuleName,
 }
 
 #[derive(Debug)]
 pub struct Matcher<'a, RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
-	rules: Rc<BTreeMap<RuleName, Rule<RuleName, Token>>>,
+	rules: Rc<Grammar<RuleName, Token>>,
 	memo_table: &'a mut Vec<Column<RuleName, Token>>,
 	input: RwLockReadGuard<'a, Vec<Token>>,
 	pos: usize,
@@ -72,13 +83,13 @@ pub enum ParserError<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
 }
 
 impl<RuleName: Eq + Ord + Hash + Debug + Clone, Token: Debug + PartialEq + PartialOrd + Clone> Parser<RuleName, Token> {
-	pub fn from_rules<R: Into<BTreeMap<RuleName, Rule<RuleName, Token>>> + Clone>(
-		start: RuleName,
-		rules: &R,
+	pub fn from_grammar(
+		grammar: Grammar<RuleName, Token>,
 	) -> Result<impl FnOnce(RwLock<Vec<Token>>) -> Parser<RuleName, Token>> {
-		let rules: BTreeMap<_, _> = rules.clone().into();
-		if !rules.contains_key(&start) {
-			return Err(anyhow!("Missing initial non-terminal '{start:?}'"));
+		let Grammar { initial, rules } = &grammar;
+
+		if !rules.contains_key(initial) {
+			return Err(anyhow!("Missing initial non-terminal '{initial:?}'"));
 		}
 
 		let neighbours = |rule: &Rule<RuleName, Token>| match rule {
@@ -97,12 +108,12 @@ impl<RuleName: Eq + Ord + Hash + Debug + Clone, Token: Debug + PartialEq + Parti
 			}
 		}
 
-		Ok(move |buffer| Parser { rules: rules.into(), memo_table: vec![], buffer, start })
+		Ok(move |buffer| Parser { grammar: grammar.into(), memo_table: vec![], buffer })
 	}
 
 	pub fn parse(&mut self) -> Result<ExistingMatch<RuleName, Token>, ParserError<RuleName, Token>> {
 		let mut matcher = Matcher {
-			rules: self.rules.clone(),
+			rules: self.grammar.clone(),
 			memo_table: &mut self.memo_table,
 			input: self.buffer.read(),
 			pos: 0,
@@ -110,7 +121,7 @@ impl<RuleName: Eq + Ord + Hash + Debug + Clone, Token: Debug + PartialEq + Parti
 		};
 
 		matcher
-			.memoized_eval_rule(&self.start)
+			.memoized_eval_rule(&self.grammar.initial)
 			.filter(ParserError::ExpectedEof, |_| matcher.pos == matcher.input.len())
 			.map(|rc| (*rc).clone())
 	}
@@ -158,7 +169,9 @@ impl<RuleName: Eq + Ord + Hash + Debug + Clone, Token: Debug + PartialEq + Parti
 	}
 }
 
-impl<'a, RuleName: Eq + Ord + Hash + Clone, Token: Debug + PartialEq + PartialOrd + Clone> Matcher<'a, RuleName, Token> {
+impl<'a, RuleName: Eq + Ord + Hash + Clone, Token: Debug + PartialEq + PartialOrd + Clone>
+	Matcher<'a, RuleName, Token>
+{
 	// originally under the (weird?) RuleApplication abstraction
 	fn memoized_eval_rule(
 		&mut self,
@@ -181,8 +194,8 @@ impl<'a, RuleName: Eq + Ord + Hash + Clone, Token: Debug + PartialEq + PartialOr
 
 	// originally a Rule method
 	fn eval_rule(&mut self, rule_name: &RuleName) -> Result<Cst<RuleName, Token>, ParserError<RuleName, Token>> {
-		let rules = self.rules.clone();
-		match &rules[rule_name] {
+		let grammar = self.rules.clone();
+		match &grammar.rules[rule_name] {
 			Rule::Nothing => {
 				self.max_examined_pos = self.max_examined_pos.max(self.pos as isize - 1);
 				Ok(Cst::Nothing)
@@ -360,7 +373,10 @@ macro_rules! grammar {
 		$(, $($seq:tt),+)?
 		$($rep:ident)?
 	);+$(;)?) => {
-		[$((stringify!($name), rule_rhs!($prefix $(| $($or)|+)? $(, $($seq),+)? $($rep)?))),+]
+		Grammar {
+			initial: "start",
+			rules: [$((stringify!($name), rule_rhs!($prefix $(| $($or)|+)? $(, $($seq),+)? $($rep)?))),+].into(),
+		}
 	};
 }
 
@@ -371,9 +387,11 @@ mod test {
 
 	#[test]
 	fn terminal() {
-		let matcher =
-			Parser::from_rules("start", &[("start", Rule::Terminal("foo".chars().collect::<Vec<_>>().into()))])
-				.unwrap();
+		let matcher = Parser::from_grammar(Grammar {
+			initial: "start",
+			rules: [("start", Rule::Terminal("foo".chars().collect::<Vec<_>>().into()))].into(),
+		})
+		.unwrap();
 
 		let result = matcher("foo".chars().collect::<Vec<_>>().into()).parse();
 		assert_eq!(
@@ -385,17 +403,18 @@ mod test {
 	#[test]
 	fn choice_of_terminals() {
 		let mtch = |input| {
-			Parser::from_rules(
-				"start",
-				&[
+			Parser::from_grammar(Grammar {
+				initial: "start",
+				rules: [
 					("start", Rule::Choice(vec!["a", "b", "c"])),
 					("a", Rule::Choice(vec!["x", "y"])),
 					("b", Rule::Terminal("1".chars().collect::<Vec<_>>().into())),
 					("c", Rule::Choice(vec!["b", "y"])),
 					("x", Rule::Terminal("2".chars().collect::<Vec<_>>().into())),
 					("y", Rule::Terminal("3".chars().collect::<Vec<_>>().into())),
-				],
-			)
+				]
+				.into(),
+			})
 			.unwrap()(input)
 			.parse()
 		};
@@ -461,15 +480,12 @@ mod test {
 
 	#[test]
 	fn full_grammar() {
-		let matcher = Parser::from_rules(
-			"start",
-			&grammar! {
-				start => a, b;
-				b => a | y;
-				a => "1";
-				y => "foo";
-			},
-		)
+		let matcher = Parser::from_grammar(grammar! {
+			start => a, b;
+			b => a | y;
+			a => "1";
+			y => "foo";
+		})
 		.unwrap();
 
 		assert_eq!(
@@ -502,29 +518,26 @@ mod test {
 
 		let buffer = "896-7".chars().collect::<Vec<_>>();
 		let input = buffer.into();
-		let mut parser = Parser::from_rules(
-			"start",
-			&grammar! {
-				start => addition | subtraction;
-				addition => num, plus, num;
-				subtraction => num, minus, num;
-				plus => "+";
-				minus => "-";
-				num => digit, many_digits;
-				many_digits => digit rep;
-				digit => n0 | n1 | n2 | n3 | n4 | n5 | n6 | n7 | n8 | n9;
-				n0 => "0";
-				n1 => "1";
-				n2 => "2";
-				n3 => "3";
-				n4 => "4";
-				n5 => "5";
-				n6 => "6";
-				n7 => "7";
-				n8 => "8";
-				n9 => "9";
-			},
-		)
+		let mut parser = Parser::from_grammar(grammar! {
+			start => addition | subtraction;
+			addition => num, plus, num;
+			subtraction => num, minus, num;
+			plus => "+";
+			minus => "-";
+			num => digit, many_digits;
+			many_digits => digit rep;
+			digit => n0 | n1 | n2 | n3 | n4 | n5 | n6 | n7 | n8 | n9;
+			n0 => "0";
+			n1 => "1";
+			n2 => "2";
+			n3 => "3";
+			n4 => "4";
+			n5 => "5";
+			n6 => "6";
+			n7 => "7";
+			n8 => "8";
+			n9 => "9";
+		})
 		.unwrap()(input);
 
 		let apply_edit = |p: &mut Parser<_, _>, r: std::ops::Range<usize>, s: &'static str| {

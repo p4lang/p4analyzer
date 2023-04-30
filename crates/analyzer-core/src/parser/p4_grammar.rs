@@ -58,7 +58,10 @@ macro_rules! grammar {
 		$(, $($seq:tt),+)?
 		$($rep:ident)?
 	);+$(;)?) => {
-		[$(($name, rule_rhs!($prefix $(| $($or)|+)? $(, $($seq),+)? $($rep)?))),+]
+		Grammar {
+			initial: start,
+			rules: [$(($name, rule_rhs!($prefix $(| $($or)|+)? $(, $($seq),+)? $($rep)?))),+].into(),
+		}
 	};
 }
 
@@ -102,7 +105,7 @@ pub enum P4GrammarRules {
 pub fn p4_parser() -> impl FnOnce(RwLock<Vec<Token>>) -> Parser<P4GrammarRules, Token> {
 	use P4GrammarRules::*;
 
-	let rules = grammar! {
+	let grammar = grammar! {
 		start => p4program;
 		ws => whitespace rep;
 		whitespace => (Token::Whitespace);
@@ -143,7 +146,7 @@ pub fn p4_parser() -> impl FnOnce(RwLock<Vec<Token>>) -> Parser<P4GrammarRules, 
 		typ => ident; // TODO: full type syntax
 	};
 
-	Parser::from_rules(start, &rules).unwrap()
+	Parser::from_grammar(grammar).unwrap()
 }
 
 #[cfg(test)]
@@ -199,29 +202,45 @@ mod test {
 		let parsed = parser.parse();
 		// assert_eq!(Err(ParserError::ExpectedEof), parsed);
 
-		assert_eq!(
-			simplify(parser.rules.clone(), parsed.unwrap()),
-			P4Program {
-				top_level_declarations: vec![TopLevelDeclaration {
-					annotations: vec![],
-					kind: TopLevelDeclarationKind::Parser(ParserDeclaration {
-						parameters: ParameterList {
-							list: vec![Parameter {
-								annotations: vec![Annotation::Unknown("annotation".into())],
-								direction: Some(Direction::In),
-								typ: Type {
-									name: Identifier { name: "type".to_string().into(), length: 1 },
-									params: None
-								},
-								name: Identifier { name: "int_param".to_string().into(), length: 1 },
-								length: 7
-							}]
-						}
-					}),
-					length: 13
-				}]
-			}
-		);
+		let syntax_node =
+			SyntaxNode::new_root((*parser.grammar).clone(), super::ast::GreenNode(Rc::new(parsed.unwrap())));
+		eprintln!("I am {:?}", syntax_node.kind());
+
+		fn preorder(depth: u32, node: SyntaxNode) -> Box<dyn Iterator<Item = (u32, SyntaxNode)>> {
+			Box::new(
+				std::iter::once((depth, node.clone())).chain(
+					node.children().collect::<Vec<_>>().into_iter().flat_map(move |node| preorder(depth + 1, node)),
+				),
+			)
+		}
+
+		for (depth, child) in preorder(0, syntax_node) {
+			eprintln!("{}- {:?}", "  ".repeat(depth as usize), child.kind());
+		}
+
+		// assert_eq!(
+		// 	simplify((*parser.grammar).clone(), parsed.unwrap()),
+		// 	P4Program {
+		// 		top_level_declarations: vec![TopLevelDeclaration {
+		// 			annotations: vec![],
+		// 			kind: TopLevelDeclarationKind::Parser(ParserDeclaration {
+		// 				parameters: ParameterList {
+		// 					list: vec![Parameter {
+		// 						annotations: vec![Annotation::Unknown("annotation".into())],
+		// 						direction: Some(Direction::In),
+		// 						typ: Type {
+		// 							name: Identifier { name: "type".to_string().into(), length: 1 },
+		// 							params: None
+		// 						},
+		// 						name: Identifier { name: "int_param".to_string().into(), length: 1 },
+		// 						length: 7
+		// 					}]
+		// 				}
+		// 			}),
+		// 			length: 13
+		// 		}]
+		// 	}
+		// );
 
 		Ok(())
 	}

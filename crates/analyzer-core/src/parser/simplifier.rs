@@ -8,7 +8,7 @@ use super::{ast::*, p4_grammar::*, Cst, ExistingMatch, Rule};
 use crate::Token;
 
 pub fn simplify(grammar: Grammar, cst: ExistingMatch<P4GrammarRules, Token>) -> P4Program {
-	simplify_internal(P4GrammarRules::start, &grammar[&P4GrammarRules::start], cst)
+	simplify_internal(P4GrammarRules::start, &grammar.rules[&P4GrammarRules::start], cst)
 }
 
 fn simplify_internal(rule_name: P4GrammarRules, rule: &Rule<P4GrammarRules, Token>, cst: ExistingMatch<P4GrammarRules, Token>) -> P4Program {
