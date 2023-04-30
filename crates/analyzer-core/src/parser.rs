@@ -1,3 +1,6 @@
+//! Incremental packrat parsing producing concrete syntax trees. Submodules
+//! implement a P4 grammar and simplification into ASTs.
+
 use anyhow::{anyhow, Result};
 use parking_lot::{RwLock, RwLockReadGuard};
 use std::{collections::HashMap, fmt::Debug, hash::Hash, rc::Rc};
@@ -10,7 +13,7 @@ mod simplifier;
 
 #[derive(Debug, Default)]
 pub struct Parser<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
-	rules: Rc<HashMap<RuleName, Rule<RuleName, Token>>>,
+	pub rules: Rc<HashMap<RuleName, Rule<RuleName, Token>>>,
 	buffer: RwLock<Vec<Token>>,
 	memo_table: Vec<Column<RuleName, Token>>,
 	start: RuleName,
@@ -41,14 +44,14 @@ struct MemoTableEntry<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
 	examined_length: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ExistingMatch<RuleName, Token: Clone> {
 	cst: Cst<RuleName, Token>,
 	match_length: usize,
 }
 
 /// The concrete syntax tree type exactly mirrors the structure of the grammar.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
 pub enum Cst<RuleName, Token: Clone> {
 	Terminal(Rc<Vec<Token>>),
 	Choice(RuleName, Rc<ExistingMatch<RuleName, Token>>),
@@ -79,7 +82,7 @@ impl<
 	) -> Result<impl FnOnce(RwLock<Vec<Token>>) -> Parser<RuleName, Token>> {
 		let rules: HashMap<_, _> = rules.clone().into();
 		if !rules.contains_key(&start) {
-			return Err(anyhow!("Missing initial non-terminal 'start'"));
+			return Err(anyhow!("Missing initial non-terminal '{start:?}'"));
 		}
 
 		let neighbours = |rule: &Rule<RuleName, Token>| match rule {
@@ -91,6 +94,7 @@ impl<
 			Rule::Nothing => vec![],
 		};
 
+		// make sure all referenced rules are defined
 		for (k, rule) in rules.iter() {
 			if let Some(n) = neighbours(rule).iter().find(|name| !rules.contains_key(*name)) {
 				return Err(anyhow!("Rule '{k:?}' references undefined '{n:?}'"));
@@ -287,13 +291,13 @@ impl<'a, RuleName: Eq + Hash + Clone, Token: Debug + PartialEq + PartialOrd + Cl
 		rule_name: &RuleName,
 	) -> Option<Result<Rc<ExistingMatch<RuleName, Token>>, ParserError<RuleName, Token>>> {
 		self.memo_table.get(self.pos).and_then(|col| {
-			col.memo.get(rule_name).and_then(|entry| {
+			col.memo.get(rule_name).map(|entry| {
 				self.max_examined_pos = self.max_examined_pos.max((self.pos + entry.examined_length - 1) as isize);
 
-				Some(entry.existing_match.clone().map(|m| {
+				entry.existing_match.clone().map(|m| {
 					self.pos += m.match_length;
 					m
-				}))
+				})
 			})
 		})
 	}
@@ -479,7 +483,7 @@ mod test {
 			Ok(ExistingMatch {
 				cst: Cst::Sequence(vec![
 					ExistingMatch {
-						cst: Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into(),
+						cst: Cst::Terminal("1".chars().collect::<Vec<_>>().into()),
 						match_length: 1,
 					}
 					.into(),
@@ -487,17 +491,15 @@ mod test {
 						cst: Cst::Choice(
 							"y",
 							ExistingMatch {
-								cst: Cst::Terminal("foo".chars().collect::<Vec<_>>().into()).into(),
+								cst: Cst::Terminal("foo".chars().collect::<Vec<_>>().into()),
 								match_length: 3,
 							}
 							.into()
-						)
-						.into(),
+						),
 						match_length: 3,
 					}
 					.into(),
-				])
-				.into(),
+				]),
 				match_length: 4
 			})
 		);

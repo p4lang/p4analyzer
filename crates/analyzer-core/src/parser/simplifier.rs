@@ -1,11 +1,17 @@
 //! Abstracting concrete syntax trees into ASTs.
 
+use std::{collections::HashMap, rc::Rc};
+
 use anyhow::Result;
 
-use super::{ast::*, p4_grammar::*, Cst, ExistingMatch};
+use super::{ast::*, p4_grammar::*, Cst, ExistingMatch, Rule};
 use crate::Token;
 
-pub fn simplify(cst: ExistingMatch<P4GrammarRules, Token>) -> P4Program {
+pub fn simplify(grammar: Rc<HashMap<P4GrammarRules, Rule<P4GrammarRules, Token>>>, cst: ExistingMatch<P4GrammarRules, Token>) -> P4Program {
+	simplify_internal(P4GrammarRules::start, &grammar[&P4GrammarRules::start], cst)
+}
+
+fn simplify_internal(rule_name: P4GrammarRules, rule: &Rule<P4GrammarRules, Token>, cst: ExistingMatch<P4GrammarRules, Token>) -> P4Program {
 	// start => p4program
 	if let Cst::Sequence(seq) = cst.cst {
 		P4Program {

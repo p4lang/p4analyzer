@@ -200,7 +200,7 @@ mod test {
 		// assert_eq!(Err(ParserError::ExpectedEof), parsed);
 
 		assert_eq!(
-			simplify(parsed.unwrap()),
+			simplify(parser.rules.clone(), parsed.unwrap()),
 			P4Program {
 				top_level_declarations: vec![TopLevelDeclaration {
 					annotations: vec![],

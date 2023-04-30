@@ -16,7 +16,7 @@ pub struct Lextras {
 	pub file_id: FileId,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
 pub struct Literal {
 	pub base: u8,
 	pub signed: bool,
@@ -24,7 +24,7 @@ pub struct Literal {
 	pub value: i64,
 }
 
-#[derive(Logos, PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
+#[derive(Logos, PartialOrd, Ord, PartialEq, Eq, Debug, Clone, Hash)]
 #[logos(extras = Lextras)]
 pub enum Token {
 	#[token("}")]

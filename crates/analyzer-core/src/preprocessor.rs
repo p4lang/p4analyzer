@@ -6,13 +6,13 @@ use self::parser::expression;
 
 use super::{base_abstractions::*, lexer::Token};
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy, Hash)]
 pub enum PreprocessorQuotationStyle {
 	AngleBrackets,
 	DoubleQuotes,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
 pub enum PreprocessorBinOp {
 	Or,
 	Xor,
@@ -34,7 +34,7 @@ pub enum PreprocessorBinOp {
 	BitwiseShiftRight,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
 pub enum PreprocessorExpression {
 	// TODO: the spec also allows malformed expressions, if they're skipped by conditional inclusion
 	IntLiteral(i64),
@@ -46,7 +46,7 @@ pub enum PreprocessorExpression {
 
 pub type PreprocessorValue = i64;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
 pub enum PreprocessorDirective {
 	Include(PreprocessorQuotationStyle, String),
 	If(PreprocessorExpression),
