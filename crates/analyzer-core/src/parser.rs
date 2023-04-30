@@ -71,11 +71,7 @@ pub enum ParserError<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
 	ExpectedToken(Token),
 }
 
-impl<
-		RuleName: Eq + Hash + Debug + Clone,
-		Token: Debug + PartialEq + PartialOrd + Clone,
-	> Parser<RuleName, Token>
-{
+impl<RuleName: Eq + Hash + Debug + Clone, Token: Debug + PartialEq + PartialOrd + Clone> Parser<RuleName, Token> {
 	pub fn from_rules<R: Into<HashMap<RuleName, Rule<RuleName, Token>>> + Clone>(
 		start: RuleName,
 		rules: &R,
@@ -162,9 +158,7 @@ impl<
 	}
 }
 
-impl<'a, RuleName: Eq + Hash + Clone, Token: Debug + PartialEq + PartialOrd + Clone>
-	Matcher<'a, RuleName, Token>
-{
+impl<'a, RuleName: Eq + Hash + Clone, Token: Debug + PartialEq + PartialOrd + Clone> Matcher<'a, RuleName, Token> {
 	// originally under the (weird?) RuleApplication abstraction
 	fn memoized_eval_rule(
 		&mut self,
@@ -384,7 +378,7 @@ mod test {
 		let result = matcher("foo".chars().collect::<Vec<_>>().into()).parse();
 		assert_eq!(
 			result,
-			Ok(ExistingMatch { cst: Cst::Terminal("foo".chars().collect::<Vec<_>>().into()).into(), match_length: 3 })
+			Ok(ExistingMatch { cst: Cst::Terminal("foo".chars().collect::<Vec<_>>().into()), match_length: 3 })
 		);
 	}
 
@@ -482,11 +476,8 @@ mod test {
 			matcher("1foo".chars().collect::<Vec<_>>().into()).parse(),
 			Ok(ExistingMatch {
 				cst: Cst::Sequence(vec![
-					ExistingMatch {
-						cst: Cst::Terminal("1".chars().collect::<Vec<_>>().into()),
-						match_length: 1,
-					}
-					.into(),
+					ExistingMatch { cst: Cst::Terminal("1".chars().collect::<Vec<_>>().into()), match_length: 1 }
+						.into(),
 					ExistingMatch {
 						cst: Cst::Choice(
 							"y",
@@ -505,89 +496,218 @@ mod test {
 		);
 	}
 
-	/*
-
 	#[test]
 	fn simple_edit() {
+		use ParserError::*;
+
 		let buffer = "896-7".chars().collect::<Vec<_>>();
 		let input = buffer.into();
-		let mut parser = Parser::from_rules(&grammar! {
-			start => addition | subtraction;
-			addition => num, plus, num;
-			subtraction => num, minus, num;
-			plus => "+";
-			minus => "-";
-			num => digit, many_digits;
-			many_digits => digit rep;
-			digit => n0 | n1 | n2 | n3 | n4 | n5 | n6 | n7 | n8 | n9;
-			n0 => "0";
-			n1 => "1";
-			n2 => "2";
-			n3 => "3";
-			n4 => "4";
-			n5 => "5";
-			n6 => "6";
-			n7 => "7";
-			n8 => "8";
-			n9 => "9";
-		})
+		let mut parser = Parser::from_rules(
+			"start",
+			&grammar! {
+				start => addition | subtraction;
+				addition => num, plus, num;
+				subtraction => num, minus, num;
+				plus => "+";
+				minus => "-";
+				num => digit, many_digits;
+				many_digits => digit rep;
+				digit => n0 | n1 | n2 | n3 | n4 | n5 | n6 | n7 | n8 | n9;
+				n0 => "0";
+				n1 => "1";
+				n2 => "2";
+				n3 => "3";
+				n4 => "4";
+				n5 => "5";
+				n6 => "6";
+				n7 => "7";
+				n8 => "8";
+				n9 => "9";
+			},
+		)
 		.unwrap()(input);
 
-		let apply_edit = |p: &mut Parser<_>, r: std::ops::Range<usize>, s: &'static str| {
+		let apply_edit = |p: &mut Parser<_, _>, r: std::ops::Range<usize>, s: &'static str| {
 			let as_tokens: Vec<_> = s.chars().collect();
 			p.apply_edit(r, &as_tokens);
 		};
 
 		assert_eq!(
 			parser.parse(),
-			Ok(Cst::Choice(
-				"subtraction",
-				Cst::Sequence(vec![
-					Cst::Sequence(vec![
-						Cst::Choice("n8", Cst::Terminal("8".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![
-							Cst::Choice("n9", Cst::Terminal("9".chars().collect::<Vec<_>>().into()).into()).into(),
-							Cst::Choice("n6", Cst::Terminal("6".chars().collect::<Vec<_>>().into()).into()).into(),
-						])
-						.into()
-					])
-					.into(),
-					Cst::Terminal("-".chars().collect::<Vec<_>>().into()).into(),
-					Cst::Sequence(vec![
-						Cst::Choice("n7", Cst::Terminal("7".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![]).into()
-					])
-					.into(),
-				])
-				.into()
-			))
+			Ok(ExistingMatch {
+				match_length: 5,
+				cst: Cst::Choice(
+					"subtraction",
+					ExistingMatch {
+						match_length: 5,
+						cst: Cst::Sequence(vec![
+							ExistingMatch {
+								match_length: 3,
+								cst: Cst::Sequence(vec![
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Choice(
+											"n8",
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Terminal("8".chars().collect::<Vec<_>>().into())
+											}
+											.into()
+										)
+									}
+									.into(),
+									ExistingMatch {
+										match_length: 2,
+										cst: Cst::Repetition(vec![
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n9",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("9".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n6",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("6".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+										])
+									}
+									.into()
+								]),
+							}
+							.into(),
+							ExistingMatch {
+								match_length: 1,
+								cst: Cst::Terminal("-".chars().collect::<Vec<_>>().into()),
+							}
+							.into(),
+							ExistingMatch {
+								match_length: 1,
+								cst: Cst::Sequence(vec![
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Choice(
+											"n7",
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Terminal("7".chars().collect::<Vec<_>>().into())
+											}
+											.into()
+										)
+									}
+									.into(),
+									ExistingMatch { match_length: 0, cst: Cst::Repetition(vec![]) }.into()
+								]),
+							}
+							.into(),
+						]),
+					}
+					.into()
+				),
+			})
 		);
 
 		apply_edit(&mut parser, 1..2, "0");
 
 		assert_eq!(
 			parser.parse(),
-			Ok(Cst::Choice(
-				"subtraction",
-				Cst::Sequence(vec![
-					Cst::Sequence(vec![
-						Cst::Choice("n8", Cst::Terminal("8".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![
-							Cst::Choice("n0", Cst::Terminal("0".chars().collect::<Vec<_>>().into()).into()).into(),
-							Cst::Choice("n6", Cst::Terminal("6".chars().collect::<Vec<_>>().into()).into()).into(),
+			Ok(ExistingMatch {
+				match_length: 5,
+				cst: Cst::Choice(
+					"subtraction",
+					ExistingMatch {
+						match_length: 5,
+						cst: Cst::Sequence(vec![
+							ExistingMatch {
+								match_length: 3,
+								cst: Cst::Sequence(vec![
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Choice(
+											"n8",
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Terminal("8".chars().collect::<Vec<_>>().into())
+											}
+											.into()
+										)
+									}
+									.into(),
+									ExistingMatch {
+										match_length: 2,
+										cst: Cst::Repetition(vec![
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n0",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("0".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n6",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("6".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+										])
+									}
+									.into()
+								])
+							}
+							.into(),
+							ExistingMatch {
+								match_length: 1,
+								cst: Cst::Terminal("-".chars().collect::<Vec<_>>().into())
+							}
+							.into(),
+							ExistingMatch {
+								match_length: 1,
+								cst: Cst::Sequence(vec![
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Choice(
+											"n7",
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Terminal("7".chars().collect::<Vec<_>>().into())
+											}
+											.into()
+										)
+									}
+									.into(),
+									ExistingMatch { match_length: 0, cst: Cst::Repetition(vec![]) }.into()
+								])
+							}
+							.into(),
 						])
-						.into()
-					])
-					.into(),
-					Cst::Terminal("-".chars().collect::<Vec<_>>().into()).into(),
-					Cst::Sequence(vec![
-						Cst::Choice("n7", Cst::Terminal("7".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![]).into()
-					])
-					.into(),
-				])
-				.into()
-			))
+					}
+					.into()
+				)
+			})
 		);
 
 		apply_edit(&mut parser, 0..4, "42+");
@@ -595,133 +715,485 @@ mod test {
 
 		assert_eq!(
 			parser.parse(),
-			Ok(Cst::Choice(
-				"addition",
-				Cst::Sequence(vec![
-					Cst::Sequence(vec![
-						Cst::Choice("n4", Cst::Terminal("4".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![Cst::Choice(
-							"n2",
-							Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()
-						)
-						.into(),])
-						.into()
-					])
-					.into(),
-					Cst::Terminal("+".chars().collect::<Vec<_>>().into()).into(),
-					Cst::Sequence(vec![
-						Cst::Choice("n7", Cst::Terminal("7".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![]).into()
-					])
-					.into(),
-				])
-				.into()
-			))
+			Ok(ExistingMatch {
+				match_length: 4,
+				cst: Cst::Choice(
+					"addition",
+					ExistingMatch {
+						match_length: 4,
+						cst: Cst::Sequence(vec![
+							ExistingMatch {
+								match_length: 2,
+								cst: Cst::Sequence(vec![
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Choice(
+											"n4",
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Terminal("4".chars().collect::<Vec<_>>().into())
+											}
+											.into()
+										)
+									}
+									.into(),
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Repetition(vec![ExistingMatch {
+											match_length: 1,
+											cst: Cst::Choice(
+												"n2",
+												ExistingMatch {
+													match_length: 1,
+													cst: Cst::Terminal("2".chars().collect::<Vec<_>>().into())
+												}
+												.into()
+											)
+										}
+										.into(),])
+									}
+									.into()
+								])
+							}
+							.into(),
+							ExistingMatch {
+								match_length: 1,
+								cst: Cst::Terminal("+".chars().collect::<Vec<_>>().into())
+							}
+							.into(),
+							ExistingMatch {
+								match_length: 1,
+								cst: Cst::Sequence(vec![
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Choice(
+											"n7",
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Terminal("7".chars().collect::<Vec<_>>().into())
+											}
+											.into()
+										)
+									}
+									.into(),
+									ExistingMatch { match_length: 0, cst: Cst::Repetition(vec![]) }.into()
+								])
+							}
+							.into(),
+						])
+					}
+					.into()
+				)
+			})
 		);
 
 		apply_edit(&mut parser, 3..4, "");
 		// "42+"
-		assert_eq!(parser.parse(), Err(ParserError::ExpectedEof));
+		assert_eq!(
+			parser.parse(),
+			Err(ExpectedOneOf(vec![
+				(
+					"addition",
+					Expected(
+						"num",
+						Expected(
+							"digit",
+							ExpectedOneOf(vec![
+								("n0", ExpectedToken('0')),
+								("n1", ExpectedToken('1')),
+								("n2", ExpectedToken('2')),
+								("n3", ExpectedToken('3')),
+								("n4", ExpectedToken('4')),
+								("n5", ExpectedToken('5')),
+								("n6", ExpectedToken('6')),
+								("n7", ExpectedToken('7')),
+								("n8", ExpectedToken('8')),
+								("n9", ExpectedToken('9')),
+							])
+							.into()
+						)
+						.into()
+					)
+				),
+				("subtraction", Expected("minus", ExpectedToken('-').into()))
+			]))
+		);
 
 		apply_edit(&mut parser, 3..3, "123");
 		// "42+123"
 		assert_eq!(
 			parser.parse(),
-			Ok(Cst::Choice(
-				"addition",
-				Cst::Sequence(vec![
-					Cst::Sequence(vec![
-						Cst::Choice("n4", Cst::Terminal("4".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![Cst::Choice(
-							"n2",
-							Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()
-						)
-						.into(),])
-						.into()
-					])
-					.into(),
-					Cst::Terminal("+".chars().collect::<Vec<_>>().into()).into(),
-					Cst::Sequence(vec![
-						Cst::Choice("n1", Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![
-							Cst::Choice("n2", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into(),
-							Cst::Choice("n3", Cst::Terminal("3".chars().collect::<Vec<_>>().into()).into()).into(),
+			Ok(ExistingMatch {
+				match_length: 6,
+				cst: Cst::Choice(
+					"addition",
+					ExistingMatch {
+						match_length: 6,
+						cst: Cst::Sequence(vec![
+							ExistingMatch {
+								match_length: 2,
+								cst: Cst::Sequence(vec![
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Choice(
+											"n4",
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Terminal("4".chars().collect::<Vec<_>>().into())
+											}
+											.into()
+										)
+									}
+									.into(),
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Repetition(vec![ExistingMatch {
+											match_length: 1,
+											cst: Cst::Choice(
+												"n2",
+												ExistingMatch {
+													match_length: 1,
+													cst: Cst::Terminal("2".chars().collect::<Vec<_>>().into())
+												}
+												.into()
+											)
+										}
+										.into(),])
+									}
+									.into()
+								])
+							}
+							.into(),
+							ExistingMatch {
+								match_length: 1,
+								cst: Cst::Terminal("+".chars().collect::<Vec<_>>().into())
+							}
+							.into(),
+							ExistingMatch {
+								match_length: 3,
+								cst: Cst::Sequence(vec![
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Choice(
+											"n1",
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Terminal("1".chars().collect::<Vec<_>>().into())
+											}
+											.into()
+										)
+									}
+									.into(),
+									ExistingMatch {
+										match_length: 2,
+										cst: Cst::Repetition(vec![
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n2",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("2".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n3",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("3".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+										])
+									}
+									.into()
+								])
+							}
+							.into(),
 						])
-						.into()
-					])
-					.into(),
-				])
-				.into()
-			))
+					}
+					.into()
+				)
+			})
 		);
 
 		apply_edit(&mut parser, 0..0, "9");
 		// "942+123"
 		assert_eq!(
 			parser.parse(),
-			Ok(Cst::Choice(
-				"addition",
-				Cst::Sequence(vec![
-					Cst::Sequence(vec![
-						Cst::Choice("n9", Cst::Terminal("9".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![
-							Cst::Choice("n4", Cst::Terminal("4".chars().collect::<Vec<_>>().into()).into()).into(),
-							Cst::Choice("n2", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into(),
+			Ok(ExistingMatch {
+				match_length: 7,
+				cst: Cst::Choice(
+					"addition",
+					ExistingMatch {
+						match_length: 7,
+						cst: Cst::Sequence(vec![
+							ExistingMatch {
+								match_length: 3,
+								cst: Cst::Sequence(vec![
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Choice(
+											"n9",
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Terminal("9".chars().collect::<Vec<_>>().into())
+											}
+											.into()
+										)
+									}
+									.into(),
+									ExistingMatch {
+										match_length: 2,
+										cst: Cst::Repetition(vec![
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n4",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("4".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n2",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("2".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+										])
+									}
+									.into()
+								])
+							}
+							.into(),
+							ExistingMatch {
+								match_length: 1,
+								cst: Cst::Terminal("+".chars().collect::<Vec<_>>().into())
+							}
+							.into(),
+							ExistingMatch {
+								match_length: 3,
+								cst: Cst::Sequence(vec![
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Choice(
+											"n1",
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Terminal("1".chars().collect::<Vec<_>>().into())
+											}
+											.into()
+										)
+									}
+									.into(),
+									ExistingMatch {
+										match_length: 2,
+										cst: Cst::Repetition(vec![
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n2",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("2".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n3",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("3".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+										])
+									}
+									.into()
+								])
+							}
+							.into(),
 						])
-						.into()
-					])
-					.into(),
-					Cst::Terminal("+".chars().collect::<Vec<_>>().into()).into(),
-					Cst::Sequence(vec![
-						Cst::Choice("n1", Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![
-							Cst::Choice("n2", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into(),
-							Cst::Choice("n3", Cst::Terminal("3".chars().collect::<Vec<_>>().into()).into()).into(),
-						])
-						.into()
-					])
-					.into(),
-				])
-				.into()
-			))
+					}
+					.into()
+				)
+			})
 		);
 
 		apply_edit(&mut parser, 3..4, "_");
 		// "942_123"
-		assert_eq!(parser.parse(), Err(ParserError::ExpectedEof));
+		assert_eq!(
+			parser.parse(),
+			Err(ParserError::ExpectedOneOf(vec![
+				("addition", Expected("plus", ExpectedToken('+').into())),
+				("subtraction", Expected("minus", ExpectedToken('-').into())),
+			]))
+		);
 
 		apply_edit(&mut parser, 3..4, "0-0");
 		// "9420-0123"
 		assert_eq!(
 			parser.parse(),
-			Ok(Cst::Choice(
-				"subtraction",
-				Cst::Sequence(vec![
-					Cst::Sequence(vec![
-						Cst::Choice("n9", Cst::Terminal("9".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![
-							Cst::Choice("n4", Cst::Terminal("4".chars().collect::<Vec<_>>().into()).into()).into(),
-							Cst::Choice("n2", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into(),
-							Cst::Choice("n0", Cst::Terminal("0".chars().collect::<Vec<_>>().into()).into()).into(),
+			Ok(ExistingMatch {
+				match_length: 9,
+				cst: Cst::Choice(
+					"subtraction",
+					ExistingMatch {
+						match_length: 9,
+						cst: Cst::Sequence(vec![
+							ExistingMatch {
+								match_length: 4,
+								cst: Cst::Sequence(vec![
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Choice(
+											"n9",
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Terminal("9".chars().collect::<Vec<_>>().into())
+											}
+											.into()
+										)
+									}
+									.into(),
+									ExistingMatch {
+										match_length: 3,
+										cst: Cst::Repetition(vec![
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n4",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("4".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n2",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("2".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n0",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("0".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+										])
+									}
+									.into()
+								])
+							}
+							.into(),
+							ExistingMatch {
+								match_length: 1,
+								cst: Cst::Terminal("-".chars().collect::<Vec<_>>().into())
+							}
+							.into(),
+							ExistingMatch {
+								match_length: 4,
+								cst: Cst::Sequence(vec![
+									ExistingMatch {
+										match_length: 1,
+										cst: Cst::Choice(
+											"n0",
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Terminal("0".chars().collect::<Vec<_>>().into())
+											}
+											.into()
+										)
+									}
+									.into(),
+									ExistingMatch {
+										match_length: 3,
+										cst: Cst::Repetition(vec![
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n1",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("1".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n2",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("2".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+											ExistingMatch {
+												match_length: 1,
+												cst: Cst::Choice(
+													"n3",
+													ExistingMatch {
+														match_length: 1,
+														cst: Cst::Terminal("3".chars().collect::<Vec<_>>().into())
+													}
+													.into()
+												)
+											}
+											.into(),
+										])
+									}
+									.into()
+								])
+							}
+							.into(),
 						])
-						.into()
-					])
-					.into(),
-					Cst::Terminal("-".chars().collect::<Vec<_>>().into()).into(),
-					Cst::Sequence(vec![
-						Cst::Choice("n0", Cst::Terminal("0".chars().collect::<Vec<_>>().into()).into()).into(),
-						Cst::Repetition(vec![
-							Cst::Choice("n1", Cst::Terminal("1".chars().collect::<Vec<_>>().into()).into()).into(),
-							Cst::Choice("n2", Cst::Terminal("2".chars().collect::<Vec<_>>().into()).into()).into(),
-							Cst::Choice("n3", Cst::Terminal("3".chars().collect::<Vec<_>>().into()).into()).into(),
-						])
-						.into()
-					])
-					.into(),
-				])
-				.into()
-			))
+					}
+					.into()
+				)
+			})
 		);
 	}
-	// */
 }
