@@ -138,6 +138,27 @@ pub enum Token {
 	#[token("@")]
 	AtSymbol,
 
+	#[token("?")]
+	QuestionMark,
+
+	#[token("!")]
+	ExclamationMark,
+
+	#[token("|")]
+	Pipe,
+
+	#[token("&")]
+	Ampersand,
+
+	#[token("^")]
+	Caret,
+
+	#[token("~")]
+	Tilde,
+
+	#[token("%")]
+	Percent,
+
 	#[regex(r"\s\s*")]
 	Whitespace,
 }

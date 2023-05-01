@@ -13,6 +13,26 @@ lazy_static! {
 		(";", Token::Semicolon),
 		("(", Token::OpenParen),
 		(")", Token::CloseParen),
+		("{", Token::OpenBrace),
+		("}", Token::CloseBrace),
+		("[", Token::OpenBracket),
+		("]", Token::CloseBracket),
+		("=", Token::Equals),
+		(":", Token::Colon),
+		(".", Token::Dot),
+		("*", Token::Asterisk),
+		("/", Token::Slash),
+		("+", Token::Plus),
+		("-", Token::Minus),
+		(">", Token::CloseChevron),
+		("<", Token::OpenChevron),
+		("?", Token::QuestionMark),
+		("!", Token::ExclamationMark),
+		("&", Token::Ampersand),
+		("|", Token::Pipe),
+		("^", Token::Caret),
+		("%", Token::Percent),
+		("~", Token::Tilde),
 	])
 	.into();
 }
@@ -86,7 +106,7 @@ macro_rules! grammar_rules {
 macro_rules! grammar {
 	(
 		$(@$annotation:ident $($annotated_rule:ident)+;)*
-		$($name:ident =>
+		$($(#[doc = $docs:tt])* $name:ident =>
 			$prefix:tt
 			$(| $($or:tt)|+)?
 			$(, $($seq:tt),+)?
@@ -96,7 +116,7 @@ macro_rules! grammar {
 		#[allow(non_camel_case_types, unused)]
 		#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 		pub enum P4GrammarRules {
-			$($name),+
+			$($(#[doc = $docs])* $name),+
 		}
 
 		pub fn get_grammar() -> Grammar<P4GrammarRules, Token> {
@@ -156,27 +176,68 @@ grammar! {
 	dir_out   => { Token::Identifier(i) if i == "out" };
 	dir_inout => { Token::Identifier(i) if i == "inout" };
 
+	/// Semantic non-terminal that marks an identifier as a definition.
+	///
+	/// For example, in `parser MyParser<T>(inout T x) { }`, `MyParser`, `T`,
+	/// and `x` are all definitions, and possible targets for go-to definition.
+	definition => ident;
+	ident => { Token::Identifier(_) };
+	number => { Token::Integer(_) };
 	semicolon => ";";
 	at_symbol => "@";
 	comma => ",";
 	close_paren => ")";
 	open_paren => "(";
-	ident => { Token::Identifier(_) };
 	nothing => ();
+	open_brace => "{";
+	close_brace => "}";
+	equals => "=";
+	plus => "+";
+	minus => "-";
+	star => "*";
+	slash => "/";
+	percent => "%";
+	ampersand => "&";
+	pipe => "|";
+	exclamation => "!";
+	lt => "<";
+	gt => ">";
+	lte => lt, equals;
+	gte => gt, equals;
+	eq => equals, equals;
+	neq => exclamation, equals;
+	and => ampersand, ampersand;
+	or => pipe, pipe;
+
+	bin_op => plus | minus | star | slash | percent | lt | gt | lte | gte | eq | neq | and | or;
 
 	parser_kw => (Token::KwParser);
-	parser_decl => ws, annotations, ws, parser_kw, ws, ident, ws, maybe_type_params, ws, parameter_list;
+	parser_decl => ws, annotations, ws, parser_kw, ws, definition, ws, maybe_type_params, ws, parameter_list, ws, maybe_block;
 
 	parameter_list => open_paren, ws, parameter_seq, ws, close_paren;
 	parameter_seq => parameter_seq_rep | parameter | nothing;
 	parameter_seq_rep => parameter_comma, parameter_seq;
 	parameter_comma => ws, parameter, ws, comma;
 	maybe_comma => comma | nothing;
-	parameter => annotations, ws, maybe_direction, ws, typ, ws, ident;
-	// maybe_annotation => annotation | nothing;
+	parameter => annotations, ws, maybe_direction, ws, typ, ws, definition;
 	maybe_direction => direction | nothing;
 	maybe_type_params => nothing; // TODO: type params
 	typ => ident; // TODO: full type syntax
+
+	maybe_block => block | nothing;
+	block => open_brace, ws, statements, ws, close_brace;
+	statements => statement rep;
+	statement => ws, stmt, ws, maybe_semicolon, ws;
+	stmt => definition_stmt | assignment_stmt | top_level_decl;
+	definition_stmt => annotations, ws, typ, ws, definition, ws, maybe_definition;
+	maybe_definition => equals, ws, rhs;
+	assignment_stmt => lhs, ws, equals, ws, rhs;
+	lhs => ident;
+	rhs => expression;
+
+	expression => ident | number | paren_expr | bin_op_expr;
+	bin_op_expr => expression, ws, bin_op, ws, expression;
+	paren_expr => open_paren, ws, expression, ws, close_paren;
 }
 
 pub fn p4_parser() -> impl FnOnce(RwLock<Vec<Token>>) -> Parser<P4GrammarRules, Token> {
@@ -241,7 +302,7 @@ mod test {
 			if let Some(parser) = ParserDecl::cast(child) {
 				println!("parser declaration with params");
 				for param in parser.parameter_list().next().unwrap().parameter() {
-					let p = param.ident().next().unwrap();
+					let p = param.definition().flat_map(|d| d.ident()).next().unwrap();
 					let d = param
 						.direction()
 						.next()

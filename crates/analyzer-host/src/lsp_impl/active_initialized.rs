@@ -12,7 +12,7 @@ use analyzer_abstractions::{
 		CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
 		DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
 		DidOpenTextDocumentParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-		HoverContents, HoverParams, MarkupContent, MarkupKind, Position, SetTraceParams, Location,
+		HoverContents, HoverParams, Location, MarkupContent, MarkupKind, Position, SetTraceParams,
 	},
 	tracing::{error, info},
 };
@@ -78,6 +78,7 @@ async fn on_goto_definition(
 	params: GotoDefinitionParams,
 	state: Arc<AsyncRwLock<State>>,
 ) -> HandlerResult<Option<GotoDefinitionResponse>> {
+	// TODO: move this (or maybe just references) to analyzer-core
 	use analyzer_core::parser::{ast::*, *};
 
 	let state = state.read().await;
@@ -98,19 +99,18 @@ async fn on_goto_definition(
 	let cumulative_sum = analyzer.cumulative_sum(file_id).ok_or(HandlerError::new("token offsets not found"))?;
 
 	let root = SyntaxNode::new_root(p4_grammar::get_grammar().into(), tree);
+	// find the identifier under cursor
 	let ident = preorder(0, root.clone())
 		.map(|(_, n)| n)
 		.filter_map(Ident::cast)
-		.find(|ident| {
-			eprintln!("span {:?} vs {cursor}", ident.text_span(cumulative_sum));
-			ident.text_span(cumulative_sum).contains(&cursor)
-		});
+		.find(|ident| ident.text_span(cumulative_sum).contains(&cursor));
 
 	Ok(ident.and_then(|ident| {
+		// find the matching definition
 		let definition = preorder(0, root)
 			.map(|(_, n)| n)
-			.filter_map(Parameter::cast)
-			.flat_map(|param| param.ident())
+			.filter_map(Definition::cast)
+			.flat_map(|d| d.ident())
 			.find(|param| param.as_str() == ident.as_str());
 
 		definition.map(|def| {
@@ -162,10 +162,8 @@ async fn on_text_document_completion(
 					let root = SyntaxNode::new_root(p4_grammar::get_grammar().into(), tree);
 					preorder(0, root)
 						.map(|(_, node)| node)
-						.filter_map(ParserDecl::cast)
-						.flat_map(|p| p.parameter_list())
-						.flat_map(|list| list.parameter())
-						.flat_map(|param| param.ident())
+						.filter_map(Definition::cast)
+						.flat_map(|def| def.ident())
 						.map(|ident| CompletionItem {
 							label: ident.as_str().to_string(),
 							kind: Some(CompletionItemKind::VARIABLE),

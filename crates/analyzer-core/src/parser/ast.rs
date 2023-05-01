@@ -224,7 +224,8 @@ macro_rules! ast_node {
 
 ast_node!(parser_decl, methods: parameter_list);
 ast_node!(parameter_list, methods: parameter);
-ast_node!(parameter, methods: direction, typ, ident);
+ast_node!(parameter, methods: direction, typ, definition);
+ast_node!(definition, methods: ident);
 
 ast_node!(typ);
 ast_node!(ident);
