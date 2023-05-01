@@ -120,7 +120,7 @@ impl<RuleName: Eq + Ord + Hash + Debug + Clone, Token: Debug + PartialEq + Parti
 		Ok(move |buffer| Parser { grammar: grammar.into(), memo_table: vec![], buffer })
 	}
 
-	pub fn parse(&mut self) -> Result<ExistingMatch<RuleName, Token>, ParserError<RuleName, Token>> {
+	pub fn parse(&mut self) -> (usize, isize, Result<ExistingMatch<RuleName, Token>, ParserError<RuleName, Token>>) {
 		let mut matcher = Matcher {
 			rules: self.grammar.clone(),
 			memo_table: &mut self.memo_table,
@@ -129,10 +129,12 @@ impl<RuleName: Eq + Ord + Hash + Debug + Clone, Token: Debug + PartialEq + Parti
 			max_examined_pos: -1,
 		};
 
-		matcher
+		let result = matcher
 			.memoized_eval_rule(&self.grammar.initial)
 			.filter(ParserError::ExpectedEof, |_| matcher.pos == matcher.input.len())
-			.map(|rc| (*rc).clone())
+			.map(|rc| (*rc).clone());
+
+		(matcher.pos, matcher.max_examined_pos, result)
 	}
 
 	/// Apply an edit operation, replacing the given `range` of tokens with `r`.
@@ -404,7 +406,7 @@ mod test {
 		})
 		.unwrap();
 
-		let result = matcher("foo".chars().collect::<Vec<_>>().into()).parse();
+		let (_, _, result) = matcher("foo".chars().collect::<Vec<_>>().into()).parse();
 		assert_eq!(
 			result,
 			Ok(ExistingMatch { cst: Cst::Terminal("foo".chars().collect::<Vec<_>>().into()), match_length: 3 })
@@ -433,7 +435,7 @@ mod test {
 
 		let input = "1".chars().collect::<Vec<_>>().into();
 		assert_eq!(
-			mtch(input),
+			mtch(input).2,
 			Ok(ExistingMatch {
 				cst: Cst::Choice(
 					"b",
@@ -446,7 +448,7 @@ mod test {
 
 		let input = "2".chars().collect::<Vec<_>>().into();
 		assert_eq!(
-			mtch(input),
+			mtch(input).2,
 			Ok(ExistingMatch {
 				cst: Cst::Choice(
 					"a",
@@ -468,7 +470,7 @@ mod test {
 		);
 
 		assert_eq!(
-			mtch("3".chars().collect::<Vec<_>>().into()),
+			mtch("3".chars().collect::<Vec<_>>().into()).2,
 			Ok(ExistingMatch {
 				cst: Cst::Choice(
 					"a",
@@ -501,7 +503,7 @@ mod test {
 		.unwrap();
 
 		assert_eq!(
-			matcher("1foo".chars().collect::<Vec<_>>().into()).parse(),
+			matcher("1foo".chars().collect::<Vec<_>>().into()).parse().2,
 			Ok(ExistingMatch {
 				cst: Cst::Sequence(vec![
 					ExistingMatch { cst: Cst::Terminal("1".chars().collect::<Vec<_>>().into()), match_length: 1 }
@@ -558,7 +560,7 @@ mod test {
 		};
 
 		assert_eq!(
-			parser.parse(),
+			parser.parse().2,
 			Ok(ExistingMatch {
 				match_length: 5,
 				cst: Cst::Choice(
@@ -648,7 +650,7 @@ mod test {
 		apply_edit(&mut parser, 1..2, "0");
 
 		assert_eq!(
-			parser.parse(),
+			parser.parse().2,
 			Ok(ExistingMatch {
 				match_length: 5,
 				cst: Cst::Choice(
@@ -739,7 +741,7 @@ mod test {
 		assert_eq!(parser.buffer.read().iter().collect::<String>(), "42+7".to_string());
 
 		assert_eq!(
-			parser.parse(),
+			parser.parse().2,
 			Ok(ExistingMatch {
 				match_length: 4,
 				cst: Cst::Choice(
@@ -816,7 +818,7 @@ mod test {
 		assert_eq!(parser.buffer.read().iter().collect::<String>(), "42+".to_string());
 
 		assert_eq!(
-			parser.parse(),
+			parser.parse().2,
 			Err(ExpectedOneOf(vec![
 				(
 					"addition",
@@ -849,7 +851,7 @@ mod test {
 		assert_eq!(parser.buffer.read().iter().collect::<String>(), "42+123".to_string());
 
 		assert_eq!(
-			parser.parse(),
+			parser.parse().2,
 			Ok(ExistingMatch {
 				match_length: 6,
 				cst: Cst::Choice(
@@ -955,7 +957,7 @@ mod test {
 		assert_eq!(parser.buffer.read().iter().collect::<String>(), "942+123".to_string());
 
 		assert_eq!(
-			parser.parse(),
+			parser.parse().2,
 			Ok(ExistingMatch {
 				match_length: 7,
 				cst: Cst::Choice(
@@ -1075,7 +1077,7 @@ mod test {
 		assert_eq!(parser.buffer.read().iter().collect::<String>(), "942_123".to_string());
 
 		assert_eq!(
-			parser.parse(),
+			parser.parse().2,
 			Err(ParserError::ExpectedOneOf(vec![
 				("addition", Expected("plus", ExpectedToken('+').into())),
 				("subtraction", Expected("minus", ExpectedToken('-').into())),
@@ -1086,7 +1088,7 @@ mod test {
 		assert_eq!(parser.buffer.read().iter().collect::<String>(), "9420-0123".to_string());
 
 		assert_eq!(
-			parser.parse(),
+			parser.parse().2,
 			Ok(ExistingMatch {
 				match_length: 9,
 				cst: Cst::Choice(

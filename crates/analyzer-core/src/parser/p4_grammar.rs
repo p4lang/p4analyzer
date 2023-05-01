@@ -10,6 +10,7 @@ lazy_static! {
 		("*", Token::Asterisk),
 		("@", Token::AtSymbol),
 		(",", Token::Comma),
+		(";", Token::Semicolon),
 		("(", Token::OpenParen),
 		(")", Token::CloseParen),
 	])
@@ -115,11 +116,13 @@ macro_rules! grammar {
 	};
 }
 
+// TODO: lazy_static!
 grammar! {
 	@SkipNodeAndChildren
 		at_symbol
 		close_paren
 		comma
+		semicolon
 		nothing
 		open_paren
 		parser_kw
@@ -140,18 +143,20 @@ grammar! {
 
 	p4program => ws, top_level_decls, ws;
 	top_level_decls => top_level_decls_rep | top_level_decls_end | nothing;
-	top_level_decls_rep => top_level_decl, ws, top_level_decls;
-	top_level_decls_end => (Token::Semicolon);
+	top_level_decls_rep => top_level_decl, ws, maybe_semicolon, ws, top_level_decls;
+	top_level_decls_end => semicolon;
+	maybe_semicolon => semicolon | nothing;
 
 	top_level_decl => parser_decl;
 	annotations => annotation rep;
-	annotation => at_symbol, ident;
+	annotation => ws, at_symbol, ident;
 
 	direction => dir_in | dir_out | dir_inout;
 	dir_in    => { Token::Identifier(i) if i == "in" };
 	dir_out   => { Token::Identifier(i) if i == "out" };
 	dir_inout => { Token::Identifier(i) if i == "inout" };
 
+	semicolon => ";";
 	at_symbol => "@";
 	comma => ",";
 	close_paren => ")";
@@ -160,12 +165,12 @@ grammar! {
 	nothing => ();
 
 	parser_kw => (Token::KwParser);
-	parser_decl => annotations, ws, parser_kw, ws, ident, ws, maybe_type_params, ws, parameter_list;
+	parser_decl => ws, annotations, ws, parser_kw, ws, ident, ws, maybe_type_params, ws, parameter_list;
 
 	parameter_list => open_paren, ws, parameter_seq, ws, close_paren;
 	parameter_seq => parameter_seq_rep | parameter | nothing;
 	parameter_seq_rep => parameter_comma, parameter_seq;
-	parameter_comma => parameter, ws, comma;
+	parameter_comma => ws, parameter, ws, comma;
 	maybe_comma => comma | nothing;
 	parameter => annotations, ws, maybe_direction, ws, typ, ws, ident;
 	// maybe_annotation => annotation | nothing;
@@ -206,7 +211,7 @@ mod test {
 		let source_lock = RwLock::new(source);
 		let mut parser: Parser<P4GrammarRules, Token> = mk_parser(source_lock);
 
-		let r = parser.parse();
+		let (_, _, r) = parser.parse();
 		eprintln!("here it is {r:#?}");
 		assert_eq!(r, Ok(ExistingMatch { cst: Cst::Repetition(vec![]), match_length: 0 }));
 
@@ -225,23 +230,11 @@ mod test {
 		let source_lock = RwLock::new(stream);
 		let mut parser = mk_parser(source_lock);
 
-		let parsed = parser.parse();
+		let (_, _, parsed) = parser.parse();
 		// assert_eq!(Err(ParserError::ExpectedEof), parsed);
 
 		let syntax_node = SyntaxNode::new_root(parser.grammar.clone(), super::ast::GreenNode(Rc::new(parsed.unwrap())));
 		println!("I am {:?}", syntax_node.kind());
-
-		fn preorder(depth: u32, node: SyntaxNode) -> Box<dyn Iterator<Item = (u32, SyntaxNode)>> {
-			match node.trivia_class() {
-				TriviaClass::Keep => Box::new(std::iter::once((depth, node.clone())).chain(
-					node.children().collect::<Vec<_>>().into_iter().flat_map(move |node| preorder(depth + 1, node)),
-				)),
-				TriviaClass::SkipNodeOnly => Box::new(
-					node.children().collect::<Vec<_>>().into_iter().flat_map(move |node| preorder(depth, node)),
-				),
-				TriviaClass::SkipNodeAndChildren => Box::new(std::iter::empty()),
-			}
-		}
 
 		for (depth, child) in preorder(0, syntax_node) {
 			println!("{}- {:?}", "  ".repeat(depth as usize), child.kind());

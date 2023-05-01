@@ -1,6 +1,7 @@
 use std::{
 	collections::{BTreeMap, HashMap},
-	rc::Rc, ops::Range,
+	ops::Range,
+	rc::Rc,
 };
 
 use paste::paste;
@@ -126,6 +127,19 @@ impl SyntaxNode {
 	pub fn is_trivia(&self) -> bool { self.trivia_class() != TriviaClass::Keep }
 }
 
+pub fn preorder(depth: u32, node: SyntaxNode) -> Box<dyn Iterator<Item = (u32, SyntaxNode)>> {
+	match node.trivia_class() {
+		TriviaClass::Keep => Box::new(
+			std::iter::once((depth, node.clone()))
+				.chain(node.children().collect::<Vec<_>>().into_iter().flat_map(move |node| preorder(depth + 1, node))),
+		),
+		TriviaClass::SkipNodeOnly => {
+			Box::new(node.children().collect::<Vec<_>>().into_iter().flat_map(move |node| preorder(depth, node)))
+		}
+		TriviaClass::SkipNodeAndChildren => Box::new(std::iter::empty()),
+	}
+}
+
 pub trait AstNode {
 	fn can_cast(node: &SyntaxNode) -> bool;
 
@@ -137,9 +151,7 @@ pub trait AstNode {
 	fn syntax(&self) -> &SyntaxNode;
 
 	/// The offset in tokens at which the node starts.
-	fn offset(&self) -> usize {
-		self.syntax().0.offset
-	}
+	fn offset(&self) -> usize { self.syntax().0.offset }
 
 	/// The node's span in the token stream.
 	fn span(&self) -> Range<usize> {
@@ -154,7 +166,12 @@ pub trait AstNode {
 	/// cumulative sum of token lengths.
 	fn text_span(&self, cumulative_sum: &[usize]) -> Range<usize> {
 		let Range { start, end } = self.span();
-		cumulative_sum[start]..cumulative_sum[end]
+		let end = (end as isize - 1).max(0) as usize;
+		if start == 0 {
+			0..cumulative_sum[end]
+		} else {
+			cumulative_sum[start - 1]..cumulative_sum[end]
+		}
 	}
 }
 
@@ -182,24 +199,24 @@ macro_rules! ast_node {
 			}
 
 			$(
-			impl [<$non_terminal:camel>] {
-				$(
-					#[doc = "Fetch the `" $method "` child of this node."]
-					pub fn $method(&self) -> impl Iterator<Item = [<$method:camel>]> + '_ {
+				impl [<$non_terminal:camel>] {
+					$(
+						#[doc = "Fetch the `" $method "` child of this node."]
+						pub fn $method(&self) -> impl Iterator<Item = [<$method:camel>]> {
 							// TODO: avoid allocation and dynamic dispatch (see
 							// enum crates for possible help)
-						fn go(node: SyntaxNode) -> Box<dyn Iterator<Item = SyntaxNode>> {
-							match node.trivia_class() {
-								TriviaClass::SkipNodeAndChildren => Box::new(std::iter::empty()),
-								TriviaClass::SkipNodeOnly => Box::new(node.children().flat_map(go)),
+							fn go(node: SyntaxNode) -> Box<dyn Iterator<Item = SyntaxNode>> {
+								match node.trivia_class() {
+									TriviaClass::SkipNodeAndChildren => Box::new(std::iter::empty()),
+									TriviaClass::SkipNodeOnly => Box::new(node.children().flat_map(go)),
 									TriviaClass::Keep => Box::new(std::iter::once(node)),
+								}
 							}
-						}
 
-						self.syntax().children().flat_map(go).filter_map([<$method:camel>]::cast)
-					}
-				)+
-			}
+							self.syntax().children().flat_map(go).filter_map([<$method:camel>]::cast)
+						}
+					)+
+				}
 			)?
 		}
 	};
@@ -209,7 +226,6 @@ ast_node!(parser_decl, methods: parameter_list);
 ast_node!(parameter_list, methods: parameter);
 ast_node!(parameter, methods: direction, typ, ident);
 
-// ast_node!(direction);
 ast_node!(typ);
 ast_node!(ident);
 

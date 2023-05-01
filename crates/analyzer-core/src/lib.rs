@@ -33,6 +33,7 @@ pub struct Jar(
 	lex,
 	preprocess,
 	parse,
+	cumulative_sum
 );
 
 pub trait Db: salsa::DbWithJar<Jar> {}
@@ -80,14 +81,17 @@ impl Analyzer {
 		preprocess(&self.db, self.fs?, file_id).as_ref()
 	}
 
-	pub fn parsed(&self, file_id: FileId) -> Option<parser::ast::GreenNode> {
-		parse(&self.db, self.fs?, file_id)
+	pub fn parsed(&self, file_id: FileId) -> Option<parser::ast::GreenNode> { parse(&self.db, self.fs?, file_id) }
+
+	pub fn cumulative_sum(&self, file_id: FileId) -> Option<&Vec<usize>> {
+		cumulative_sum(&self.db, self.fs?, file_id).as_ref()
 	}
 
 	pub fn diagnostics(&self, id: FileId) -> Vec<Diagnostic> {
 		if let Some(buf) = self.filesystem().get(&id) {
 			let mut d = lex::accumulated::<Diagnostics>(&self.db, id, *buf);
 			d.append(&mut preprocess::accumulated::<Diagnostics>(&self.db, self.fs.unwrap(), id));
+			d.append(&mut parse::accumulated::<Diagnostics>(&self.db, self.fs.unwrap(), id));
 			d
 		} else {
 			vec![]
@@ -220,18 +224,46 @@ pub fn preprocess(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec<(Fi
 	Some(result)
 }
 
+// TODO: rename
+// FIXME: doesn't work across files
+#[salsa::tracked(return_ref)]
+pub fn cumulative_sum(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec<usize>> {
+	let lexemes = preprocess(db, fs, file_id).as_deref()?;
+	let cumulative_sum = lexemes
+		.iter()
+		.map(|(_, _, span)| span.len())
+		.scan(0, |acc, len| {
+			*acc += len;
+			Some(*acc)
+		})
+		.collect::<Vec<_>>();
+
+	Some(cumulative_sum)
+}
+
 #[salsa::tracked]
 pub fn parse(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<parser::ast::GreenNode> {
 	use parser::*;
 	let grammar = p4_grammar::get_grammar();
 	let lexemes = preprocess(db, fs, file_id).as_deref()?;
-	let lexemes: Vec<_> = lexemes.iter().map(|(_, tk, _) | tk.clone()).collect();
+	let cumulative_sum = cumulative_sum(db, fs, file_id).as_deref()?;
+	let lexemes: Vec<_> = lexemes.iter().map(|(_, tk, _)| tk.clone()).collect();
 
 	let mk_parser = Parser::from_grammar(grammar).ok()?;
 	// TODO: use the locking mechanism
 	let lock = RwLock::new(lexemes);
 	let mut parser = mk_parser(lock);
-	let result = parser.parse().ok()?;
+	let (pos, max_examined, result) = parser.parse();
 
-	Some(ast::GreenNode(std::rc::Rc::new(result)))
+	let start = cumulative_sum[pos.min(cumulative_sum.len() - 1)];
+	let end = cumulative_sum[(pos + 1).min(cumulative_sum.len() - 1)];
+
+	if let Err(e) = &result {
+		Diagnostics::push(
+			db,
+			Diagnostic { file: file_id, location: start..end, severity: Severity::Error, message: format!("{e:?}") },
+		)
+	}
+
+	Some(ast::GreenNode(std::rc::Rc::new(result.ok()?)))
 }
