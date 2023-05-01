@@ -21,6 +21,14 @@ pub struct Grammar<RuleName, Token: Clone> {
 	/// The initial non-terminal.
 	pub initial: RuleName,
 	pub rules: BTreeMap<RuleName, Rule<RuleName, Token>>,
+	pub trivia: BTreeMap<RuleName, TriviaClass>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TriviaClass {
+	Keep,
+	SkipNodeOnly,
+	SkipNodeAndChildren,
 }
 
 #[derive(Debug, Default)]
@@ -86,7 +94,7 @@ impl<RuleName: Eq + Ord + Hash + Debug + Clone, Token: Debug + PartialEq + Parti
 	pub fn from_grammar(
 		grammar: Grammar<RuleName, Token>,
 	) -> Result<impl FnOnce(RwLock<Vec<Token>>) -> Parser<RuleName, Token>> {
-		let Grammar { initial, rules } = &grammar;
+		let Grammar { initial, rules, .. } = &grammar;
 
 		if !rules.contains_key(initial) {
 			return Err(anyhow!("Missing initial non-terminal '{initial:?}'"));
@@ -376,6 +384,7 @@ macro_rules! grammar {
 		Grammar {
 			initial: "start",
 			rules: [$((stringify!($name), rule_rhs!($prefix $(| $($or)|+)? $(, $($seq),+)? $($rep)?))),+].into(),
+			trivia: [].into(),
 		}
 	};
 }
@@ -390,6 +399,7 @@ mod test {
 		let matcher = Parser::from_grammar(Grammar {
 			initial: "start",
 			rules: [("start", Rule::Terminal("foo".chars().collect::<Vec<_>>().into()))].into(),
+			trivia: Default::default(),
 		})
 		.unwrap();
 
@@ -414,6 +424,7 @@ mod test {
 					("y", Rule::Terminal("3".chars().collect::<Vec<_>>().into())),
 				]
 				.into(),
+				trivia: Default::default(),
 			})
 			.unwrap()(input)
 			.parse()

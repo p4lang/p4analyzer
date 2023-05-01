@@ -51,16 +51,56 @@ macro_rules! rule_rhs {
 	};
 }
 
-macro_rules! grammar {
+macro_rules! grammar_trivia {
+	() => {
+		Default::default()
+	};
+	($(@$annotation:ident $($annotated_rule:ident)+;)*) => {
+		{
+			let mut trivia = BTreeMap::<P4GrammarRules, TriviaClass>::new();
+			$(
+				{
+					let class: TriviaClass = TriviaClass::$annotation;
+					$(
+						trivia.insert($annotated_rule, class);
+					)+
+				}
+			)*
+			trivia
+		}
+	};
+}
+
+macro_rules! grammar_rules {
 	($($name:ident =>
 		$prefix:tt
 		$(| $($or:tt)|+)?
 		$(, $($seq:tt),+)?
 		$($rep:ident)?
 	);+$(;)?) => {
+		[$(($name, rule_rhs!($prefix $(| $($or)|+)? $(, $($seq),+)? $($rep)?))),+]
+	};
+}
+
+macro_rules! grammar {
+	(
+		$(@$annotation:ident $($annotated_rule:ident)+;)*
+		$($name:ident =>
+			$prefix:tt
+			$(| $($or:tt)|+)?
+			$(, $($seq:tt),+)?
+			$($rep:ident)?
+		);+$(;)?
+	) => {
 		Grammar {
 			initial: start,
-			rules: [$(($name, rule_rhs!($prefix $(| $($or)|+)? $(, $($seq),+)? $($rep)?))),+].into(),
+			rules: grammar_rules!($($name =>
+					$prefix
+					$(| $($or)|+)?
+					$(, $($seq),+)?
+					$($rep)?
+				);+).into(),
+			trivia: grammar_trivia!($(@$annotation $($annotated_rule)+;)*),
 		}
 	};
 }
@@ -106,6 +146,9 @@ pub fn p4_parser() -> impl FnOnce(RwLock<Vec<Token>>) -> Parser<P4GrammarRules, 
 	use P4GrammarRules::*;
 
 	let grammar = grammar! {
+		@SkipNodeAndChildren ws open_paren close_paren at_symbol nothing comma;
+		@SkipNodeOnly parameter_seq parameter_seq_rep top_level_decls_rep parameter_comma;
+
 		start => p4program;
 		ws => whitespace rep;
 		whitespace => (Token::Whitespace);
@@ -192,7 +235,7 @@ mod test {
 		let mk_parser = p4_parser();
 		let stream = lex_str(
 			r"
-			parser test_parser(@annotation in type int_param);
+			parser test_parser(@annotation in type int_param, short short_param);
 		",
 		);
 
@@ -207,11 +250,17 @@ mod test {
 		eprintln!("I am {:?}", syntax_node.kind());
 
 		fn preorder(depth: u32, node: SyntaxNode) -> Box<dyn Iterator<Item = (u32, SyntaxNode)>> {
-			Box::new(
-				std::iter::once((depth, node.clone())).chain(
+			let class = node.0.grammar.trivia.get(&node.kind()).copied().unwrap_or(TriviaClass::Keep);
+
+			match class {
+				TriviaClass::Keep => Box::new(std::iter::once((depth, node.clone())).chain(
 					node.children().collect::<Vec<_>>().into_iter().flat_map(move |node| preorder(depth + 1, node)),
+				)),
+				TriviaClass::SkipNodeOnly => Box::new(
+					node.children().collect::<Vec<_>>().into_iter().flat_map(move |node| preorder(depth, node)),
 				),
-			)
+				TriviaClass::SkipNodeAndChildren => Box::new(std::iter::empty()),
+			}
 		}
 
 		for (depth, child) in preorder(0, syntax_node) {

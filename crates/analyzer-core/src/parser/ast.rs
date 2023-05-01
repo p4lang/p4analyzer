@@ -44,9 +44,9 @@ pub type Grammar = super::Grammar<P4GrammarRules, Token>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SyntaxData {
-	grammar: Grammar,
-	offset: usize,
-	node: GreenNode,
+	pub grammar: Grammar,
+	pub offset: usize,
+	pub node: GreenNode,
 	/// Identifies both our parent and the rule through which we got here.
 	pub parent: Option<(SyntaxNode, P4GrammarRules)>,
 }
