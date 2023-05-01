@@ -98,7 +98,7 @@ macro_rules! grammar {
 			$($name),+
 		}
 
-		fn get_grammar() -> Grammar<P4GrammarRules, Token> {
+		pub fn get_grammar() -> Grammar<P4GrammarRules, Token> {
 			use P4GrammarRules::*;
 
 			Grammar {
@@ -180,10 +180,7 @@ pub fn p4_parser() -> impl FnOnce(RwLock<Vec<Token>>) -> Parser<P4GrammarRules, 
 
 #[cfg(test)]
 mod test {
-	use super::{
-		super::ast::*,
-		*,
-	};
+	use super::{super::ast::*, *};
 	use pretty_assertions::{assert_eq, assert_ne};
 
 	fn lex_str(s: &str) -> Vec<Token> {
@@ -236,9 +233,7 @@ mod test {
 		eprintln!("I am {:?}", syntax_node.kind());
 
 		fn preorder(depth: u32, node: SyntaxNode) -> Box<dyn Iterator<Item = (u32, SyntaxNode)>> {
-			let class = node.0.grammar.trivia.get(&node.kind()).copied().unwrap_or(TriviaClass::Keep);
-
-			match class {
+			match node.trivia_class() {
 				TriviaClass::Keep => Box::new(std::iter::once((depth, node.clone())).chain(
 					node.children().collect::<Vec<_>>().into_iter().flat_map(move |node| preorder(depth + 1, node)),
 				)),
@@ -252,7 +247,10 @@ mod test {
 		for (depth, child) in preorder(0, syntax_node) {
 			eprintln!("{}- {:?}", "  ".repeat(depth as usize), child.kind());
 			if let Some(parser) = ParserDecl::cast(child) {
-				eprintln!("I am a parser decl {:?}", parser.syntax().0.node.0);
+				eprintln!("let's have a look at this \"parser decl\"");
+				for child in parser.syntax().children() {
+					eprintln!(" -> I am a child {:?}", child.kind());
+				}
 				for param in parser.parameter_list().next().unwrap().parameter() {
 					eprintln!("I am a param {:?}", param.ident().next().unwrap().syntax().0.node.0);
 				}

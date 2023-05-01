@@ -7,7 +7,7 @@ use paste::paste;
 
 use crate::lexer::Token;
 
-use super::{p4_grammar::P4GrammarRules, Cst, ExistingMatch, Rule};
+use super::{p4_grammar::P4GrammarRules, Cst, ExistingMatch, Rule, TriviaClass};
 
 // TODO: we want to mirror rust-analyzer's way of doing things. Both with the
 // dynamically typed CST (less ceremony than what we have right now) and with
@@ -46,7 +46,7 @@ pub type Grammar = super::Grammar<P4GrammarRules, Token>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SyntaxData {
-	pub grammar: Grammar,
+	pub grammar: Grammar, // FIXME: Rc
 	pub offset: usize,
 	pub node: GreenNode,
 	/// Identifies both our parent and the rule through which we got here.
@@ -54,13 +54,15 @@ pub struct SyntaxData {
 }
 
 impl GreenNode {
-	fn children<'a>(&'a self) -> Box<dyn Iterator<Item = GreenNode> + 'a> {
+	fn children(&self) -> Box<dyn Iterator<Item = GreenNode>> {
 		use std::iter::{empty, once};
 
 		match &self.0.cst {
 			Cst::Nothing | Cst::Not(_) | Cst::Terminal(_) => Box::new(empty()),
 			Cst::Choice(_, child) => Box::new(once(GreenNode(child.clone()))),
-			Cst::Repetition(children) | Cst::Sequence(children) => Box::new(children.iter().cloned().map(GreenNode)),
+			Cst::Repetition(children) | Cst::Sequence(children) => {
+				Box::new(children.clone().into_iter().map(GreenNode))
+			}
 		}
 	}
 }
@@ -72,7 +74,7 @@ impl SyntaxNode {
 
 	pub fn parent(&self) -> Option<SyntaxNode> { self.0.parent.clone().map(|(p, _)| p) }
 
-	pub fn children(&self) -> impl Iterator<Item = SyntaxNode> + '_ {
+	pub fn children(&self) -> impl Iterator<Item = SyntaxNode> {
 		use std::iter::{empty, once, repeat};
 
 		let rule = self.0.parent.as_ref().map(|(_, r)| r).unwrap_or(&self.0.grammar.initial);
@@ -80,26 +82,27 @@ impl SyntaxNode {
 		let rule_names: Box<dyn Iterator<Item = P4GrammarRules>> = match &self.0.grammar.rules[rule] {
 			Rule::Terminal(_) => Box::new(empty()),
 			Rule::TerminalPredicate(_, _) => Box::new(empty()),
-			Rule::Choice(_) => Box::new(
-				if let Cst::Choice(chosen, _) = self.0.node.0.cst {
-					Box::new(once(chosen))
-				} else {
-					unreachable!("choice rule without choice in CST")
-				},
-			),
-			Rule::Sequence(seq) => Box::new(seq.iter().cloned()),
+			Rule::Choice(_) => Box::new(if let Cst::Choice(chosen, _) = self.0.node.0.cst {
+				Box::new(once(chosen))
+			} else {
+				unreachable!("choice rule without choice in CST")
+			}),
+			Rule::Sequence(seq) => Box::new(seq.clone().into_iter()), // FIXME: cloning
 			Rule::Repetition(rule) => Box::new(repeat(*rule)),
 			Rule::Not(_) => Box::new(empty()),
 			Rule::Nothing => Box::new(empty()),
 		};
 
-		rule_names.zip(self.0.node.children()).map(|(rule, child)| {
-			SyntaxNode(Rc::new(SyntaxData {
-				grammar: self.0.grammar.clone(),
-				offset: self.0.offset,
-				node: child,
-				parent: Some((self.clone(), rule)),
-			}))
+		// FIXME: offsets are wrong
+		let parent = self.clone();
+		rule_names.zip(self.0.node.children()).map(move |(rule, child)| {
+			// eprintln!("enumerating {rule:?}");
+				SyntaxNode(Rc::new(SyntaxData {
+					grammar: parent.0.grammar.clone(),
+					offset: parent.0.offset,
+					node: child,
+					parent: Some((parent.clone(), rule)),
+				}))
 		})
 	}
 
@@ -112,6 +115,12 @@ impl SyntaxNode {
 			self.0.grammar.initial
 		}
 	}
+
+	pub fn trivia_class(&self) -> TriviaClass {
+		self.0.grammar.trivia.get(&self.kind()).copied().unwrap_or(TriviaClass::Keep)
+	}
+
+	pub fn is_trivia(&self) -> bool { self.trivia_class() != TriviaClass::Keep }
 }
 
 pub trait AstNode {
@@ -125,7 +134,7 @@ pub trait AstNode {
 }
 
 macro_rules! ast_node {
-	($non_terminal:ident) => {
+	($non_terminal:ident $(, methods: $($method:ident),+)?) => {
 		paste! {
 			#[doc = "AST node for [`P4GrammarRules::" $non_terminal "`]."]
 			#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -146,53 +155,50 @@ macro_rules! ast_node {
 
 				fn syntax(&self) -> &SyntaxNode { &self.syntax }
 			}
-		}
-	};
-}
 
-macro_rules! ast_methods {
-	($non_terminal:ident, $($method:ident),+) => {
-		paste! {
+			$(
 			impl [<$non_terminal:camel>] {
 				$(
 					#[doc = "Fetch the `" $method "` child of this node."]
 					pub fn $method(&self) -> impl Iterator<Item = [<$method:camel>]> + '_ {
-						self.syntax.children().flat_map(|child| {
-							// FIXME: this only works on one level, needs to
-							// proceed until it meets a castable successor, but
-							// really this should follow the grammar definition
-							// instead, otherwise we could run into false
-							// positives further down the tree, not to mention
-							// exhaustive search in the entire subtree that will
-							// slow things down substantially
-							let b: Box<dyn Iterator<Item = SyntaxNode>> = if ![<$method:camel>]::can_cast(&child) {
-								Box::new(child.children().collect::<Vec<_>>().into_iter())
-							} else {
-								Box::new(std::iter::once(child))
-							};
-							b
-						}).filter_map([<$method:camel>]::cast)
+							// TODO: avoid allocation and dynamic dispatch (see
+							// enum crates for possible help)
+						fn go(node: SyntaxNode) -> Box<dyn Iterator<Item = SyntaxNode>> {
+							match node.trivia_class() {
+								TriviaClass::SkipNodeAndChildren => Box::new(std::iter::empty()),
+								TriviaClass::SkipNodeOnly => Box::new(node.children().flat_map(go)),
+									TriviaClass::Keep => Box::new(std::iter::once(node)),
+							}
+						}
+
+						self.syntax().children().flat_map(go).filter_map([<$method:camel>]::cast)
 					}
 				)+
 			}
+			)?
 		}
 	};
 }
 
-ast_node!(parser_decl);
-ast_methods!(parser_decl, parameter_list);
+ast_node!(parser_decl, methods: parameter_list);
 
-// impl ParserDecl {
-// 	pub fn parameter_list(&self) -> Option<ParameterList> {
-// 		self.syntax.children().find_map(ParameterList::cast)
-// 	}
-// }
+impl ParserDecl {
+	pub fn parameter_list2(&self) -> impl Iterator<Item = ParameterList> {
+		fn go(node: SyntaxNode) -> Box<dyn Iterator<Item = SyntaxNode>> {
+			match node.trivia_class() {
+				TriviaClass::SkipNodeAndChildren => Box::new(std::iter::empty()),
+				TriviaClass::SkipNodeOnly => Box::new(node.children().flat_map(go)),
+				TriviaClass::Keep => Box::new(node.children()),
+			}
+		}
 
-ast_node!(parameter_list);
-ast_methods!(parameter_list, parameter);
+		self.syntax().children().flat_map(go).filter_map(ParameterList::cast)
+	}
+}
 
-ast_node!(parameter);
-ast_methods!(parameter, direction, typ, ident);
+ast_node!(parameter_list, methods: parameter);
+
+ast_node!(parameter, methods: direction, typ, ident);
 
 ast_node!(direction);
 ast_node!(typ);

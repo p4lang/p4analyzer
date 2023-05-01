@@ -74,6 +74,7 @@ pub struct ExistingMatch<RuleName, Token: Clone> {
 pub enum Cst<RuleName, Token: Clone> {
 	Terminal(Rc<Vec<Token>>),
 	Choice(RuleName, Rc<ExistingMatch<RuleName, Token>>),
+	// TODO: it's a good idea to keep RuleNames in the sequence for error recovery!
 	Sequence(Vec<Rc<ExistingMatch<RuleName, Token>>>),
 	Repetition(Vec<Rc<ExistingMatch<RuleName, Token>>>),
 	Not(RuleName),
