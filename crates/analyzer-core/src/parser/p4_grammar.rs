@@ -228,9 +228,8 @@ mod test {
 		let parsed = parser.parse();
 		// assert_eq!(Err(ParserError::ExpectedEof), parsed);
 
-		let syntax_node =
-			SyntaxNode::new_root((*parser.grammar).clone(), super::ast::GreenNode(Rc::new(parsed.unwrap())));
-		eprintln!("I am {:?}", syntax_node.kind());
+		let syntax_node = SyntaxNode::new_root(parser.grammar.clone(), super::ast::GreenNode(Rc::new(parsed.unwrap())));
+		println!("I am {:?}", syntax_node.kind());
 
 		fn preorder(depth: u32, node: SyntaxNode) -> Box<dyn Iterator<Item = (u32, SyntaxNode)>> {
 			match node.trivia_class() {
@@ -245,14 +244,18 @@ mod test {
 		}
 
 		for (depth, child) in preorder(0, syntax_node) {
-			eprintln!("{}- {:?}", "  ".repeat(depth as usize), child.kind());
+			println!("{}- {:?}", "  ".repeat(depth as usize), child.kind());
 			if let Some(parser) = ParserDecl::cast(child) {
-				eprintln!("let's have a look at this \"parser decl\"");
-				for child in parser.syntax().children() {
-					eprintln!(" -> I am a child {:?}", child.kind());
-				}
+				println!("parser declaration with params");
 				for param in parser.parameter_list().next().unwrap().parameter() {
-					eprintln!("I am a param {:?}", param.ident().next().unwrap().syntax().0.node.0);
+					let p = param.ident().next().unwrap();
+					let d = param
+						.direction()
+						.next()
+						.map(|d| d.variant.to_string())
+						.unwrap_or("<no direction>".to_string());
+
+					println!("  {d} {} at token {}", p.as_str(), p.offset());
 				}
 			}
 		}

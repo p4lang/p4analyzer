@@ -1,6 +1,6 @@
 use std::{
 	collections::{BTreeMap, HashMap},
-	rc::Rc,
+	rc::Rc, ops::Range,
 };
 
 use paste::paste;
@@ -42,7 +42,7 @@ impl PartialEq for SyntaxNode {
 	fn eq(&self, other: &Self) -> bool { self.0.offset == other.0.offset && Rc::ptr_eq(&self.0, &other.0) }
 }
 
-pub type Grammar = super::Grammar<P4GrammarRules, Token>;
+pub type Grammar = Rc<super::Grammar<P4GrammarRules, Token>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SyntaxData {
@@ -93,16 +93,19 @@ impl SyntaxNode {
 			Rule::Nothing => Box::new(empty()),
 		};
 
-		// FIXME: offsets are wrong
 		let parent = self.clone();
+		let mut offset = self.0.offset;
+
 		rule_names.zip(self.0.node.children()).map(move |(rule, child)| {
-			// eprintln!("enumerating {rule:?}");
-				SyntaxNode(Rc::new(SyntaxData {
-					grammar: parent.0.grammar.clone(),
-					offset: parent.0.offset,
-					node: child,
-					parent: Some((parent.clone(), rule)),
-				}))
+			let match_length = child.0.match_length;
+			let r = SyntaxNode(Rc::new(SyntaxData {
+				grammar: parent.0.grammar.clone(),
+				offset,
+				node: child,
+				parent: Some((parent.clone(), rule)),
+			}));
+			offset += match_length;
+			r
 		})
 	}
 
@@ -130,7 +133,29 @@ pub trait AstNode {
 	where
 		Self: Sized;
 
+	/// The backing SyntaxNode.
 	fn syntax(&self) -> &SyntaxNode;
+
+	/// The offset in tokens at which the node starts.
+	fn offset(&self) -> usize {
+		self.syntax().0.offset
+	}
+
+	/// The node's span in the token stream.
+	fn span(&self) -> Range<usize> {
+		let start = self.offset();
+		let end = start + self.syntax().length();
+		start..end
+	}
+
+	/// The node's span in the source code (in bytes).
+	///
+	/// This is a convenience method that calls [`AstNode::span()`] with the
+	/// cumulative sum of token lengths.
+	fn text_span(&self, cumulative_sum: &[usize]) -> Range<usize> {
+		let Range { start, end } = self.span();
+		cumulative_sum[start]..cumulative_sum[end]
+	}
 }
 
 macro_rules! ast_node {
@@ -181,25 +206,74 @@ macro_rules! ast_node {
 }
 
 ast_node!(parser_decl, methods: parameter_list);
+ast_node!(parameter_list, methods: parameter);
+ast_node!(parameter, methods: direction, typ, ident);
 
-impl ParserDecl {
-	pub fn parameter_list2(&self) -> impl Iterator<Item = ParameterList> {
-		fn go(node: SyntaxNode) -> Box<dyn Iterator<Item = SyntaxNode>> {
-			match node.trivia_class() {
-				TriviaClass::SkipNodeAndChildren => Box::new(std::iter::empty()),
-				TriviaClass::SkipNodeOnly => Box::new(node.children().flat_map(go)),
-				TriviaClass::Keep => Box::new(node.children()),
+// ast_node!(direction);
+ast_node!(typ);
+ast_node!(ident);
+
+impl Ident {
+	pub fn as_str(&self) -> &str {
+		if let Cst::Terminal(tokens) = &self.syntax.0.node.0.cst {
+			assert_eq!(tokens.len(), 1);
+			if let Token::Identifier(s) = &tokens[0] {
+				s
+			} else {
+				unreachable!("Ident AST node has a non-identifier token {:?}", tokens[0])
 			}
+		} else {
+			unreachable!("Ident AST node has a non-terminal CST {:?}", self.syntax.0.node.0.cst)
 		}
-
-		self.syntax().children().flat_map(go).filter_map(ParameterList::cast)
 	}
 }
 
-ast_node!(parameter_list, methods: parameter);
+/// AST node for [`P4GrammarRules::direction`].
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Direction {
+	syntax: SyntaxNode,
+	pub variant: DirectionTag,
+}
 
-ast_node!(parameter, methods: direction, typ, ident);
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum DirectionTag {
+	In,
+	Out,
+	InOut,
+}
 
-ast_node!(direction);
-ast_node!(typ);
-ast_node!(ident);
+impl std::fmt::Display for DirectionTag {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			DirectionTag::In => write!(f, "in"),
+			DirectionTag::Out => write!(f, "out"),
+			DirectionTag::InOut => write!(f, "inout"),
+		}
+	}
+}
+
+impl AstNode for Direction {
+	fn can_cast(node: &SyntaxNode) -> bool { node.kind() == P4GrammarRules::direction }
+
+	fn cast(node: SyntaxNode) -> Option<Self> {
+		if node.kind() == P4GrammarRules::direction {
+			if let Cst::Choice(variant, _) = node.0.node.0.cst {
+				Some(Self {
+					syntax: node,
+					variant: match variant {
+						P4GrammarRules::dir_in => DirectionTag::In,
+						P4GrammarRules::dir_out => DirectionTag::Out,
+						P4GrammarRules::dir_inout => DirectionTag::InOut,
+						_ => unreachable!("Direction CST chose a non-dir non-terminal"),
+					},
+				})
+			} else {
+				unreachable!("Direction AST node has a non-choice CST {:?}", node.0.node.0.cst)
+			}
+		} else {
+			None
+		}
+	}
+
+	fn syntax(&self) -> &SyntaxNode { &self.syntax }
+}

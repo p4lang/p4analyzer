@@ -1,8 +1,8 @@
 pub mod base_abstractions;
+mod extensions;
 pub mod lexer;
 pub mod parser;
 pub mod preprocessor;
-mod extensions;
 
 use std::collections::HashMap;
 
@@ -10,6 +10,7 @@ use logos::Logos;
 
 use base_abstractions::*;
 use lexer::*;
+use parking_lot::RwLock;
 use preprocessor::*;
 
 #[derive(Default)]
@@ -31,6 +32,7 @@ pub struct Jar(
 	// gotta include salsa functions as well
 	lex,
 	preprocess,
+	parse,
 );
 
 pub trait Db: salsa::DbWithJar<Jar> {}
@@ -76,6 +78,10 @@ impl Analyzer {
 
 	pub fn preprocessed(&self, file_id: FileId) -> Option<&Vec<(FileId, Token, Span)>> {
 		preprocess(&self.db, self.fs?, file_id).as_ref()
+	}
+
+	pub fn parsed(&self, file_id: FileId) -> Option<parser::ast::GreenNode> {
+		parse(&self.db, self.fs?, file_id)
 	}
 
 	pub fn diagnostics(&self, id: FileId) -> Vec<Diagnostic> {
@@ -212,4 +218,20 @@ pub fn preprocess(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec<(Fi
 	}
 
 	Some(result)
+}
+
+#[salsa::tracked]
+pub fn parse(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<parser::ast::GreenNode> {
+	use parser::*;
+	let grammar = p4_grammar::get_grammar();
+	let lexemes = preprocess(db, fs, file_id).as_deref()?;
+	let lexemes: Vec<_> = lexemes.iter().map(|(_, tk, _) | tk.clone()).collect();
+
+	let mk_parser = Parser::from_grammar(grammar).ok()?;
+	// TODO: use the locking mechanism
+	let lock = RwLock::new(lexemes);
+	let mut parser = mk_parser(lock);
+	let result = parser.parse().ok()?;
+
+	Some(ast::GreenNode(std::rc::Rc::new(result)))
 }

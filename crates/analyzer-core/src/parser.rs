@@ -12,8 +12,8 @@ use std::{
 
 use crate::extensions::*;
 
-mod ast;
-mod p4_grammar;
+pub mod ast;
+pub mod p4_grammar;
 mod simplifier;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
