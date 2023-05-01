@@ -92,110 +92,96 @@ macro_rules! grammar {
 			$($rep:ident)?
 		);+$(;)?
 	) => {
-		Grammar {
-			initial: start,
-			rules: grammar_rules!($($name =>
-					$prefix
-					$(| $($or)|+)?
-					$(, $($seq),+)?
-					$($rep)?
-				);+).into(),
-			trivia: grammar_trivia!($(@$annotation $($annotated_rule)+;)*),
+		#[allow(non_camel_case_types, unused)]
+		#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+		pub enum P4GrammarRules {
+			$($name),+
+		}
+
+		fn get_grammar() -> Grammar<P4GrammarRules, Token> {
+			use P4GrammarRules::*;
+
+			Grammar {
+				initial: start,
+				rules: grammar_rules!($($name =>
+						$prefix
+						$(| $($or)|+)?
+						$(, $($seq),+)?
+						$($rep)?
+					);+).into(),
+				trivia: grammar_trivia!($(@$annotation $($annotated_rule)+;)*),
+			}
 		}
 	};
 }
 
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum P4GrammarRules {
-	annotation,
-	annotations,
-	at_symbol,
-	close_paren,
-	comma,
-	dir_in,
-	dir_inout,
-	dir_out,
-	direction,
-	ident,
-	maybe_annotation,
-	maybe_comma,
-	maybe_direction,
-	nothing,
-	open_paren,
-	opt_type_params,
-	p4program,
-	parameter_comma,
-	parameter_list,
-	parameter_seq_rep,
-	parameter_seq,
-	parameter,
-	parser_decl,
-	parser_kw,
-	start,
-	top_level_decl,
-	top_level_decls_end,
-	top_level_decls_rep,
-	top_level_decls,
-	typ,
-	whitespace,
-	ws,
+grammar! {
+	@SkipNodeAndChildren
+		at_symbol
+		close_paren
+		comma
+		nothing
+		open_paren
+		parser_kw
+		ws
+	;
+
+	@SkipNodeOnly
+		maybe_direction
+		parameter_comma
+		parameter_seq
+		parameter_seq_rep
+		top_level_decls_rep
+	;
+
+	start => p4program;
+	ws => whitespace rep;
+	whitespace => (Token::Whitespace);
+
+	p4program => ws, top_level_decls, ws;
+	top_level_decls => top_level_decls_rep | top_level_decls_end | nothing;
+	top_level_decls_rep => top_level_decl, ws, top_level_decls;
+	top_level_decls_end => (Token::Semicolon);
+
+	top_level_decl => parser_decl;
+	annotations => annotation rep;
+	annotation => at_symbol, ident;
+
+	direction => dir_in | dir_out | dir_inout;
+	dir_in    => { Token::Identifier(i) if i == "in" };
+	dir_out   => { Token::Identifier(i) if i == "out" };
+	dir_inout => { Token::Identifier(i) if i == "inout" };
+
+	at_symbol => "@";
+	comma => ",";
+	close_paren => ")";
+	open_paren => "(";
+	ident => { Token::Identifier(_) };
+	nothing => ();
+
+	parser_kw => (Token::KwParser);
+	parser_decl => annotations, ws, parser_kw, ws, ident, ws, maybe_type_params, ws, parameter_list;
+
+	parameter_list => open_paren, ws, parameter_seq, ws, close_paren;
+	parameter_seq => parameter_seq_rep | parameter | nothing;
+	parameter_seq_rep => parameter_comma, parameter_seq;
+	parameter_comma => parameter, ws, comma;
+	maybe_comma => comma | nothing;
+	parameter => annotations, ws, maybe_direction, ws, typ, ws, ident;
+	// maybe_annotation => annotation | nothing;
+	maybe_direction => direction | nothing;
+	maybe_type_params => nothing; // TODO: type params
+	typ => ident; // TODO: full type syntax
 }
 
 pub fn p4_parser() -> impl FnOnce(RwLock<Vec<Token>>) -> Parser<P4GrammarRules, Token> {
-	use P4GrammarRules::*;
-
-	let grammar = grammar! {
-		@SkipNodeAndChildren ws open_paren close_paren at_symbol nothing comma;
-		@SkipNodeOnly parameter_seq parameter_seq_rep top_level_decls_rep parameter_comma;
-
-		start => p4program;
-		ws => whitespace rep;
-		whitespace => (Token::Whitespace);
-
-		p4program => ws, top_level_decls, ws;
-		top_level_decls => top_level_decls_rep | top_level_decls_end | nothing;
-		top_level_decls_rep => top_level_decl, ws, top_level_decls;
-		top_level_decls_end => (Token::Semicolon);
-
-		top_level_decl => parser_decl;
-		annotations => annotation rep;
-		annotation => at_symbol, ident;
-
-		direction => dir_in | dir_out | dir_inout;
-		dir_in    => { Token::Identifier(i) if i == "in" };
-		dir_out   => { Token::Identifier(i) if i == "out" };
-		dir_inout => { Token::Identifier(i) if i == "inout" };
-
-		at_symbol => "@";
-		comma => ",";
-		close_paren => ")";
-		open_paren => "(";
-		ident => { Token::Identifier(_) };
-		nothing => ();
-
-		parser_kw => (Token::KwParser);
-		parser_decl => annotations, ws, parser_kw, ws, ident, ws, opt_type_params, ws, parameter_list;
-
-		parameter_list => open_paren, ws, parameter_seq, ws, close_paren;
-		parameter_seq => parameter_seq_rep | parameter | nothing;
-		parameter_seq_rep => parameter_comma, parameter_seq;
-		parameter_comma => parameter, ws, comma;
-		maybe_comma => comma | nothing;
-		parameter => maybe_annotation, ws, maybe_direction, ws, typ, ws, ident;
-		maybe_annotation => annotation | nothing;
-		maybe_direction => direction | nothing;
-		opt_type_params => nothing; // TODO: type params
-		typ => ident; // TODO: full type syntax
-	};
-
-	Parser::from_grammar(grammar).unwrap()
+	Parser::from_grammar(get_grammar()).unwrap()
 }
 
 #[cfg(test)]
 mod test {
 	use super::{
-		super::{ast::*, simplifier::simplify},
+		super::ast::*,
 		*,
 	};
 	use pretty_assertions::{assert_eq, assert_ne};
@@ -265,6 +251,12 @@ mod test {
 
 		for (depth, child) in preorder(0, syntax_node) {
 			eprintln!("{}- {:?}", "  ".repeat(depth as usize), child.kind());
+			if let Some(parser) = ParserDecl::cast(child) {
+				eprintln!("I am a parser decl {:?}", parser.syntax().0.node.0);
+				for param in parser.parameter_list().next().unwrap().parameter() {
+					eprintln!("I am a param {:?}", param.ident().next().unwrap().syntax().0.node.0);
+				}
+			}
 		}
 
 		// assert_eq!(

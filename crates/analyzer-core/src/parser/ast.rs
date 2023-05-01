@@ -3,6 +3,8 @@ use std::{
 	rc::Rc,
 };
 
+use paste::paste;
+
 use crate::lexer::Token;
 
 use super::{p4_grammar::P4GrammarRules, Cst, ExistingMatch, Rule};
@@ -72,10 +74,6 @@ impl SyntaxNode {
 
 	pub fn children(&self) -> impl Iterator<Item = SyntaxNode> + '_ {
 		use std::iter::{empty, once, repeat};
-		// for a rule like
-		// start => a, b, c;
-		// we should return children corresponding to each node as well as the
-		// non-terminal on the RHS, i.e. a, b, c.
 
 		let rule = self.0.parent.as_ref().map(|(_, r)| r).unwrap_or(&self.0.grammar.initial);
 		// inspect the CST and the grammar
@@ -116,77 +114,86 @@ impl SyntaxNode {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct P4Program {
-	pub top_level_declarations: Vec<TopLevelDeclaration>,
+pub trait AstNode {
+	fn can_cast(node: &SyntaxNode) -> bool;
+
+	fn cast(node: SyntaxNode) -> Option<Self>
+	where
+		Self: Sized;
+
+	fn syntax(&self) -> &SyntaxNode;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TopLevelDeclaration {
-	pub annotations: Vec<Annotation>,
-	pub kind: TopLevelDeclarationKind,
-	/// The length of this node in the source token stream, in tokens.
-	pub length: usize,
+macro_rules! ast_node {
+	($non_terminal:ident) => {
+		paste! {
+			#[doc = "AST node for [`P4GrammarRules::" $non_terminal "`]."]
+			#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+			pub struct [<$non_terminal:camel>] {
+				syntax: SyntaxNode,
+			}
+
+			impl AstNode for [<$non_terminal:camel>] {
+				fn can_cast(node: &SyntaxNode) -> bool { node.kind() == P4GrammarRules::$non_terminal }
+
+				fn cast(node: SyntaxNode) -> Option<Self> {
+					if node.kind() == P4GrammarRules::$non_terminal {
+						Some(Self { syntax: node })
+					} else {
+						None
+					}
+				}
+
+				fn syntax(&self) -> &SyntaxNode { &self.syntax }
+			}
+		}
+	};
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Annotation {
-	Unknown(String),
+macro_rules! ast_methods {
+	($non_terminal:ident, $($method:ident),+) => {
+		paste! {
+			impl [<$non_terminal:camel>] {
+				$(
+					#[doc = "Fetch the `" $method "` child of this node."]
+					pub fn $method(&self) -> impl Iterator<Item = [<$method:camel>]> + '_ {
+						self.syntax.children().flat_map(|child| {
+							// FIXME: this only works on one level, needs to
+							// proceed until it meets a castable successor, but
+							// really this should follow the grammar definition
+							// instead, otherwise we could run into false
+							// positives further down the tree, not to mention
+							// exhaustive search in the entire subtree that will
+							// slow things down substantially
+							let b: Box<dyn Iterator<Item = SyntaxNode>> = if ![<$method:camel>]::can_cast(&child) {
+								Box::new(child.children().collect::<Vec<_>>().into_iter())
+							} else {
+								Box::new(std::iter::once(child))
+							};
+							b
+						}).filter_map([<$method:camel>]::cast)
+					}
+				)+
+			}
+		}
+	};
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum TopLevelDeclarationKind {
-	Parser(ParserDeclaration),
-}
+ast_node!(parser_decl);
+ast_methods!(parser_decl, parameter_list);
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ParserDeclaration {
-	pub parameters: ParameterList,
-}
+// impl ParserDecl {
+// 	pub fn parameter_list(&self) -> Option<ParameterList> {
+// 		self.syntax.children().find_map(ParameterList::cast)
+// 	}
+// }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ParameterList {
-	pub list: Vec<Parameter>,
-}
+ast_node!(parameter_list);
+ast_methods!(parameter_list, parameter);
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Parameter {
-	pub annotations: Vec<Annotation>,
-	pub direction: Option<Direction>,
-	pub typ: Type,
-	pub name: Identifier,
-	pub length: usize,
-}
+ast_node!(parameter);
+ast_methods!(parameter, direction, typ, ident);
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Direction {
-	In,
-	Out,
-	InOut,
-	Invalid,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Identifier {
-	pub name: Rc<String>,
-	pub length: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Type {
-	pub name: Identifier,
-	pub params: Option<TypeParameters>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TypeParameters {
-	pub list: Vec<TypeParameter>,
-	pub length: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TypeParameter {
-	pub annotations: Vec<Annotation>,
-	pub typ: Type,
-	pub length: usize,
-}
+ast_node!(direction);
+ast_node!(typ);
+ast_node!(ident);
