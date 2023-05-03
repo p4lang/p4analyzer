@@ -1,6 +1,6 @@
 use analyzer_core::base_abstractions::FileId;
 use async_rwlock::RwLock as AsyncRwLock;
-use std::sync::Arc;
+use std::{sync::Arc, fs};
 
 use analyzer_abstractions::{
 	lsp_types::{
@@ -12,7 +12,7 @@ use analyzer_abstractions::{
 		CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
 		DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
 		DidOpenTextDocumentParams, DidSaveTextDocumentParams, Hover, HoverContents, HoverParams, MarkupContent,
-		MarkupKind, Position, SetTraceParams,
+		MarkupKind, Position, SetTraceParams, FileChangeType, Url,
 	},
 	tracing::{error, info},
 };
@@ -229,18 +229,58 @@ async fn on_set_trace(_: LspServerState, params: SetTraceParams, state: Arc<Asyn
 	Ok(())
 }
 
+async fn created_file(url: &Url, state: &Arc<AsyncRwLock<State>>) {
+	// incase it's a folder, get a list of files
+ 	let files = state.write().await.file_system.enumerate_folder(url.clone(), "*.p4".into()).await;
+
+	// get files content from system
+	let mut content = Vec::new();
+	for url in &files {
+		content.push(fs::read_to_string(url.uri.path()).expect("Unable to read file"));
+	}
+	
+	// claim lock
+	let lock = state.write().await;
+	let mut analyzer = lock.analyzer.unwrap();
+
+	// update files
+	for i in 0..files.len()  {
+		let file_id = analyzer.file_id(files[i].uri.as_str());
+		analyzer.update(file_id, content[i].clone());
+		info!("{} file updated from file system", files[i].uri.path());
+	}
+}
+
+async fn deleted_file(url: &Url, state: &Arc<AsyncRwLock<State>>) {
+	// incase it's a folder, get a list of files
+	let files = state.write().await.file_system.enumerate_folder(url.clone(), "*.p4".into()).await;
+
+	// claim lock
+	let lock = state.write().await;
+	let mut analyzer = lock.analyzer.unwrap();
+
+	// delete files
+	for i in 0..files.len()  {
+		analyzer.delete(files[i].uri.as_str());
+		info!("{} file deleted from file system", files[i].uri.path());
+	}
+}
+
+// !Although it called didChangeWatchedFiles, Folders are included
 async fn on_watched_file_change(
 	_: LspServerState,
 	params: DidChangeWatchedFilesParams,
 	state: Arc<AsyncRwLock<State>>,
 ) -> HandlerResult<()> {
-	let file_changes: Vec<String> = params
-		.changes
-		.into_iter()
-		.map(|file_event| format!("({:?} {})", file_event.typ, file_event.uri))
-		.collect();
 
-	info!(file_changes = file_changes.join(", "), "Watched file changes.");
+	for event in &params.changes  {
+		match event.typ {
+			FileChangeType::CREATED => created_file(&event.uri, &state).await,
+			FileChangeType::CHANGED => created_file(&event.uri, &state).await,	 // Does the same
+			FileChangeType::DELETED => deleted_file(&event.uri, &state).await,
+			_ => panic!("Type not supported in 1.17 specification")
+		}
+	}
 
 	Ok(())
 }
