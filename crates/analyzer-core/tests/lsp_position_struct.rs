@@ -10,31 +10,37 @@ fn test_parse_file() {
     let lsp = LspPos::parse_file(&file.clone());
     let ranges = Vec::new();
     assert_eq!(lsp.get_ranges(), ranges);
+    assert!(!lsp.get_eof());
 
     let file = "\n".to_string();
     let lsp = LspPos::parse_file(&file.clone());
     let ranges = vec![0..0];
     assert_eq!(lsp.get_ranges(), ranges);
+    assert!(lsp.get_eof());
 
     let file = "0".to_string();
     let lsp = LspPos::parse_file(&file.clone());
     let ranges = vec![0..0];
     assert_eq!(lsp.get_ranges(), ranges);
+    assert!(!lsp.get_eof());
 
     let file = "0\n".to_string();
     let lsp = LspPos::parse_file(&file.clone());
     let ranges = vec![0..1];
     assert_eq!(lsp.get_ranges(), ranges);
+    assert!(lsp.get_eof());
 
     let file = "012\n456\n\n9".to_string();
     let lsp = LspPos::parse_file(&file.clone());
     let ranges = vec![0..3, 4..7, 8..8, 9..9];
     assert_eq!(lsp.get_ranges(), ranges);
+    assert!(!lsp.get_eof());
 
     let file = "012\n456\n\n9\n\n\n".to_string();
     let lsp = LspPos::parse_file(&file.clone());
     let ranges = vec![0..3, 4..7, 8..8, 9..10, 11..11, 12..12];
     assert_eq!(lsp.get_ranges(), ranges);
+    assert!(lsp.get_eof());
 }
 
 #[test]
@@ -224,17 +230,19 @@ fn test_lazy_add() {
     assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
     // delete multiple lines
-    let mut lsp = original_lsp.clone();
     let event = change_event((1,0), (3,0), "".into());
+    lazy_helper(&event);
+    let mut lsp = original_lsp.clone();
     lsp.lazy_add(&event);
-    let expected_lsp = LspPos::parse_file(&"012\n\nbcde\n".to_string());
+    let expected_lsp = LspPos::parse_file(&"012\n9\nbcde\n".to_string());
     assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
     // Change multiple lines exact
+    let event = change_event((1,0), (4, 0), "x\ny".into());
+    lazy_helper(&event);
     let mut lsp = original_lsp.clone();
-    let event = change_event((1,0), (4, 0), "x\ny".into()); 
     lsp.lazy_add(&event);
-    let expected_lsp = LspPos::parse_file(&"012\nx\ny9\nbcde\n".to_string());
+    let expected_lsp = LspPos::parse_file(&"012\nx\nybcde\n".to_string());
     assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
     // Change multiple partial lines
@@ -320,7 +328,7 @@ fn test_lazy_add() {
 
     // changes to end of file
     let mut lsp = original_lsp.clone();
-    let event = change_event((4,0), (5,0), "xyz".into());
+    let event = change_event((5,0), (6,0), "xyz".into());
     lsp.lazy_add(&event);
     let expected_lsp = LspPos::parse_file(&"012\n456\n\n9\nxyz".to_string()); // change to end of file
     assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
@@ -366,11 +374,19 @@ fn exhaustive_lazy_add() {
     let mut parse_timer = Duration::new(0, 0);
     let test_changes = ["", "x", "xy", "xyz", "\n", "\n\n", "\n\n\n", "\nx\n"];
     for change in test_changes {
-        for size in 0..original.len() {
-            for start_byte in 0..(original.len() - size) {
+        for size in 0..original.len() + 1 {
+            for start_byte in 0..(original.len() - size + 1) {
                 // generate Event
-                let start = original_lsp.byte_to_lsp(start_byte);
-                let end = original_lsp.byte_to_lsp(start_byte + size);
+                let start = if start_byte == 16 {
+                    Position{line: 5, character: 0}
+                } else {
+                    original_lsp.byte_to_lsp(start_byte)
+                };
+                let end = if start_byte + size == 16 {
+                    Position{line: 5, character: 0}
+                } else {
+                    original_lsp.byte_to_lsp(start_byte + size)
+                };
                 let (l1, c1) = (start.line, start.character);
                 let (l2, c2) = (end.line, end.character);
                 let event = change_event((l1, c1), (l2, c2), change.to_string());
@@ -392,7 +408,7 @@ fn exhaustive_lazy_add() {
                 if expected_lsp.get_ranges() != lsp.get_ranges() {
                     println!("Lazy time:    {}ns", lazy_timer.as_nanos());
                     println!("Parser time:  {}ns", parse_timer.as_nanos());
-                    println!("expected string {:?}\nchange: {:?}\nsize: {}\nstart_byte: {}\n", str.as_bytes(), change.as_bytes(), size, start_byte);
+                    println!("expected string: {:?}\nchange: {:?}\nsize: {}\nstart_pos: {:?}\nend_pos: {:?}\nstart_byte: {}", str, change, size, start, end, start_byte);
                     assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
                 }
             }

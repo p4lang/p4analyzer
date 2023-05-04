@@ -1,13 +1,15 @@
 use analyzer_abstractions::lsp_types::{self, TextDocumentContentChangeEvent};
+use lazy_static::__Deref;
 
 #[derive(Clone, Debug)]
 pub struct LspPos {
-    ranges: Vec<std::ops::Range<usize>>
+    eof: bool,  // for the last line we need to distinguise if it ends in \n or not
+    ranges: Vec<std::ops::Range<usize>>,
 }
 
 impl LspPos {
     // helper function
-    fn parse_string(string: &String) -> Vec<std::ops::Range<usize>> {
+    fn parse_string(string: &String) -> (Vec<std::ops::Range<usize>>, bool) {
         let mut result: Vec<std::ops::Range<usize>> = Vec::new();
         let mut start = 0;
         let bytes = string.as_bytes();
@@ -22,16 +24,23 @@ impl LspPos {
         if start < bytes.len() {
             result.push(start..bytes.len()-1);
         }
+        
+        let eof = string.as_bytes().last() == Some(&b'\n');
 
-        result
+        (result, eof)
     }
 
     pub fn parse_file(file: &String) -> Self {
-        LspPos{ranges: LspPos::parse_string(&file)}
+        let parse = LspPos::parse_string(&file);
+        LspPos{ranges: parse.0, eof: parse.1}
     }
 
     pub fn get_ranges(&self) -> Vec<std::ops::Range<usize>> {
         self.ranges.clone()
+    }
+
+    pub fn get_eof(&self) -> bool {
+        self.eof.clone()
     }
 
     // used to update ranges from TextDocumentContentChangeEvent
@@ -46,15 +55,17 @@ impl LspPos {
         // calculate position in current file  
         let start_pos = self.lsp_to_lsp(&changes.range.unwrap().start);     // inclusive
         let end_pos_exc = self.lsp_to_lsp(&changes.range.unwrap().end);      // exclusive
-        //let end_pos_inc = self.byte_to_lsp(self.lsp_to_byte(&changes.range.unwrap().end) - 1);   // inclusive
+
         // undefined behaviour
         if start_pos > end_pos_exc {
             panic!("range.start: {:?} is greater than range.end: {:?} in TextDocumentContentChangeEvent!", start_pos, end_pos_exc)
         }
 
         // calculate new text as LSP
-        let mut addition_lsp = LspPos::parse_string(&changes.text);
-        let mut offset = 1;
+        let parse = LspPos::parse_string(&changes.text);
+        let mut addition_lsp = parse.0;
+        let eof = parse.1;
+        let mut offset: isize = 1;
         if addition_lsp.is_empty() {
             offset = 0;
             addition_lsp.push(0..0);
@@ -66,13 +77,17 @@ impl LspPos {
             offset = 0;
         }
 
-        addition_lsp.last_mut().unwrap().end += self.ranges[end_pos_exc.line as usize].end - self.ranges[end_pos_exc.line as usize].start - end_pos_exc.character as usize + offset;
+        if end_pos_exc.line < changes.range.unwrap().end.line && !changes.text.is_empty() {
+            offset = -1;
+        }
         
         let start_byte = self.lsp_to_byte(&start_pos);
         for elm in &mut addition_lsp {
             elm.start += start_byte;
             elm.end += start_byte;
         }
+
+        addition_lsp.last_mut().unwrap().end = (addition_lsp.last_mut().unwrap().end as isize + (self.ranges[end_pos_exc.line as usize].end - self.ranges[end_pos_exc.line as usize].start - end_pos_exc.character as usize) as isize + offset) as usize;
         addition_lsp.first_mut().unwrap().start -= start_pos.character as usize;
 
         let start_line = start_pos.line as usize;
