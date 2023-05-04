@@ -178,23 +178,14 @@ impl State {
 		workspace_manager: WorkspaceManager,
 		analyzer: Arc<AnalyzerWrapper>,
 	) {
-		fn analyze_source_text(analyzer: &AnalyzerWrapper, uri: &str, text: String) -> (FileId, Vec<Url>) {
+		fn analyze_source_text(analyzer: &AnalyzerWrapper, uri: &str, text: String) -> FileId {
 			let mut analyzer = analyzer.unwrap();
 			let file_id = analyzer.file_id(uri);
 
 			analyzer.update(file_id, text);
 			analyzer.preprocessed(file_id);
 
-			// Return the FileId and the set of unresolved included paths.
-			(
-				file_id,
-				analyzer
-					.include_dependencies(file_id)
-					.iter()
-					.filter(|include| !include.is_resolved)
-					.map(|include| Url::parse(&analyzer.path(include.file_id)).unwrap())
-					.collect(),
-			)
+            file_id
 		}
 
 		loop {
@@ -224,35 +215,9 @@ impl State {
 								if file.is_open_in_ide() { return }
 
 								// ...otherwise, update its parsed unit.
-								let (file_id, unresolved_file_include_urls) =
-									analyze_source_text(&analyzer, file_url.as_str(), text);
+								let file_id = analyze_source_text(&analyzer, file_url.as_str(), text);
 
 								file.set_parsed_unit(file_id, None);
-
-								// // If the file contains unresolved dependencies, then try resolving them. To do this,
-								// // we simply need to get the file from the Workspace Manager which will schedule the
-								// // file for the same background processing as the current file.
-								// if unresolved_file_include_urls.is_empty() {
-								// 	return;
-								// }
-
-								// let file_include_resolvers =
-								// 	unresolved_file_include_urls.iter().map(|file_include_url| async {
-								// 		let _ = workspace_manager
-								// 			.get_file(file_include_url.clone())
-								// 			.get_parsed_unit()
-								// 			.await;
-								// 	});
-
-								// join_all(file_include_resolvers).await;
-
-								// info!(
-								// 	file_uri = file_url.as_str(),
-								// 	file_include_uri =
-								// 		unresolved_file_include_urls.iter().map(|url| url).join(", "),
-								// 	"Resolved {} included dependencies.",
-								// 	unresolved_file_include_urls.len()
-								// );
 							}
 							None => file.set_index_error(IndexError::NotFound), // The file was not found
 						}
