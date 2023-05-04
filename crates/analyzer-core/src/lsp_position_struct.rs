@@ -36,7 +36,7 @@ impl LspPos {
 
     // used to update ranges from TextDocumentContentChangeEvent
     // will lazily add as only parse the text to be added
-    /*pub fn lazy_add(&mut self, changes: &TextDocumentContentChangeEvent) {
+    pub fn lazy_add(&mut self, changes: &TextDocumentContentChangeEvent) {
         // The whole file got changes || file was empty, so reparse as new file
         if changes.range.is_none() || self.ranges.is_empty() {
             *self = LspPos::parse_file(&changes.text);
@@ -46,7 +46,7 @@ impl LspPos {
         // calculate position in current file  
         let start_pos = self.lsp_to_lsp(&changes.range.unwrap().start);     // inclusive
         let end_pos_exc = self.lsp_to_lsp(&changes.range.unwrap().end);      // exclusive
-        let end_pos_inc = self.byte_to_lsp(self.lsp_to_byte(&changes.range.unwrap().end) - 1);   // inclusive
+        //let end_pos_inc = self.byte_to_lsp(self.lsp_to_byte(&changes.range.unwrap().end) - 1);   // inclusive
         // undefined behaviour
         if start_pos > end_pos_exc {
             panic!("range.start: {:?} is greater than range.end: {:?} in TextDocumentContentChangeEvent!", start_pos, end_pos_exc)
@@ -54,43 +54,32 @@ impl LspPos {
 
         // calculate new text as LSP
         let mut addition_lsp = LspPos::parse_string(&changes.text);
-
-        // calculate stats
-        let start_line = start_pos.line as usize;
-        let mut removed_lines = (end_pos_inc.line - start_pos.line) as usize + 1;
-        // positive means original file was larger in bytes than new
-        //let mut size_diff = self.lsp_to_byte(&end_pos_inc) as i32 - self.lsp_to_byte(&start_pos) as i32
-        //- addition_lsp.last().map_or(0, |last| last.end as i32);
-        
-        let byte_offet = self.ranges[start_line].start + start_pos.character as usize;
-        let mut end_chars = self.ranges[end_pos_inc.line as usize].end - self.ranges[end_pos_inc.line as usize].start - end_pos_inc.character as usize;
-        
-        if end_pos_exc.character == 0 { 
-            removed_lines += 1;
-            end_chars +=1;
-        }
-        if changes.text.ends_with("\n") {
-            removed_lines -= 1;
-        }
+        let mut offset = 1;
         if addition_lsp.is_empty() {
-            end_chars -= 1;
-            addition_lsp.push(0..start_pos.character as usize);
-            //size_diff += 1;
-        }
-        // realign addition ranges
-        for elm in addition_lsp.iter_mut() {
-            elm.start += byte_offet;
-            elm.end += byte_offet;
+            offset = 0;
+            addition_lsp.push(0..0);
         }
 
-        // Head and Tail needs additional realignment with exist ranges
-        if !addition_lsp.is_empty() {
-            addition_lsp.first_mut().unwrap().start = self.ranges[start_line].start;
-            addition_lsp.last_mut().unwrap().end += end_chars;
+        if changes.text.ends_with("\n") {
+            let value = addition_lsp.last().unwrap().end + 1;
+            addition_lsp.push(value..value);
+            offset = 0;
         }
+
+        addition_lsp.last_mut().unwrap().end += self.ranges[end_pos_exc.line as usize].end - self.ranges[end_pos_exc.line as usize].start - end_pos_exc.character as usize + offset;
+        
+        let start_byte = self.lsp_to_byte(&start_pos);
+        for elm in &mut addition_lsp {
+            elm.start += start_byte;
+            elm.end += start_byte;
+        }
+        addition_lsp.first_mut().unwrap().start -= start_pos.character as usize;
+
+        let start_line = start_pos.line as usize;
+        let remove_lines = end_pos_exc.line - start_pos.line + 1;
 
         // removes changes ranges
-        for _ in 0..removed_lines {
+        for _ in 0..remove_lines {
             self.ranges.remove(start_line);
         }
 
@@ -100,15 +89,15 @@ impl LspPos {
         }
 
         // realign values
-        let skip = start_line + addition_lsp.len();
-        if skip < self.ranges.len() {
-            let size_diff : i32 = self.ranges[skip].start as i32 - self.ranges[skip - 1].end as i32 - 1;
-            for elm in self.ranges.iter_mut().skip(skip) {
+        let skip = start_line + addition_lsp.len() - 1;
+        if skip + 1 < self.ranges.len() {
+            let size_diff : i32 = self.ranges[skip + 1].start as i32 - self.ranges[skip].end as i32 - 1;
+            for elm in self.ranges.iter_mut().skip(skip + 1) {
                 elm.start = (elm.start as i32 - size_diff) as usize;
                 elm.end = (elm.end as i32 - size_diff) as usize;
             }
         }
-    }*/
+    }
 
     // used to get a valid lsp position for the current file
     fn lsp_to_lsp(&self, lsp_pos: &lsp_types::Position) -> lsp_types::Position {

@@ -134,7 +134,7 @@ fn change_event((l1, c1): (u32, u32), (l2, c2): (u32, u32), t: String ) -> TextD
 
 // can't trust this code without adding adding testing for itself...
 // use it as validation that the manually calculated test is correct
-/*fn lazy_helper(event : &TextDocumentContentChangeEvent) {
+fn lazy_helper(event : &TextDocumentContentChangeEvent) {
     // create test bench lsp
     let test_string = "012\n456\n\n9\nbcde\n".to_string();
     let mut lsp = LspPos::parse_file(&test_string.clone());
@@ -399,4 +399,3 @@ fn exhaustive_lazy_add() {
         }
     }
 }
-*/
