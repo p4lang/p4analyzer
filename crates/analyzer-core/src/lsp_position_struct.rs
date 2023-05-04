@@ -1,5 +1,4 @@
 use analyzer_abstractions::lsp_types::{self, TextDocumentContentChangeEvent};
-use lazy_static::__Deref;
 
 #[derive(Clone, Debug)]
 pub struct LspPos {
@@ -41,77 +40,6 @@ impl LspPos {
 
     pub fn get_eof(&self) -> bool {
         self.eof.clone()
-    }
-
-    // used to update ranges from TextDocumentContentChangeEvent
-    // will lazily add as only parse the text to be added
-    pub fn lazy_add(&mut self, changes: &TextDocumentContentChangeEvent) {
-        // The whole file got changes || file was empty, so reparse as new file
-        if changes.range.is_none() || self.ranges.is_empty() {
-            *self = LspPos::parse_file(&changes.text);
-            return;
-        }
-
-        // calculate position in current file  
-        let start_pos = self.lsp_to_lsp(&changes.range.unwrap().start);     // inclusive
-        let end_pos_exc = self.lsp_to_lsp(&changes.range.unwrap().end);      // exclusive
-
-        // undefined behaviour
-        if start_pos > end_pos_exc {
-            panic!("range.start: {:?} is greater than range.end: {:?} in TextDocumentContentChangeEvent!", start_pos, end_pos_exc)
-        }
-
-        // calculate new text as LSP
-        let parse = LspPos::parse_string(&changes.text);
-        let mut addition_lsp = parse.0;
-        let eof = parse.1;
-        let mut offset: isize = 1;
-        if addition_lsp.is_empty() {
-            offset = 0;
-            addition_lsp.push(0..0);
-        }
-
-        if changes.text.ends_with("\n") {
-            let value = addition_lsp.last().unwrap().end + 1;
-            addition_lsp.push(value..value);
-            offset = 0;
-        }
-
-        if end_pos_exc.line < changes.range.unwrap().end.line && !changes.text.is_empty() {
-            offset = -1;
-        }
-        
-        let start_byte = self.lsp_to_byte(&start_pos);
-        for elm in &mut addition_lsp {
-            elm.start += start_byte;
-            elm.end += start_byte;
-        }
-
-        addition_lsp.last_mut().unwrap().end = (addition_lsp.last_mut().unwrap().end as isize + (self.ranges[end_pos_exc.line as usize].end - self.ranges[end_pos_exc.line as usize].start - end_pos_exc.character as usize) as isize + offset) as usize;
-        addition_lsp.first_mut().unwrap().start -= start_pos.character as usize;
-
-        let start_line = start_pos.line as usize;
-        let remove_lines = end_pos_exc.line - start_pos.line + 1;
-
-        // removes changes ranges
-        for _ in 0..remove_lines {
-            self.ranges.remove(start_line);
-        }
-
-        // add new lines (does the vector backward for inplace insertion)
-        for elm in addition_lsp.iter_mut().rev() {
-            self.ranges.insert(start_line, elm.clone());
-        }
-
-        // realign values
-        let skip = start_line + addition_lsp.len() - 1;
-        if skip + 1 < self.ranges.len() {
-            let size_diff : i32 = self.ranges[skip + 1].start as i32 - self.ranges[skip].end as i32 - 1;
-            for elm in self.ranges.iter_mut().skip(skip + 1) {
-                elm.start = (elm.start as i32 - size_diff) as usize;
-                elm.end = (elm.end as i32 - size_diff) as usize;
-            }
-        }
     }
 
     // used to get a valid lsp position for the current file
@@ -183,5 +111,103 @@ impl LspPos {
         let start = self.byte_to_lsp(byte_range.start);
         let end = self.byte_to_lsp( byte_range.end);
         analyzer_abstractions::lsp_types::Range::new(start, end)
+    }
+
+    // used to update ranges from TextDocumentContentChangeEvent
+    // will lazily add as only parse the text to be added
+    pub fn lazy_add(&mut self, changes: &TextDocumentContentChangeEvent) {
+        // The whole file got changes || file was empty, so reparse as new file
+        if changes.range.is_none() || self.ranges.is_empty() {
+            *self = LspPos::parse_file(&changes.text);
+            return;
+        }
+
+        // calculate position in current file  
+        let start_pos = self.lsp_to_lsp(&changes.range.unwrap().start);     // inclusive
+        let end_pos_exc = self.lsp_to_lsp(&changes.range.unwrap().end);      // exclusive
+
+        // undefined behaviour
+        if start_pos > end_pos_exc {
+            panic!("range.start: {:?} is greater than range.end: {:?} in TextDocumentContentChangeEvent!", start_pos, end_pos_exc)
+        }
+
+        // calculate new text as LSP
+        let parse = LspPos::parse_string(&changes.text);
+        let mut addition_lsp = parse.0;
+        let eof = parse.1;
+
+        let mut offset: isize = 1;
+        if addition_lsp.is_empty() {
+            offset = 0;
+            addition_lsp.push(0..0);    // although this isn't representive of an empty file it apart of a real file and this is used as a location
+        }
+
+        let start_byte = self.lsp_to_byte(&start_pos);
+        for elm in &mut addition_lsp {
+            elm.start += start_byte;
+            elm.end += start_byte;
+        }
+
+        if start_pos.line != changes.range.unwrap().start.line {    // case is only true when adding to end of file
+            if changes.text.is_empty() {    // we aren't adding anything
+                return;
+            }
+            if !self.eof {  // if file doesn't merge front with existing
+                self.ranges.last_mut().unwrap().end = addition_lsp.first().unwrap_or(&self.ranges.last_mut().unwrap().clone()).end;
+                addition_lsp.remove(0);
+            }
+
+            for elm in &mut addition_lsp {
+                elm.start += 1;
+                elm.end += 1;
+            }
+
+            self.ranges.append(&mut addition_lsp);  // add aditions to back
+            self.eof = eof; // eof character has been changed
+            return; // early exit
+        }
+
+        let start_line = start_pos.line as usize;
+        let remove_lines = end_pos_exc.line - start_pos.line + 1;
+
+        if changes.text.ends_with("\n") {
+            let value = addition_lsp.last().unwrap().end + 1;
+            addition_lsp.push(value..value);
+            offset = 0;
+        }
+
+        if end_pos_exc.line < changes.range.unwrap().end.line{
+            offset = -1;
+        }
+
+        // this can underflow
+        addition_lsp.last_mut().unwrap().end = (addition_lsp.last_mut().unwrap().end as isize + (self.ranges[end_pos_exc.line as usize].end - self.ranges[end_pos_exc.line as usize].start - end_pos_exc.character as usize) as isize + offset) as usize;
+        addition_lsp.first_mut().unwrap().start -= start_pos.character as usize;
+
+        if addition_lsp.last_mut().unwrap().end < addition_lsp.last_mut().unwrap().start || addition_lsp.last_mut().unwrap().end == usize::MAX{
+            addition_lsp.pop();
+        }
+        // removes changes ranges
+        for _ in 0..remove_lines {
+            self.ranges.remove(start_line);
+        }
+
+        // add new lines (does the vector backward for inplace insertion)
+        for elm in addition_lsp.iter_mut().rev() {
+            self.ranges.insert(start_line, elm.clone());
+        }
+
+        // realign values
+        let skip = start_line as i64 + addition_lsp.len() as i64 - 1;
+        if skip >= 0 {
+            let skip = skip as usize;
+            if skip + 1 < self.ranges.len() {
+                let size_diff : i32 = self.ranges[skip + 1].start as i32 - self.ranges[skip].end as i32 - 1;
+                for elm in self.ranges.iter_mut().skip(skip + 1) {
+                    elm.start = (elm.start as i32 - size_diff) as usize;
+                    elm.end = (elm.end as i32 - size_diff) as usize;
+                }
+            }
+        }
     }
 }

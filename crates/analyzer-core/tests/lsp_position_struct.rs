@@ -8,7 +8,7 @@ use analyzer_core::lsp_position_struct::LspPos;
 fn test_parse_file() {
     let file = "".to_string();
     let lsp = LspPos::parse_file(&file.clone());
-    let ranges = Vec::new();
+    let ranges: Vec<std::ops::Range<usize>> = Vec::new();
     assert_eq!(lsp.get_ranges(), ranges);
     assert!(!lsp.get_eof());
 
@@ -410,6 +410,7 @@ fn exhaustive_lazy_add() {
                     println!("Parser time:  {}ns", parse_timer.as_nanos());
                     println!("expected string: {:?}\nchange: {:?}\nsize: {}\nstart_pos: {:?}\nend_pos: {:?}\nstart_byte: {}", str, change, size, start, end, start_byte);
                     assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
+                    assert_eq!(expected_lsp.get_eof(), lsp.get_eof());
                 }
             }
         }
