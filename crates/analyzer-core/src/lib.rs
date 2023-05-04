@@ -223,7 +223,7 @@ pub fn lex(db: &dyn crate::Db, file_id: FileId, buf: Buffer) -> LexedBuffer {
 }
 
 #[salsa::tracked(return_ref)]
-pub fn preprocess<'a>(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec<(FileId, Token, Span)>> {
+pub fn preprocess(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec<(FileId, Token, Span)>> {
 	let mut pp = PreprocessorState::new(
 		|path: &str| {
 			// Return a `FileId` with an absolute path resolved relative to the file being preprocessed. If the path
