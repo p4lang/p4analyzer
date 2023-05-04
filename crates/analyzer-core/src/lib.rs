@@ -254,6 +254,7 @@ pub fn parse(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<parser::ast:
 	let lock = RwLock::new(lexemes);
 	let mut parser = mk_parser(lock);
 	let (pos, max_examined, result) = parser.parse();
+	let pos = (pos as isize).max(max_examined) as usize;
 
 	let start = cumulative_sum[pos.min(cumulative_sum.len() - 1)];
 	let end = cumulative_sum[(pos + 1).min(cumulative_sum.len() - 1)];

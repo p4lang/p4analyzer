@@ -7,11 +7,11 @@ use parser::*;
 use criterion::{black_box, Criterion};
 
 fn baseline(make: impl FnOnce(String) -> Parser<&'static str, char>, input: &str) -> Parser<&'static str, char> {
-	make(input.chars().collect())
+	make(input.chars().collect::<Vec<_>>().into_iter().collect())
 }
 
 fn parse(make: impl FnOnce(String) -> Parser<&'static str, char>, input: &str) -> ExistingMatch<&'static str, char> {
-	make(input.to_string()).parse().unwrap()
+	make(input.to_string()).parse().2.unwrap()
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
@@ -63,7 +63,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 	};
 
 	let mut matcher = Parser::from_grammar(grammar.clone()).unwrap()(input.chars().collect::<Vec<_>>().into());
-	assert!(matcher.parse().is_ok());
+	assert!(matcher.parse().2.is_ok());
 
 	group.bench_function("baseline", |b| {
 		b.iter(|| {

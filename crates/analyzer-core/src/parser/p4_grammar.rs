@@ -158,7 +158,9 @@ grammar! {
 	;
 
 	start => p4program;
-	ws => whitespace rep;
+	ws => trivial rep;
+	trivial => whitespace | comment;
+	comment => (Token::Comment);
 	whitespace => (Token::Whitespace);
 
 	p4program => ws, top_level_decls, ws;
@@ -228,15 +230,17 @@ grammar! {
 	block => open_brace, ws, statements, ws, close_brace;
 	statements => statement rep;
 	statement => ws, stmt, ws, maybe_semicolon, ws;
-	stmt => definition_stmt | assignment_stmt | top_level_decl;
+	stmt => block | definition_stmt | assignment_stmt | top_level_decl;
 	definition_stmt => annotations, ws, typ, ws, definition, ws, maybe_definition;
 	maybe_definition => equals, ws, rhs;
 	assignment_stmt => lhs, ws, equals, ws, rhs;
 	lhs => ident;
 	rhs => expression;
 
-	expression => ident | number | paren_expr | bin_op_expr;
-	bin_op_expr => expression, ws, bin_op, ws, expression;
+	expression => basic_expression, ws, bin_op_chain;
+	basic_expression => ident | number | paren_expr;
+	bin_op_chain => bin_op_expr rep;
+	bin_op_expr => ws, bin_op, ws, basic_expression;
 	paren_expr => open_paren, ws, expression, ws, close_paren;
 }
 

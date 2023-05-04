@@ -144,19 +144,9 @@ async fn on_text_document_completion(
 			let parsed = analyzer.parsed(file_id);
 			info!("parsed file {parsed:?}");
 
-			let items = lexed
-				.iter()
-				.flat_map(|(_, token, _)| match token {
-					analyzer_core::lexer::Token::Identifier(name) => Some(name),
-					_ => None,
-				})
-				.unique()
-				.map(|label| CompletionItem {
-					label: label.to_string(),
-					kind: Some(CompletionItemKind::FILE),
-					..Default::default()
-				})
-				.chain(parsed.into_iter().flat_map(|tree| {
+			let items = parsed
+				.into_iter()
+				.flat_map(|tree| {
 					use analyzer_core::parser::{ast::*, *};
 
 					let root = SyntaxNode::new_root(p4_grammar::get_grammar().into(), tree);
@@ -169,7 +159,21 @@ async fn on_text_document_completion(
 							kind: Some(CompletionItemKind::VARIABLE),
 							..Default::default()
 						})
-				}))
+				})
+				.chain(
+					lexed
+						.iter()
+						.flat_map(|(_, token, _)| match token {
+							analyzer_core::lexer::Token::Identifier(name) => Some(name),
+							_ => None,
+						})
+						.map(|label| CompletionItem {
+							label: label.to_string(),
+							kind: Some(CompletionItemKind::FILE),
+							..Default::default()
+						}),
+				)
+				.unique_by(|item| item.label.clone())
 				.collect();
 
 			let data = CompletionList { is_incomplete: false, items };
