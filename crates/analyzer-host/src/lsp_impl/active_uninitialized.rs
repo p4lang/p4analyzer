@@ -89,7 +89,7 @@ async fn initialize_client_dependant_state(
 	let analyzer = state.analyzer.clone();
 	let file_system = state.file_system.clone();
 
-	state.set_workspaces(Some(WorkspaceManager::new(file_system, workspace_folders, analyzer)));
+	state.set_workspaces(WorkspaceManager::new(file_system, workspace_folders, analyzer));
 
 	let request_manager = state.request_manager.clone();
 	let work_done_supported =

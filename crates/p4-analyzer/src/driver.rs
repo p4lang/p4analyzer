@@ -5,23 +5,54 @@ use async_std::task::block_on;
 use cancellation::{CancellationToken, OperationCanceled};
 use std::{
 	io::{stdin, stdout},
-	sync::{Arc},
+	sync::Arc,
 };
 use tokio::task;
+
+// Module that contains the code for the buffer driver, which is a driver used for testing only
+#[cfg(test)]
+pub mod buffer_driver;
 
 /// Connects the `stdin` and `stdout` of the process to appropriate [`MessageChannel`] instances, and executes a sender and
 /// reader thread to marshal [`Message`] instances between them.
 pub struct Driver {
-	in_channel: MessageChannel, 	// Input channel as an intermediate layer for input source -> Analyzer host
-	out_channel: MessageChannel, 	// Output channel as an intermediate layer for Analyzer host -> output source
-	source_type: DriverType,    	// Handles the connection for input/output of outside layer to intermediate layer
+	in_channel: MessageChannel, // Input channel as an intermediate layer for input source -> Analyzer host
+	out_channel: MessageChannel, // Output channel as an intermediate layer for Analyzer host -> output source
+	source_type: DriverType,    // Handles the connection for input/output of outside layer to intermediate layer
 }
 
 #[derive(Clone)]
 pub enum DriverType {
 	Console,
 	#[cfg(test)]
-	Buffer(BufferStruct), // Only want to include this for testing
+	Buffer(buffer_driver::BufferStruct), // Only want to include this for testing
+}
+
+impl DriverType {
+
+	fn to_driver(&self) -> Driver {
+		match self {
+			DriverType::Console => console_driver(),
+			#[cfg(test)]
+			DriverType::Buffer(buffer) => buffer_driver::buffer_driver(buffer.clone()),
+		}
+	}
+
+	fn reader(&self) -> Result<Option<Message>, std::io::Error> {
+		match self.clone() {
+			DriverType::Console => Message::read(&mut stdin().lock()),
+			#[cfg(test)]
+			DriverType::Buffer(mut buffer) => block_on(buffer.message_read()),
+		}
+	}
+
+	fn writer(&self, message: Message) -> Result<(), std::io::Error> {
+		match self.clone() {
+			DriverType::Console => message.write(&mut stdout()),
+			#[cfg(test)]
+			DriverType::Buffer(mut buffer) => block_on(buffer.message_write(message)),
+		}
+	}
 }
 
 pub fn console_driver() -> Driver {
@@ -34,11 +65,7 @@ pub fn console_driver() -> Driver {
 
 impl Driver {
 	pub fn new(driver_type: DriverType) -> Driver {
-		match driver_type {
-			DriverType::Console => console_driver(),
-			#[cfg(test)]
-			DriverType::Buffer(buffer) => buffer_driver(buffer),
-		}
+		driver_type.to_driver()
 	}
 
 	/// Retrieves a [`MessageChannel`] from which [`Message`] instances can be received from (i.e., `stdin`) and sent to (i.e., `stdout`).
@@ -50,13 +77,7 @@ impl Driver {
 	}
 
 	fn sender_task(sender: Sender<Message>, input_source: DriverType) {
-		let match_func = || match input_source.clone() {
-			DriverType::Console => Message::read(&mut stdin().lock()),
-			#[cfg(test)]
-			DriverType::Buffer(mut buffer) => block_on(buffer.message_read()),
-		};
-
-		while let Ok(Some(message)) = match_func() {
+		while let Ok(Some(message)) = input_source.reader() {
 			if sender.send_blocking(message).is_err() {
 				break;
 			}
@@ -64,14 +85,8 @@ impl Driver {
 	}
 
 	fn receiver_task(receiver: Receiver<Message>, output_source: DriverType) {
-		let message_send = |message: Message| match output_source.clone() {
-			DriverType::Console => message.write(&mut stdout()),
-			#[cfg(test)]
-			DriverType::Buffer(mut buffer) => block_on(buffer.message_write(message)),
-		};
-
 		while let Ok(message) = receiver.recv_blocking() {
-			if message_send(message).is_err() {
+			if output_source.writer(message).is_err() {
 				break;
 			}
 		}
@@ -111,133 +126,5 @@ impl Driver {
 		})
 		.await
 		.unwrap()
-	}
-}
-
-/// All code below is for DriveType::Buffer(BufferStruct)
-/// This type is used for testing but due to the need to communicate between threads it has a heavy implementation
-
-#[cfg(test)]
-use queues::*;
-#[cfg(test)]
-use std::{
-	io::{self},
-	sync::{RwLock, Mutex},
-	time::Duration,
-};
-
-#[cfg(test)]
-pub fn buffer_driver(buffer: BufferStruct) -> Driver {
-	Driver {
-		in_channel: async_channel::unbounded::<Message>(),
-		out_channel: async_channel::unbounded::<Message>(),
-		source_type: DriverType::Buffer(buffer),
-	}
-}
-#[cfg(test)]
-struct BufferStructData {
-	input_queue: Queue<Message>, // stores the messages to be sent
-	output_buffer: Vec<Vec<u8>>, // stores the received messages
-}
-#[cfg(test)]
-#[derive(Clone)]
-pub struct BufferStruct {
-	data: Arc<RwLock<BufferStructData>>, // wraps the data in the necessary containers
-	read_queue_count: Arc<Mutex<usize>>, // reading the counter is a major blocking point for read_queue() so given it's own Lock 
-}
-#[cfg(test)]
-impl BufferStruct {
-	pub fn new(inputs: Queue<Message>) -> BufferStruct {
-		BufferStruct {
-			data: Arc::new(RwLock::new(BufferStructData {
-				input_queue: inputs,
-				output_buffer: Vec::new(),
-			})),
-			read_queue_count: Arc::new(Mutex::new(0)),
-		}
-	}
-
-	pub async fn read_queue(&mut self) -> io::Result<Option<Message>> {
-		loop {
-			match self.read_queue_count.try_lock() {
-				Ok(mut guard) => {
-					if *guard == 0 {
-						drop(guard);
-						async_std::task::sleep(Duration::from_millis(1)).await;
-						continue;
-					} // Not ready to read, so continue looping
-					
-					*guard -= 1;	// confirm we're doing a Read
-					drop(guard);	// drop lock to avoid dead locks
-					// now wait for data lock because we're been give the all clear
-					let mut lock = self.data.write().unwrap();
-
-					if lock.input_queue.size() == 0 {
-						// return if empty
-						return Ok(None);
-					}
-
-					let ret = Some(lock.input_queue.remove().unwrap());
-					return Ok(ret);
-				}
-				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await, // couldn't get lock, so wait
-			}
-		}
-	}
-
-	pub fn allow_read_blocking(&mut self) { *self.read_queue_count.lock().unwrap() += 1; }
-
-	pub async fn get_output_buffer(&mut self) -> Vec<String> {
-		loop {
-			match self.data.try_write() {
-				Ok(mut guard) => {
-					if guard.output_buffer.len() == 0 {
-						drop(guard);
-						async_std::task::sleep(Duration::from_millis(1)).await;
-						continue;
-					}
-					let mut ret = Vec::<String>::new();
-					for elm in guard.output_buffer.clone() {
-						ret.push(String::from_utf8(elm).unwrap());
-					}
-					guard.output_buffer.clear();
-					return ret;
-				}
-				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,
-			}
-		}
-	}
-
-	async fn message_read(&mut self) -> io::Result<Option<Message>> {
-		loop {
-			match self.read_queue().await {
-				Ok(guard) => return Ok(guard),
-				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,
-			}
-		}
-	}
-
-	async fn message_write(&mut self, message: Message) -> io::Result<()> {
-		loop {
-			match self.data.try_write() {
-				Ok(mut guard) => {
-					let mut buf = Vec::<u8>::new();
-					let res =  message.write(&mut buf);
-					guard.output_buffer.push(buf);
-					return res;
-				}
-				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,
-			}
-		}
-	}
-
-	// Not advised as if driver attempt a read when emtpy, it will close
-	// Also requires lock to remain thread safe
-	// proper way is to create a Queue with items already in stack, and pass to BufferStruct::new()
-	fn add_to_queue_blocking(&mut self, mut add: Queue<Message>) {
-		let mut lock = self.data.write().unwrap();
-		while let Ok(mess) = add.remove() {
-			lock.input_queue.add(mess).unwrap();
-		}
 	}
 }

@@ -22,6 +22,6 @@ pub(crate) fn create_dispatcher() -> LspServerStateDispatcher {
 
 /// Responds to an 'exit' notification from the LSP client.
 async fn on_exit(_: LspServerState, _: (), state: Arc<AsyncRwLock<State>>) -> HandlerResult<()> {
-	state.write().await.set_workspaces(None); // Solution to closing down async_pool
+	state.write().await.workspaces().close();
 	Ok(())
 }

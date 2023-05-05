@@ -12,6 +12,7 @@ use analyzer_host::tracing::tracing_subscriber::{
 use cancellation::CancellationTokenSource;
 use cli::flags::{P4Analyzer, P4AnalyzerCmd};
 use commands::{lsp_server::LspServerCommand, Command, CommandInvocationError};
+use driver::DriverType;
 use std::{
 	env::current_exe,
 	fs, process,
@@ -34,9 +35,7 @@ pub async fn main() {
 			let mut layers = if let Some((layer, _)) = default_logging_layer { vec![layer] } else { vec![] };
 
 			let cmd = match cmd.subcommand {
-				P4AnalyzerCmd::Server(config) => {
-					RunnableCommand(LspServerCommand::new(config, driver::DriverType::Console))
-				}
+				P4AnalyzerCmd::Server(config) => RunnableCommand(LspServerCommand::new(config, DriverType::Console)),
 				_ => unreachable!(),
 			};
 

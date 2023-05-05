@@ -1,13 +1,13 @@
 mod main_tests {
+	extern crate queues;
 	use crate::{
 		cli::flags::{self, P4Analyzer, P4AnalyzerCmd, Server},
 		commands::lsp_server::LspServerCommand,
 		create_default_logging_layer,
-		driver::{BufferStruct, DriverType},
+		driver::{buffer_driver::BufferStruct, DriverType},
 		get_logfile_stem, RunnableCommand,
 	};
 	use analyzer_host::{json_rpc::message::Message, tracing::tracing_subscriber::Registry};
-	extern crate queues;
 	use queues::*;
 	use tester::tester::tester::*;
 
@@ -74,15 +74,20 @@ mod main_tests {
 }
 
 mod driver_tests {
-
-	use crate::driver::{buffer_driver, console_driver, BufferStruct};
+	extern crate queues;
+	use crate::{
+		driver::{
+			buffer_driver::{self, BufferStruct},
+			console_driver,
+		},
+		tests::unit_tests::driver_tests::buffer_driver::buffer_driver,
+	};
+	use ::tester::tester::tester::default_initialize_message;
 	use analyzer_host::{
 		json_rpc::message::{Message, Response},
 		MessageChannel,
 	};
 	use cancellation::CancellationTokenSource;
-	extern crate queues;
-	use ::tester::tester::tester::default_initialize_message;
 	use queues::*;
 
 	#[tokio::test]

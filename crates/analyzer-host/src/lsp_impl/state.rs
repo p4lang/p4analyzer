@@ -115,8 +115,8 @@ impl State {
 	/// This method should be invoked when processing the
 	/// [`'initialize'`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#initialize)
 	/// request from the LSP client.
-	pub(crate) fn set_workspaces(&mut self, workspace_manager: Option<WorkspaceManager>) {
-		self.workspace_manager = workspace_manager;
+	pub(crate) fn set_workspaces(&mut self, workspace_manager: WorkspaceManager) {
+		self.workspace_manager = Some(workspace_manager);
 	}
 
 	/// Sets the current [`ProgressManager`] for the current instance of the P4 Analyzer.
