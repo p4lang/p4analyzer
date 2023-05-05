@@ -48,13 +48,13 @@
 						"type": "string",
 						"scope": "window",
 						"default": null,
-						"markdownDescription": "Specifies the absolute path to a P4 Analyzer server executable.\\n\nIf a path is not specified, then the integrated WebAssembly based server is used by default."
+						"markdownDescription": "Specifies the absolute path to a P4 Analyzer server executable.\n\nIf a path is not specified, then the integrated WebAssembly based server is used by default."
 					},
 					"p4-analyzer.server.logPath": {
 						"type": "string",
 						"scope": "window",
 						"default": null,
-						"markdownDescription": "The optional `'--logpath'` argument to supply to the P4 Analyzer server executable.\\n\nUsed only in conjunction with *Absolute Server Path*."
+						"markdownDescription": "The optional `'--logpath'` argument to supply to the P4 Analyzer server executable.\n\nUsed only in conjunction with *Absolute Server Path*."
 					},
 					"p4-analyzer.server.logLevel": {
 						"type": "string",
@@ -67,7 +67,7 @@
 							"warn",
 							"error"
 						],
-						"markdownDescription": "The optional `'--loglevel'` argument to supply to the P4 Analyzer server executable.\\n\nUsed only in conjunction with *Absolute Server Path*."
+						"markdownDescription": "The optional `'--loglevel'` argument to supply to the P4 Analyzer server executable.\n\nUsed only in conjunction with *Absolute Server Path*."
 					},
 					"p4-analyzer.trace.server": {
 						"type": "string",
