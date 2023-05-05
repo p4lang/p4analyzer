@@ -1,6 +1,6 @@
 use analyzer_core::base_abstractions::FileId;
 use async_rwlock::RwLock as AsyncRwLock;
-use std::{sync::Arc, fs};
+use std::sync::Arc;
 
 use analyzer_abstractions::{
 	lsp_types::{
@@ -229,44 +229,41 @@ async fn on_set_trace(_: LspServerState, params: SetTraceParams, state: Arc<Asyn
 	Ok(())
 }
 
-async fn created_file(url: &Url, state: &Arc<AsyncRwLock<State>>) {
-	// incase it's a folder, get a list of files
- 	let files = state.write().await.file_system.enumerate_folder(url.clone(), "*.p4".into()).await;
+async fn created_file(uri: &Url, state: &Arc<AsyncRwLock<State>>) {
+	// workspaces should be created in the initilize state
+ 	let file = state.write().await.workspaces().get_file(uri.clone());
 
-	// get files content from system
-	let mut content = Vec::new();
-	for url in &files {
-		content.push(fs::read_to_string(url.uri.path()).expect("Unable to read file"));
+	// check if file is in client memory
+	if file.is_open_in_ide() {
+		return;	// we don't need to query filesystem
 	}
-	
-	// claim lock
-	let lock = state.write().await;
-	let mut analyzer = lock.analyzer.unwrap();
 
-	// update files
-	for i in 0..files.len()  {
-		let file_id = analyzer.file_id(files[i].uri.as_str());
-		analyzer.update(file_id, content[i].clone());
-		info!("{} file updated from file system", files[i].uri.path());
-	}
-}
-
-async fn deleted_file(url: &Url, state: &Arc<AsyncRwLock<State>>) {
-	// incase it's a folder, get a list of files
-	let files = state.write().await.file_system.enumerate_folder(url.clone(), "*.p4".into()).await;
-
-	// claim lock
-	let lock = state.write().await;
-	let mut analyzer = lock.analyzer.unwrap();
-
-	// delete files
-	for i in 0..files.len()  {
-		analyzer.delete(files[i].uri.as_str());
-		info!("{} file deleted from file system", files[i].uri.path());
+	match file.get_parsed_unit().await {
+		Ok(file_id) => { 
+			let lock = state.write().await;
+			let content = lock.file_system.file_contents(uri.clone()).await.unwrap_or_default();
+			lock.analyzer.unwrap().update(file_id, content);
+			info!("{} file updated from file system", uri.path());
+		},
+		Err(err) => {
+			error!(uri = uri.as_str(), "Could not query completions. Index error: {}", err);
+		},
 	}
 }
 
-// !Although it called didChangeWatchedFiles, Folders are included
+async fn deleted_file(uri: &Url, state: &Arc<AsyncRwLock<State>>) {
+	// workspaces should be created in the initilize state
+	let file = state.write().await.workspaces().get_file(uri.clone());
+
+	// check if file is in client memory
+	if file.is_open_in_ide() {
+		return;	// we don't need to query filesystem
+	}
+
+	state.write().await.analyzer.unwrap().delete(uri.as_str());
+	info!("{} file deleted from file system", uri.path());
+}
+
 async fn on_watched_file_change(
 	_: LspServerState,
 	params: DidChangeWatchedFilesParams,
