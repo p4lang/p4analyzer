@@ -11,8 +11,8 @@ use analyzer_abstractions::{
 		request::{Completion, HoverRequest, Shutdown},
 		CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
 		DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
-		DidOpenTextDocumentParams, DidSaveTextDocumentParams, Hover, HoverContents, HoverParams, MarkupContent,
-		MarkupKind, Position, SetTraceParams,
+		DidOpenTextDocumentParams, DidSaveTextDocumentParams, FileChangeType, Hover, HoverContents, HoverParams,
+		MarkupContent, MarkupKind, Position, SetTraceParams, Url,
 	},
 	tracing::{error, info},
 };
@@ -229,18 +229,54 @@ async fn on_set_trace(_: LspServerState, params: SetTraceParams, state: Arc<Asyn
 	Ok(())
 }
 
+async fn created_file(uri: &Url, state: &Arc<AsyncRwLock<State>>) {
+	// workspaces should be created in the initilize state
+	let file = state.write().await.workspaces().get_file(uri.clone());
+
+	// check if file is in client memory
+	if file.is_open_in_ide() {
+		return; // we don't need to query filesystem
+	}
+
+	match file.get_parsed_unit().await {
+		Ok(file_id) => {
+			let lock = state.write().await;
+			let content = lock.file_system.file_contents(uri.clone()).await.unwrap_or_default();
+			lock.analyzer.unwrap().update(file_id, content);
+			info!("{} file updated from file system", uri.path());
+		}
+		Err(err) => {
+			error!(uri = uri.as_str(), "Could not query completions. Index error: {}", err);
+		}
+	}
+}
+
+async fn deleted_file(uri: &Url, state: &Arc<AsyncRwLock<State>>) {
+	// workspaces should be created in the initilize state
+	let file = state.write().await.workspaces().get_file(uri.clone());
+
+	// check if file is in client memory
+	if file.is_open_in_ide() {
+		return; // we don't need to query filesystem
+	}
+
+	state.write().await.analyzer.unwrap().delete(uri.as_str());
+	info!("{} file deleted from file system", uri.path());
+}
+
 async fn on_watched_file_change(
 	_: LspServerState,
 	params: DidChangeWatchedFilesParams,
 	state: Arc<AsyncRwLock<State>>,
 ) -> HandlerResult<()> {
-	let file_changes: Vec<String> = params
-		.changes
-		.into_iter()
-		.map(|file_event| format!("({:?} {})", file_event.typ, file_event.uri))
-		.collect();
-
-	info!(file_changes = file_changes.join(", "), "Watched file changes.");
+	for event in &params.changes {
+		match event.typ {
+			FileChangeType::CREATED => created_file(&event.uri, &state).await,
+			FileChangeType::CHANGED => created_file(&event.uri, &state).await, // Does the same
+			FileChangeType::DELETED => deleted_file(&event.uri, &state).await,
+			_ => panic!("Type not supported in 1.17 specification"),
+		}
+	}
 
 	Ok(())
 }
