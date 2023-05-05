@@ -8,7 +8,7 @@
 		"vscode:prepublish": "npm run build-base -- --minify",
 		"bundle-wasm-analyzer": "run-script-os",
 		"bundle-wasm-analyzer:nix": "mkdir -p ./node_modules/p4-analyzer && cp -R ../p4-analyzer/package.json ../p4-analyzer/lib ./node_modules/p4-analyzer",
-		"bundle-wasm-analyzer:windows": "if not exist \".\\node_modules\\p4-analyzer\" mkdir \".\\node_modules\\p4-analyzer\" && xcopy ..\\p4-analyzer\\package.json  .\\node_modules\\p4-analyzer /d /y && xcopy ..\\p4-analyzer\\lib .\\node_modules\\p4-analyzer /s /e /h /y /d",
+		"bundle-wasm-analyzer:windows": "mkdir .\\node_modules\\p4-analyzer & xcopy /E /Y ..\\p4-analyzer\\package.json .\\node_modules\\p4-analyzer\\ & xcopy /E /Y ..\\p4-analyzer\\lib .\\node_modules\\p4-analyzer\\lib\\",
 		"build-base": "esbuild ./src/index.ts --bundle --outfile=lib/index.js --external:vscode --format=cjs --platform=node",
 		"prebuild-base": "npm run bundle-wasm-analyzer",
 		"build": "npm run build-base -- --sourcemap",
@@ -48,13 +48,13 @@
 						"type": "string",
 						"scope": "window",
 						"default": null,
-						"markdownDescription": "Specifies the absolute path to a P4 Analyzer server executable.\n\nIf a path is not specified, then the integrated WebAssembly based server is used by default."
+						"markdownDescription": "Specifies the absolute path to a P4 Analyzer server executable.\\n\nIf a path is not specified, then the integrated WebAssembly based server is used by default."
 					},
 					"p4-analyzer.server.logPath": {
 						"type": "string",
 						"scope": "window",
 						"default": null,
-						"markdownDescription": "The optional `'--logpath'` argument to supply to the P4 Analyzer server executable.\n\nUsed only in conjunction with *Absolute Server Path*."
+						"markdownDescription": "The optional `'--logpath'` argument to supply to the P4 Analyzer server executable.\\n\nUsed only in conjunction with *Absolute Server Path*."
 					},
 					"p4-analyzer.server.logLevel": {
 						"type": "string",
@@ -67,7 +67,7 @@
 							"warn",
 							"error"
 						],
-						"markdownDescription": "The optional `'--loglevel'` argument to supply to the P4 Analyzer server executable.\n\nUsed only in conjunction with *Absolute Server Path*."
+						"markdownDescription": "The optional `'--loglevel'` argument to supply to the P4 Analyzer server executable.\\n\nUsed only in conjunction with *Absolute Server Path*."
 					},
 					"p4-analyzer.trace.server": {
 						"type": "string",
