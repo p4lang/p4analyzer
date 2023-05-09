@@ -1,4 +1,4 @@
-use analyzer_abstractions::lsp_types::{self, TextDocumentContentChangeEvent};
+use analyzer_abstractions::lsp_types::{self, TextDocumentContentChangeEvent, Position};
 
 #[derive(Clone, Debug)]
 pub struct LspPos {
@@ -123,8 +123,17 @@ impl LspPos {
         }
 
         // calculate position in current file  
-        let start_pos = self.lsp_to_lsp(&changes.range.unwrap().start);     // inclusive
-        let end_pos_exc = self.lsp_to_lsp(&changes.range.unwrap().end);      // exclusive
+        let mut start_pos = self.lsp_to_lsp(&changes.range.unwrap().start);     // inclusive
+        let mut end_pos_exc = self.lsp_to_lsp(&changes.range.unwrap().end);      // exclusive
+
+        if start_pos.line < changes.range.unwrap().start.line {
+            start_pos.line += 1;
+            start_pos.character = 0;
+        }
+        if end_pos_exc.line < changes.range.unwrap().end.line {
+            end_pos_exc.line += 1;
+            end_pos_exc.character = 0;
+        }
 
         // undefined behaviour
         if start_pos > end_pos_exc {
@@ -148,7 +157,7 @@ impl LspPos {
             elm.end += start_byte;
         }
 
-        if start_pos.line != changes.range.unwrap().start.line {    // case is only true when adding to end of file
+        if start_pos.line as usize == self.ranges.len() {    // case is only true when adding to end of file
             if changes.text.is_empty() {    // we aren't adding anything
                 return;
             }
@@ -168,7 +177,13 @@ impl LspPos {
         }
 
         let start_line = start_pos.line as usize;
-        let remove_lines = end_pos_exc.line - start_pos.line + 1;
+        let mut remove_lines = end_pos_exc.line - start_pos.line + 1;
+        if end_pos_exc.line as usize == self.ranges.len() {
+            remove_lines -= 1;
+            if start_pos.line == 0 {
+                offset -= 1;
+            }
+        }
 
         if changes.text.ends_with("\n") {
             let value = addition_lsp.last().unwrap().end + 1;
@@ -177,11 +192,12 @@ impl LspPos {
         }
 
         if end_pos_exc.line < changes.range.unwrap().end.line{
-            offset = -1;
+            offset = 0;
         }
 
         // this can underflow
-        addition_lsp.last_mut().unwrap().end = (addition_lsp.last_mut().unwrap().end as isize + (self.ranges[end_pos_exc.line as usize].end - self.ranges[end_pos_exc.line as usize].start - end_pos_exc.character as usize) as isize + offset) as usize;
+        let end = self.ranges.get(end_pos_exc.line as usize).unwrap_or(&(0..0));
+        addition_lsp.last_mut().unwrap().end = (addition_lsp.last_mut().unwrap().end as isize + (end.end - end.start - end_pos_exc.character as usize) as isize + offset) as usize;
         addition_lsp.first_mut().unwrap().start -= start_pos.character as usize;
 
         if addition_lsp.last_mut().unwrap().end < addition_lsp.last_mut().unwrap().start || addition_lsp.last_mut().unwrap().end == usize::MAX{

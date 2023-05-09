@@ -328,7 +328,7 @@ fn test_lazy_add() {
 
     // changes to end of file
     let mut lsp = original_lsp.clone();
-    let event = change_event((5,0), (6,0), "xyz".into());
+    let event = change_event((4,0), (6,0), "xyz".into());
     lsp.lazy_add(&event);
     let expected_lsp = LspPos::parse_file(&"012\n456\n\n9\nxyz".to_string()); // change to end of file
     assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
