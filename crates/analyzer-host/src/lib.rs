@@ -97,6 +97,7 @@ impl AnalyzerHost {
 				},
 				Err(err) => {
 					error!("Unexpected error receiving message: {:?}", err);
+					break;
 				}
 			}
 		}
@@ -146,6 +147,9 @@ impl AnalyzerHost {
 			}
 		}
 
+		self.sender.close();
+		self.receiver.close();
+		requests_receiver.close();
 		AsyncPool::stop();
 
 		if cancel_token.is_canceled() {

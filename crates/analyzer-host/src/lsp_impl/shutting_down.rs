@@ -2,7 +2,7 @@ use super::state::State;
 use crate::{
 	fsm::LspServerStateDispatcher,
 	json_rpc::ErrorCode,
-	lsp::{dispatch::Dispatch, dispatch_target::HandlerResult, state::LspServerState, DispatchBuilder},
+	lsp::{dispatch_target::HandlerResult, state::LspServerState, DispatchBuilder},
 };
 use analyzer_abstractions::lsp_types::notification::Exit;
 use async_rwlock::RwLock as AsyncRwLock;
@@ -21,4 +21,7 @@ pub(crate) fn create_dispatcher() -> LspServerStateDispatcher {
 }
 
 /// Responds to an 'exit' notification from the LSP client.
-async fn on_exit(_: LspServerState, _: (), _: Arc<AsyncRwLock<State>>) -> HandlerResult<()> { Ok(()) }
+async fn on_exit(_: LspServerState, _: (), state: Arc<AsyncRwLock<State>>) -> HandlerResult<()> {
+	state.write().await.workspaces().close();
+	Ok(())
+}

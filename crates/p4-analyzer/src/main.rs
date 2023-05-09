@@ -1,12 +1,8 @@
 mod cli;
 mod commands;
-mod stdio;
+mod driver;
 
-use analyzer_abstractions::{
-	event_listener::Event,
-	futures_extensions::async_extensions::AsyncPool,
-	tracing::{subscriber, Level, Subscriber},
-};
+use analyzer_abstractions::tracing::{subscriber, Level, Subscriber};
 use analyzer_host::tracing::tracing_subscriber::{
 	fmt::{layer, writer::MakeWriterExt},
 	prelude::__tracing_subscriber_SubscriberExt,
@@ -16,6 +12,7 @@ use analyzer_host::tracing::tracing_subscriber::{
 use cancellation::CancellationTokenSource;
 use cli::flags::{P4Analyzer, P4AnalyzerCmd};
 use commands::{lsp_server::LspServerCommand, Command, CommandInvocationError};
+use driver::DriverType;
 use std::{
 	env::current_exe,
 	fs, process,
@@ -36,8 +33,9 @@ pub async fn main() {
 		Ok(cmd) => {
 			let default_logging_layer = create_default_logging_layer::<Registry>(&cmd);
 			let mut layers = if let Some((layer, _)) = default_logging_layer { vec![layer] } else { vec![] };
+
 			let cmd = match cmd.subcommand {
-				P4AnalyzerCmd::Server(config) => RunnableCommand(LspServerCommand::new(config)),
+				P4AnalyzerCmd::Server(config) => RunnableCommand(LspServerCommand::new(config, DriverType::Console)),
 				_ => unreachable!(),
 			};
 

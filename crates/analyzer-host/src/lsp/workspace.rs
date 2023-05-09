@@ -111,6 +111,12 @@ impl WorkspaceManager {
 
 		progress.end(None).await.unwrap();
 	}
+
+	pub fn close(&self) {
+		for workspace in self.workspaces.clone().into_iter() {
+			workspace.1.close();
+		}
+	}
 }
 
 impl<'a> IntoIterator for &'a WorkspaceManager {
@@ -207,6 +213,8 @@ impl Workspace {
 
 		write_files(self, &document_identifiers);
 	}
+
+	pub fn close(&self) { self.parse_sender.close(); }
 }
 
 impl Display for Workspace {
