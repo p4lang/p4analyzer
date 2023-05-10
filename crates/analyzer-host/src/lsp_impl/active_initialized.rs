@@ -173,6 +173,7 @@ async fn on_text_document_did_change(
 	}
 
 	// TODO: avoid cloning
+	// implement LspPos::lazy_add
 	analyzer.update(file_id, input.clone());
 	file.open_or_update(file_id);
 	let diagnostics = process_diagnostics(&analyzer, file_id, &input);
