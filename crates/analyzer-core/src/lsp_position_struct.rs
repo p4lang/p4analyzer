@@ -1,229 +1,173 @@
-use analyzer_abstractions::lsp_types::{self, TextDocumentContentChangeEvent, Position};
+use analyzer_abstractions::lsp_types::{self, Position, TextDocumentContentChangeEvent};
 
 #[derive(Clone, Debug)]
 pub struct LspPos {
-    eof: bool,  // for the last line we need to distinguise if it ends in \n or not
-    ranges: Vec<std::ops::Range<usize>>,
+	eof: bool, // for the last line we need to distinguise if it ends in \n or not
+	ranges: Vec<usize>,
 }
 
 impl LspPos {
-    // helper function
-    fn parse_string(string: &String) -> (Vec<std::ops::Range<usize>>, bool) {
-        let mut result: Vec<std::ops::Range<usize>> = Vec::new();
-        let mut start = 0;
-        let bytes = string.as_bytes();
-    
-        for i in 0..bytes.len() {
-            if bytes[i] == b'\n' {
-                result.push(start..i);
-                start = i + 1;
-            }
-        }
-        // If there are bytes left add it to vector
-        if start < bytes.len() {
-            result.push(start..bytes.len()-1);
-        }
-        
-        let eof = string.as_bytes().last() == Some(&b'\n');
+	// helper function
+	fn parse_string(string: &String) -> (Vec<usize>, bool) {
+		let mut result: Vec<usize> = Vec::new();
+		if string.is_empty() {
+			return (result, false);
+		}
 
-        (result, eof)
-    }
+		let bytes = string.as_bytes();
 
-    pub fn parse_file(file: &String) -> Self {
-        let parse = LspPos::parse_string(&file);
-        LspPos{ranges: parse.0, eof: parse.1}
-    }
+		for i in 0..bytes.len() {
+			if bytes[i] == b'\n' {
+				result.push(i);
+			}
+		}
+		// If there are bytes left add it to vector
+		if *result.last().unwrap_or(&(usize::MAX - 1)) != bytes.len() - 1 {
+			result.push(bytes.len() - 1);
+		}
 
-    pub fn get_ranges(&self) -> Vec<std::ops::Range<usize>> {
-        self.ranges.clone()
-    }
+		let eof = string.as_bytes().last() == Some(&b'\n');
 
-    pub fn get_eof(&self) -> bool {
-        self.eof.clone()
-    }
+		(result, eof)
+	}
 
-    // used to get a valid lsp position for the current file
-    fn lsp_to_lsp(&self, lsp_pos: &lsp_types::Position) -> lsp_types::Position {
-        self.byte_to_lsp(self.lsp_to_byte(lsp_pos))
-    }
+	pub fn parse_file(file: &String) -> Self {
+		let parse = LspPos::parse_string(&file);
+		LspPos { ranges: parse.0, eof: parse.1 }
+	}
 
-    pub fn lsp_to_byte(&self, lsp_pos: &lsp_types::Position) -> usize {
-        // O(1) time complexity
-        // file is empty
-        if self.ranges.is_empty() {     
-            return 0;
-        }
+	pub fn get_ranges(&self) -> Vec<usize> { self.ranges.clone() }
 
-        // line greater than contain, return last byte
-        if lsp_pos.line as usize >= self.ranges.len() {
-            return self.ranges.last().unwrap().end;
-        }
+	pub fn get_eof(&self) -> bool { self.eof.clone() }
 
-        // calculate byte offset from character
-        let range = &self.ranges[lsp_pos.line as usize];
-        let char_max_size = range.end - range.start;
-        let char = lsp_pos.character as usize;
-        // if inputed character is greater than line max character, set byte offset to max character
-        let char = if char > char_max_size { char_max_size } else { char };
-        range.start + char
-    }
+	// used to get a valid lsp position for the current file
+	fn lsp_to_lsp(&self, lsp_pos: &lsp_types::Position) -> lsp_types::Position {
+		self.byte_to_lsp(self.lsp_to_byte(lsp_pos))
+	}
 
-    pub fn lsp_range_to_byte_range(&self, lsp_range: &lsp_types::Range) -> std::ops::Range<usize> {
-        let start = self.lsp_to_byte(&lsp_range.start);
-        let end = self.lsp_to_byte(&lsp_range.end);
-        start..end
-    }
+	pub fn line_char(&self, line: usize) -> usize {
+		let upper = self.ranges.get(line).unwrap_or(&0);
+		if line == 0 {
+			return *upper + 1;
+		}
+		let lower = self.ranges.get(line - 1).unwrap_or(&0);
+		upper - lower
+	}
 
-    pub fn byte_to_lsp(&self, byte_pos: usize) -> lsp_types::Position {
-        // file is empty
-        if self.ranges.is_empty() {
-            return lsp_types::Position{line: 0, character: 0};
-        }
+	pub fn lsp_to_byte(&self, lsp_pos: &lsp_types::Position) -> usize {
+		// O(1) time complexity
+		// file is empty
+		if self.ranges.is_empty() {
+			return 0;
+		}
 
-        // if position is greater than held, return last line, last character 
-        if byte_pos > self.ranges.last().unwrap().end {
-            let line: usize = self.ranges.len() - 1;
-            let character: u32 = (self.ranges[line].end - self.ranges[line].start).try_into().unwrap();
-            return lsp_types::Position{line: line.try_into().unwrap(), character};
-        }
-        
-        let mut low = 0;
-        let mut high = self.ranges.len() - 1;
-        // ranged binary search O(log(n))
-        while low <= high {
-            let mid = (low + high) / 2;
+		// line greater than contain, return last byte + 1
+		if lsp_pos.line as usize >= self.ranges.len() {
+			return *self.ranges.last().unwrap() + 1;
+		}
 
-            if byte_pos < self.ranges[mid].start {
-                high = mid - 1;
-            } else if byte_pos > self.ranges[mid].end {
-                low = mid + 1;
-            } else {
-                let line = mid as u32;
-                let character = (byte_pos - self.ranges[mid].start) as u32;
-                return lsp_types::Position{line, character};
-            }
-        }
-        // only reachable if there is a bug in code (construction of LspPos::ranges or this method)
-        unreachable!();
-    }
+		// calculate upper byte and number of character in the line
+		let upper = &self.ranges[lsp_pos.line as usize];
+		let line_char = self.line_char(lsp_pos.line as usize);
 
-    pub fn byte_range_to_lsp_range(&self, byte_range: &std::ops::Range<usize>) -> lsp_types::Range {
-        let start = self.byte_to_lsp(byte_range.start);
-        let end = self.byte_to_lsp( byte_range.end);
-        analyzer_abstractions::lsp_types::Range::new(start, end)
-    }
+		let mut char = lsp_pos.character as usize;
+		// if inputed character is greater than line max character, set byte offset to max character
+		if char >= line_char {
+			char = line_char - 1;
+		}
 
-    // used to update ranges from TextDocumentContentChangeEvent
-    // will lazily add as only parse the text to be added
-    pub fn lazy_add(&mut self, changes: &TextDocumentContentChangeEvent) {
-        // The whole file got changes || file was empty, so reparse as new file
-        if changes.range.is_none() || self.ranges.is_empty() {
-            *self = LspPos::parse_file(&changes.text);
-            return;
-        }
+		// calculate byte offset from character
+		upper - (line_char - 1 - char)
+	}
 
-        // calculate position in current file  
-        let mut start_pos = self.lsp_to_lsp(&changes.range.unwrap().start);     // inclusive
-        let mut end_pos_exc = self.lsp_to_lsp(&changes.range.unwrap().end);      // exclusive
+	pub fn lsp_range_to_byte_range(&self, lsp_range: &lsp_types::Range) -> std::ops::Range<usize> {
+		let start = self.lsp_to_byte(&lsp_range.start);
+		let end = self.lsp_to_byte(&lsp_range.end);
+		start..end
+	}
 
-        if start_pos.line < changes.range.unwrap().start.line {
-            start_pos.line += 1;
-            start_pos.character = 0;
-        }
-        if end_pos_exc.line < changes.range.unwrap().end.line {
-            end_pos_exc.line += 1;
-            end_pos_exc.character = 0;
-        }
+	pub fn byte_to_lsp(&self, byte_pos: usize) -> lsp_types::Position {
+		if byte_pos > *self.ranges.last().unwrap_or(&0) {
+			return Position { line: self.ranges.len() as u32, character: 0 };
+		}
 
-        // undefined behaviour
-        if start_pos > end_pos_exc {
-            panic!("range.start: {:?} is greater than range.end: {:?} in TextDocumentContentChangeEvent!", start_pos, end_pos_exc)
-        }
+		let mut low = 0;
+		let mut high = self.ranges.len();
 
-        // calculate new text as LSP
-        let parse = LspPos::parse_string(&changes.text);
-        let mut addition_lsp = parse.0;
-        let eof = parse.1;
+		while low < high {
+			let mid = (low + high) / 2;
+			if self.ranges[mid] == byte_pos {
+				low = mid;
+				break;
+			} else if self.ranges[mid] < byte_pos {
+				low = mid + 1;
+			} else {
+				high = mid;
+			}
+		}
 
-        let mut offset: isize = 1;
-        if addition_lsp.is_empty() {
-            offset = 0;
-            addition_lsp.push(0..0);    // although this isn't representive of an empty file it apart of a real file and this is used as a location
-        }
+		let lower = if low == 0 { 0 } else { self.ranges[low - 1] + 1 };
+		let char = byte_pos - lower;
+		Position { line: low as u32, character: char as u32 }
+	}
 
-        let start_byte = self.lsp_to_byte(&start_pos);
-        for elm in &mut addition_lsp {
-            elm.start += start_byte;
-            elm.end += start_byte;
-        }
+	pub fn byte_range_to_lsp_range(&self, byte_range: &std::ops::Range<usize>) -> lsp_types::Range {
+		let start = self.byte_to_lsp(byte_range.start);
+		let end = self.byte_to_lsp(byte_range.end);
+		analyzer_abstractions::lsp_types::Range::new(start, end)
+	}
 
-        if start_pos.line as usize == self.ranges.len() {    // case is only true when adding to end of file
-            if changes.text.is_empty() {    // we aren't adding anything
-                return;
-            }
-            if !self.eof {  // if file doesn't merge front with existing
-                self.ranges.last_mut().unwrap().end = addition_lsp.first().unwrap_or(&self.ranges.last_mut().unwrap().clone()).end;
-                addition_lsp.remove(0);
-            }
+	// used to update ranges from TextDocumentContentChangeEvent
+	// will lazily add as only parse the text to be added
+	pub fn lazy_add(&mut self, changes: &TextDocumentContentChangeEvent) {
+		// The whole file got changes || file was empty, so reparse as new file
+		if changes.range.is_none() || self.ranges.is_empty() {
+			*self = LspPos::parse_file(&changes.text);
+			return;
+		}
 
-            for elm in &mut addition_lsp {
-                elm.start += 1;
-                elm.end += 1;
-            }
+		// calculate position in current file
+		let start_pos = self.lsp_to_lsp(&changes.range.unwrap().start);     // inclusive
+		let end_pos_exc = self.lsp_to_lsp(&changes.range.unwrap().end);     // exclusive
+		
+		// undefined behaviour
+		if start_pos > end_pos_exc {
+			panic!("range.start: {:?} is greater than range.end: {:?} in TextDocumentContentChangeEvent!", start_pos, end_pos_exc)
+		}
 
-            self.ranges.append(&mut addition_lsp);  // add aditions to back
-            self.eof = eof; // eof character has been changed
-            return; // early exit
-        }
+		let (mut additional_ranges, eof) = LspPos::parse_string(&changes.text);
+		let addition_byte = *additional_ranges.last().unwrap_or(&0);
+		if end_pos_exc.line as usize == self.ranges.len() {
+			self.eof = eof;
+		}
 
-        let start_line = start_pos.line as usize;
-        let mut remove_lines = end_pos_exc.line - start_pos.line + 1;
-        if end_pos_exc.line as usize == self.ranges.len() {
-            remove_lines -= 1;
-            if start_pos.line == 0 {
-                offset -= 1;
-            }
-        }
+		let start_byte = self.lsp_to_byte(&start_pos);
+		let end_byte = self.lsp_to_byte(&end_pos_exc);
+		for elm in &mut additional_ranges {
+			*elm += start_byte;
+		}
 
-        if changes.text.ends_with("\n") {
-            let value = addition_lsp.last().unwrap().end + 1;
-            addition_lsp.push(value..value);
-            offset = 0;
-        }
+		let end_line_char = self.line_char(end_pos_exc.line as usize);
+		if additional_ranges.is_empty() {
+			let end_line_byte = *self.ranges.get(end_pos_exc.line as usize).unwrap_or(self.ranges.last().unwrap());
+			additional_ranges.push(end_line_byte - end_byte + start_byte);
+		} else {
+			*additional_ranges.first_mut().unwrap() -= start_pos.character as usize;
+			*additional_ranges.last_mut().unwrap() += end_line_char - end_pos_exc.character as usize;
+		}
 
-        if end_pos_exc.line < changes.range.unwrap().end.line{
-            offset = 0;
-        }
+		for _ in start_pos.line..end_pos_exc.line + 1  {
+			self.ranges.remove(start_pos.line as usize);
+		}
 
-        // this can underflow
-        let end = self.ranges.get(end_pos_exc.line as usize).unwrap_or(&(0..0));
-        addition_lsp.last_mut().unwrap().end = (addition_lsp.last_mut().unwrap().end as isize + (end.end - end.start - end_pos_exc.character as usize) as isize + offset) as usize;
-        addition_lsp.first_mut().unwrap().start -= start_pos.character as usize;
+		for elm in additional_ranges.iter().rev()  {
+			self.ranges.insert(start_pos.line as usize, *elm);
+		}
 
-        if addition_lsp.last_mut().unwrap().end < addition_lsp.last_mut().unwrap().start || addition_lsp.last_mut().unwrap().end == usize::MAX{
-            addition_lsp.pop();
-        }
-        // removes changes ranges
-        for _ in 0..remove_lines {
-            self.ranges.remove(start_line);
-        }
+		let diff = end_byte as i64 - start_byte as i64 + addition_byte as i64 - 1;
+		for elm in self.ranges.iter_mut().skip(start_pos.line as usize + additional_ranges.len()) {
+			*elm = (*elm as i64 - diff) as usize;
+		}
 
-        // add new lines (does the vector backward for inplace insertion)
-        for elm in addition_lsp.iter_mut().rev() {
-            self.ranges.insert(start_line, elm.clone());
-        }
-
-        // realign values
-        let skip = start_line as i64 + addition_lsp.len() as i64 - 1;
-        if skip >= 0 {
-            let skip = skip as usize;
-            if skip + 1 < self.ranges.len() {
-                let size_diff : i32 = self.ranges[skip + 1].start as i32 - self.ranges[skip].end as i32 - 1;
-                for elm in self.ranges.iter_mut().skip(skip + 1) {
-                    elm.start = (elm.start as i32 - size_diff) as usize;
-                    elm.end = (elm.end as i32 - size_diff) as usize;
-                }
-            }
-        }
-    }
+	}
 }
