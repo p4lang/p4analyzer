@@ -1,23 +1,15 @@
 // A class for loading, running and testing premade or custom P4 files
 #[cfg(debug_assertions)]
 pub mod tester {
-	use gag::BufferRedirect;
-	use std::{
-		fs,
-		io::{stdout, Read, Write},
-		path::PathBuf,
-		sync::{RwLock, RwLockWriteGuard},
-		time::Duration,
-	};
-
+	use analyzer_host::json_rpc::message::{Message, Notification, Request};
 	use lazy_static::lazy_static;
+	use queues::*;
+	use serde_json::Value;
+	use std::{fs, path::PathBuf};
+
 	lazy_static! {
 		// Is lazy_static because it's a runtime generated value
 		static ref PATH : String = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/").into_os_string().into_string().unwrap();
-
-		// Using RwLock as stdio(console_driver) runs on a different thread to LSP and tests
-		// It's a global variable as only 1 needs to exist for the whole program
-		//static ref MESSAGE_HANDLER : RwLock<usize> = RwLock::new(0);
 	}
 
 	// List of p4 files in the example folder for checking & opening the file
@@ -49,82 +41,50 @@ pub mod tester {
 			}
 		}
 	}
-	/*
-	// A crude method for making an event handler for when a message is sent
-	// returns a write lock so that it remained locked until the buffer of stdout is written to in parent method
-	pub fn message_sent() -> RwLockWriteGuard<'static, usize> {
-		let mut lock = MESSAGE_HANDLER.write().unwrap();
-		*lock += 1;
-		lock
+
+	pub fn default_initialize_message() -> Message {
+		let initialize_params = analyzer_abstractions::lsp_types::InitializeParams { ..Default::default() };
+		let json = serde_json::json!(initialize_params);
+		Message::Request(Request { id: 0.into(), method: String::from("initialize"), params: json })
 	}
 
-	// A crude method for making an event listener for when a message is sent
-	// milli: how long it waits until it times out (not very accurate)
-	// num_mess: how many messages to wait for
-	// returns write lock because parent method will reset the count once it's read the buffer (this method only reads the count)
-	async fn await_message(milli : usize, num_mess : usize) -> Option<RwLockWriteGuard<'static, usize>> {
-		let mut count : usize = 0;  // timeout counter
-		loop {
-			let lock = MESSAGE_HANDLER.write().unwrap();    // hold write lock for resetting counter
-			if *lock >= num_mess {  // only read value
-				return Some(lock);
-			}
-			drop(lock);  // release lock
-			async_std::task::sleep(Duration::from_millis(1)).await; // crude message handler
-			count += 10;
-			if milli <= count {  // timeout solution
-				return None;
-			}
-		}
+	pub fn default_initialized_message() -> Message {
+		let initialized_params = analyzer_abstractions::lsp_types::InitializedParams {};
+		let json = serde_json::json!(initialized_params);
+		Message::Notification(Notification { method: String::from("initialized"), params: json })
 	}
 
-	// Using the gag cargo container to redirect buffer
-	// Only works in tests if --nocapture is set
-	// `cargo t` is a custom cargo test that is made to work with this
-	pub fn start_stdout_capture() -> BufferRedirect {
-		stdout().flush().unwrap();  // Increase the chances that stdout is empty (although this is not guaranteed with parallel testing)
-		let mut lock = MESSAGE_HANDLER.write().unwrap();
-		*lock = 0;
-		BufferRedirect::stdout().unwrap()
+	pub fn default_shutdown_message() -> Message {
+		Message::Request(Request { id: 0.into(), method: String::from("shutdown"), params: Value::Null })
 	}
 
-	// pass the buffer redirect by reference
-	// specify how many messages you're waiting for
-	// returns Option as it will be None if waiting for message times out
-	pub async fn get_stdout_capture(reader : &mut BufferRedirect, num_messages : usize) -> Option<String> {
-		if num_messages == 0 {
-			return None;
-		}
-		let mut output = String::new();
-
-		let lock = await_message(3000, num_messages).await; // hold a write lock for later
-		if lock.is_none() {
-			return None;  // It timed out
-		}
-
-		stdout().flush().unwrap();
-		let _lock = stdout().lock();    // Don't allow anyone to write while we read from it
-
-		(*reader).read_to_string(&mut output).unwrap(); // This reads stdout
-
-		*lock.unwrap() = 0; // reset message count
-		Some(output)
+	pub fn default_exit_message() -> Message {
+		Message::Notification(Notification { method: String::from("exit"), params: Value::Null })
 	}
 
-	// takes ownership of buffer
-	pub fn stop_stdout_capture(reader: BufferRedirect) {
-		drop(reader);
+	pub fn start_black_box() {
+		let mut queue: Queue<Message> = queue![];
+
+		queue.add(default_initialize_message()).unwrap();
+		queue.add(default_initialized_message()).unwrap();
+
+		/*let mut buffer = BufferStruct::new(queue);
+
+			let lsp = LspServerCommand::new(Server{stdio:false}, DriverType::Buffer(buffer.clone()));
+			let obj = RunnableCommand::<LspServerCommand>(lsp);
+
+			let future = RunnableCommand::<LspServerCommand>::run(&obj);
+		*/
 	}
-	*/
+
+	pub fn stop_black_box() {}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::tester;
-	use serial_test::serial; // This crate doesn't seem to work :(
 
 	#[test]
-	#[serial]
 	fn test_load() {
 		// invalid entreis
 		assert_eq!(tester::load_file_num(std::usize::MAX), None);
@@ -143,44 +103,4 @@ mod tests {
 			assert_eq!(content.unwrap(), "#include <core.p4>\n");
 		}
 	}
-	/*
-	fn simulate_message(string : &str) {
-		let _lock = tester::message_sent();
-		println!("{}", string);
-	}
-
-	#[tokio::test]
-	#[serial]
-	async fn test_stdout_capture() {
-		simulate_message("readable!");
-		let mut obj = tester::start_stdout_capture();
-		//let mut obj = tester::start_stdout_capture(); // <-- causes runtime error
-
-		simulate_message("not readable");
-		let str = tester::get_stdout_capture(&mut obj, 1).await;
-		assert_eq!(str.unwrap(), "not readable\n");
-
-		let str = tester::get_stdout_capture(&mut obj, 0).await;
-		assert!(str.is_none());
-
-		simulate_message("hello");
-		simulate_message("world");
-		let str = tester::get_stdout_capture(&mut obj, 2).await;
-		assert_eq!(str.unwrap(), "hello\nworld\n");
-
-		tester::stop_stdout_capture(obj);
-		//obj;  // <-- this causes a compilier error
-		simulate_message("readable again!");
-
-		let mut obj = tester::start_stdout_capture();
-
-		simulate_message("not readable2");
-		let str = tester::get_stdout_capture(&mut obj, 1).await;
-		assert_eq!(str.unwrap(), "not readable2\n");
-
-		tester::stop_stdout_capture(obj);
-		//obj;  // <-- this causes a compilier error
-		simulate_message("readable again2!");
-	}
-	*/
 }

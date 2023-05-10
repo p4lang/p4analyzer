@@ -28,6 +28,9 @@ impl AsyncWork {
 
 impl ArcWake for AsyncWork {
 	fn wake_by_ref(arc_self: &Arc<Self>) {
+		if arc_self.sender.is_closed() {
+			return;
+		}
 		let cloned = arc_self.clone();
 
 		arc_self.sender.send_blocking(cloned).unwrap();
@@ -70,9 +73,9 @@ impl AsyncPool {
 	}
 
 	pub fn stop() {
-		let (_, receiver) = WORK_CHANNEL.with(|c| c.borrow().clone());
+		let (sender, _) = WORK_CHANNEL.with(|c| c.borrow().clone());
 
-		receiver.close();
+		sender.close();
 	}
 
 	pub fn spawn_work<T>(future: T)

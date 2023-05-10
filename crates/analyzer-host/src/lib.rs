@@ -97,6 +97,7 @@ impl AnalyzerHost {
 				},
 				Err(err) => {
 					error!("Unexpected error receiving message: {:?}", err);
+					break;
 				}
 			}
 		}
@@ -114,38 +115,43 @@ impl AnalyzerHost {
 		requests_receiver: Receiver<Message>,
 		cancel_token: Arc<CancellationToken>,
 	) -> Result<(), OperationCanceled> {
-		let mut protocol_machine = LspProtocolMachine::new(self.trace_value.clone(), request_manager, file_system);
+		{ // Scope: for `protocol_machine`.
+			let mut protocol_machine = LspProtocolMachine::new(self.trace_value.clone(), request_manager, file_system);
 
-		while protocol_machine.is_active() && !cancel_token.is_canceled() {
-			match requests_receiver.recv().await {
-				Ok(message) => {
-					if cancel_token.is_canceled() {
-						break;
-					}
+			while protocol_machine.is_active() && !cancel_token.is_canceled() {
+				match requests_receiver.recv().await {
+					Ok(message) => {
+						if cancel_token.is_canceled() {
+							break;
+						}
 
-					let request_message_span = info_span!("[Message]", message = format!("{}", message));
+						let request_message_span = info_span!("[Message]", message = format!("{}", message));
 
-					async {
-						match protocol_machine.process_message(Arc::new(message)).await {
-							Ok(response_message) => {
-								if let Some(Message::Response(_)) = &response_message {
-									self.sender.send(response_message.unwrap()).await.unwrap();
+						async {
+							match protocol_machine.process_message(Arc::new(message)).await {
+								Ok(response_message) => {
+									if let Some(Message::Response(_)) = &response_message {
+										self.sender.send(response_message.unwrap()).await.unwrap();
+									}
+								}
+								Err(err) => {
+									error!("Protocol Error: {}", &err.to_string());
 								}
 							}
-							Err(err) => {
-								error!("Protocol Error: {}", &err.to_string());
-							}
 						}
+						.instrument(request_message_span)
+						.await;
 					}
-					.instrument(request_message_span)
-					.await;
-				}
-				Err(err) => {
-					error!("Unexpected error receiving request or notification: {:?}", err);
+					Err(err) => {
+						error!("Unexpected error receiving request or notification: {:?}", err);
+					}
 				}
 			}
-		}
+		} // End Scope
 
+		self.sender.close();
+		self.receiver.close();
+		requests_receiver.close();
 		AsyncPool::stop();
 
 		if cancel_token.is_canceled() {

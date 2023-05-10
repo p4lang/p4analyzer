@@ -6,7 +6,7 @@ use lexer::*;
 use pretty_assertions::assert_eq;
 
 fn lex_str(s: &str) -> Vec<Token> {
-	let db = Database::default();
+	let db = Database::new(|base, _| Ok(base.into()));
 	let buf = Buffer::new(&db, s.to_string(), LspPos::parse_file(&s.to_string()));
 	let file_id = FileId::new(&db, "foo.p4".to_string());
 	let lexed = lex(&db, file_id, buf);

@@ -8,7 +8,7 @@
 		"vscode:prepublish": "npm run build-base -- --minify",
 		"bundle-wasm-analyzer": "run-script-os",
 		"bundle-wasm-analyzer:nix": "mkdir -p ./node_modules/p4-analyzer && cp -R ../p4-analyzer/package.json ../p4-analyzer/lib ./node_modules/p4-analyzer",
-		"bundle-wasm-analyzer:windows": "if not exist \".\\node_modules\\p4-analyzer\" mkdir \".\\node_modules\\p4-analyzer\" && xcopy ..\\p4-analyzer\\package.json  .\\node_modules\\p4-analyzer /d /y && xcopy ..\\p4-analyzer\\lib .\\node_modules\\p4-analyzer /s /e /h /y /d",
+		"bundle-wasm-analyzer:windows": "mkdir .\\node_modules\\p4-analyzer & xcopy /E /Y ..\\p4-analyzer\\package.json .\\node_modules\\p4-analyzer\\ & xcopy /E /Y ..\\p4-analyzer\\lib .\\node_modules\\p4-analyzer\\lib\\",
 		"build-base": "esbuild ./src/index.ts --bundle --outfile=lib/index.js --external:vscode --format=cjs --platform=node",
 		"prebuild-base": "npm run bundle-wasm-analyzer",
 		"build": "npm run build-base -- --sourcemap",

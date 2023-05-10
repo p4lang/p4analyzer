@@ -13,10 +13,17 @@ use lexer::*;
 use lsp_position_struct::LspPos;
 use preprocessor::*;
 
-#[derive(Default)]
+// #[derive(Default)]
 #[salsa::db(crate::Jar)]
 pub struct Database {
 	storage: salsa::Storage<Self>,
+	resolver_fn: Box<dyn Fn(&str, &str) -> Result<String, String> + 'static>,
+}
+
+impl Database {
+	pub fn new(resolver_fn: impl Fn(&str, &str) -> Result<String, String> + 'static) -> Self {
+		Self { storage: Default::default(), resolver_fn: Box::new(resolver_fn) }
+	}
 }
 
 impl salsa::Database for Database {}
@@ -29,19 +36,27 @@ pub struct Jar(
 	Diagnostics,
 	Fs,
 	LexedFs,
+	IncludedDependencies,
 	// gotta include salsa functions as well
 	lex,
 	preprocess,
 );
 
-pub trait Db: salsa::DbWithJar<Jar> {}
+pub trait Db: salsa::DbWithJar<Jar> {
+	fn resolve_path(&self, file_id: FileId, path: &str) -> String;
+}
 
-impl<DB> Db for DB where DB: ?Sized + salsa::DbWithJar<Jar> {}
+// impl<DB> Db for DB where DB: ?Sized + salsa::DbWithJar<Jar> {
+impl Db for Database {
+	fn resolve_path(&self, file_id: FileId, path: &str) -> String {
+		(self.resolver_fn)(&file_id.path(self), path).expect("failed to resolve a path")
+	}
+}
 
-#[derive(Default)]
 pub struct Analyzer {
 	db: Database,
 	fs: Option<Fs>,
+	require_fn: Box<dyn Fn(&str) -> () + 'static>,
 }
 
 #[salsa::tracked]
@@ -55,6 +70,13 @@ pub struct Fs {
 }
 
 impl Analyzer {
+	pub fn new(
+		resolver_fn: impl Fn(&str, &str) -> Result<String, String> + 'static,
+		require_fn: impl Fn(&str) -> () + 'static,
+	) -> Self {
+		Self { db: Database::new(resolver_fn), fs: Default::default(), require_fn: Box::new(require_fn) }
+	}
+
 	fn filesystem(&self) -> HashMap<FileId, Buffer> { self.fs.map(|fs| fs.fs(&self.db)).unwrap_or_default() }
 
 	pub fn update(&mut self, file_id: FileId, input: String) {
@@ -77,7 +99,14 @@ impl Analyzer {
 	}
 
 	pub fn preprocessed(&self, file_id: FileId) -> Option<&Vec<(FileId, Token, Span)>> {
-		preprocess(&self.db, self.fs?, file_id).as_ref()
+		let result = preprocess(&self.db, self.fs?, file_id).as_ref();
+
+		// Require any unresolved dependencies.
+		for unresolved_include in self.include_dependencies(file_id).iter().filter(|a| !a.is_resolved) {
+			(self.require_fn)(&self.path(unresolved_include.file_id))
+		}
+
+		result
 	}
 
 	pub fn diagnostics(&self, id: FileId) -> Vec<Diagnostic> {
@@ -88,6 +117,13 @@ impl Analyzer {
 		} else {
 			vec![]
 		}
+	}
+
+	/// Retrieves the included dependencies for a given source [`FileId`].
+	pub fn include_dependencies(&self, id: FileId) -> Vec<IncludedDependency> {
+		self.fs
+			.map(|fs| preprocess::accumulated::<IncludedDependencies>(&self.db, fs, id))
+			.unwrap_or_default()
 	}
 
 	pub fn delete(&mut self, uri: &str) -> Option<()> {
@@ -194,12 +230,20 @@ pub fn lex(db: &dyn crate::Db, file_id: FileId, buf: Buffer) -> LexedBuffer {
 #[salsa::tracked(return_ref)]
 pub fn preprocess(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec<(FileId, Token, Span)>> {
 	let mut pp = PreprocessorState::new(
-		|path: String| FileId::new(db, path),
+		|path: &str| {
+			// Return a `FileId` with an absolute path resolved relative to the file being preprocessed. If the path
+			// is already absolute then `resolve_path` will return it as is.
+			FileId::new(db, db.resolve_path(file_id, path))
+		},
 		|file_id| {
-			fs.fs(db).get(&file_id).map(|&buf| {
+			let lexemes = fs.fs(db).get(&file_id).map(|&buf| {
 				let lexed = lex(db, file_id, buf);
 				lexed.lexemes(db)
-			})
+			});
+
+			IncludedDependencies::push(db, IncludedDependency { file_id, is_resolved: lexemes.is_some() });
+
+			lexemes
 		},
 	);
 

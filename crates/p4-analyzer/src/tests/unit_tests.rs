@@ -1,13 +1,17 @@
 mod main_tests {
+	extern crate queues;
 	use crate::{
-		cli::flags::{self, P4Analyzer, P4AnalyzerCmd},
-		create_default_logging_layer, get_logfile_stem,
+		cli::flags::{self, P4Analyzer, P4AnalyzerCmd, Server},
+		commands::lsp_server::LspServerCommand,
+		create_default_logging_layer,
+		driver::{buffer_driver::BufferStruct, DriverType},
+		get_logfile_stem, RunnableCommand,
 	};
-	use analyzer_host::tracing::tracing_subscriber::Registry;
-	use serial_test::parallel;
+	use analyzer_host::{json_rpc::message::Message, tracing::tracing_subscriber::Registry};
+	use queues::*;
+	use tester::tester::tester::*;
 
 	#[test]
-	#[parallel]
 	fn test_create_default_logging_layer() {
 		let cmd = P4Analyzer {
 			logpath: None,
@@ -27,68 +31,68 @@ mod main_tests {
 	}
 
 	#[test]
-	#[parallel]
 	fn test_get_logfile_stem() {
 		// random generated string each time, so just make sure not empty
 		assert!(get_logfile_stem().contains("p4analyzer-"));
 	}
 
-	/*
-	async fn lsp_test_messages(sender : &ConsoleDriver ) {
-		let initialize_params = analyzer_abstractions::lsp_types::InitializeParams{ ..Default::default() };
-		let json = serde_json::json!(initialize_params);
+	async fn lsp_test_messages(buffer: &mut BufferStruct) {
+		buffer.allow_read_blocking(); // Initialize Message sent
+		let resp0 = buffer.get_output_buffer().await;
+		assert_eq!(resp0.len(), 1);
+		assert!(resp0[0].contains("{\"jsonrpc\":\"2.0\",\"id\":0,\"result\""));
 
-		let message = Message::Request(Request{
-			id: 0.into(),
-			method: String::from("initialize"),
-			params: json,
-		});
-		(*sender).send_message_in(message.clone()).await.unwrap();
+		buffer.allow_read_blocking(); // Initialized Message sent
 
-		let initialize_params = analyzer_abstractions::lsp_types::InitializedParams{};
-		let json = serde_json::json!(initialize_params);
-		let message = Message::Notification(Notification{
-			method: String::from("initialized"),
-			params: json,
-		});
-		(*sender).send_message_in(message.clone()).await.unwrap();
+		buffer.allow_read_blocking(); // Shutdown Message sent
+		let resp1 = buffer.get_output_buffer().await;
+		assert_eq!(resp1.len(), 1);
+		assert_eq!(resp1[0], "Content-Length: 38\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":null}");
 
-		let message = Message::Notification(Notification{
-			method: String::from("exit"),
-			params: Value::Null,
-		});
-		(*sender).send_message_in(message.clone()).await.unwrap();
+		buffer.allow_read_blocking(); // Exit Message sent
 	}
 
 	#[tokio::test]
-	#[serial]
 	async fn test_runnable_command() {
-		let lsp = LspServerCommand::new(Server{stdio:false});
+		let mut queue: Queue<Message> = queue![];
+
+		queue.add(default_initialize_message()).unwrap();
+		queue.add(default_initialized_message()).unwrap();
+		queue.add(default_shutdown_message()).unwrap();
+		queue.add(default_exit_message()).unwrap();
+
+		let mut buffer = BufferStruct::new(queue);
+
+		let lsp = LspServerCommand::new(Server { stdio: false }, DriverType::Buffer(buffer.clone()));
 		let obj = RunnableCommand::<LspServerCommand>(lsp);
-		let sender: &ConsoleDriver  = &obj.0.console_driver;
+
 		let future = RunnableCommand::<LspServerCommand>::run(&obj);
-		let future2 = lsp_test_messages(sender);
+		let test_future = lsp_test_messages(&mut buffer);
 
-		let mut reader = tester::tester::tester::start_stdout_capture();
-
-		tokio::join!(future, future2);
-
-		let result = tester::tester::tester::get_stdout_capture(&mut reader, 1).await;
-		// The message is very long so only match start of it
-		assert!(result.unwrap().contains("Content-Length: 423\r\n\r\n{\"jsonrpc\":\"2.0\","));
+		tokio::join!(future, test_future);
 	}
-	*/
 }
 
-mod stdio_tests {
-	use crate::stdio::ConsoleDriver;
+mod driver_tests {
+	extern crate queues;
+	use crate::{
+		driver::{
+			buffer_driver::{self, BufferStruct},
+			console_driver,
+		},
+		tests::unit_tests::driver_tests::buffer_driver::buffer_driver,
+	};
+	use ::tester::tester::tester::default_initialize_message;
+	use analyzer_host::{
+		json_rpc::message::{Message, Response},
+		MessageChannel,
+	};
 	use cancellation::CancellationTokenSource;
-	use serial_test::parallel;
+	use queues::*;
 
 	#[tokio::test]
-	#[parallel]
 	async fn test_console_driver() {
-		let driver = ConsoleDriver::new();
+		let driver = console_driver();
 		let token = CancellationTokenSource::new();
 		let future = driver.start(token.token().clone());
 
@@ -105,31 +109,38 @@ mod stdio_tests {
 		let (res, _) = tokio::join!(future, test_future);
 		assert!(res.is_err());
 	}
-	/*
-	#[tokio::test]
-	#[serial]
-	async fn test_receive_task() {
-		let obj = ConsoleDriver::new();
-		let (sender, receiver) = obj.stdout_channel.clone();
-		let receiver_task = std::thread::spawn(move || ConsoleDriver::receiver_task(receiver));
 
-		let mess = Message::Notification(Notification{
-			method: "initialized".into(),
-			params: Value::Null,
-		});
+	async fn buffer_test(buffer: &mut BufferStruct, channels: MessageChannel) {
+		buffer.allow_read_blocking(); // Mimic Driver sending initialize message to Analyzer Host
+		let mess = channels.1.recv().await.unwrap(); // Mimic reading Analyzer Host buffer
+		assert_eq!(mess.to_string(), "initialize:0");
 
-		let mut capture = start_stdout_capture();
+		let message = Message::Response(Response { id: 0.into(), result: None, error: None });
+		channels.0.send(message).await.unwrap(); // Mimic Analyzer Host sending message to Driver
+		let mess = buffer.get_output_buffer().await; // Mimic reading driver buffer
+		assert_eq!(mess.len(), 1);
+		assert_eq!(mess[0], "Content-Length: 24\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0}");
 
-		sender.send(mess).await.unwrap();
-
-		let output = get_stdout_capture(&mut capture, 1).await;
-		assert_eq!(output.unwrap(), "Content-Length: 40\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"}");
-
-		stop_stdout_capture(capture);
-		sender.close();
-		receiver_task.join().unwrap();
+		// Analyzer host is normally responsible for closing the channels that lets the driver know it should shut down
+		channels.0.close();
+		channels.1.close();
 	}
-	*/
+
+	#[tokio::test]
+	async fn test_buffer_driver() {
+		let mut queue: Queue<Message> = queue![];
+
+		let message = default_initialize_message();
+		queue.add(message).unwrap();
+
+		let mut buffer = BufferStruct::new(queue);
+		let driver = buffer_driver(buffer.clone());
+
+		let token = CancellationTokenSource::new();
+		let future = driver.start(token.token().clone());
+		let test_future = buffer_test(&mut buffer, driver.get_message_channel());
+		let _ = tokio::join!(future, test_future);
+	}
 }
 
 mod lsp_server_tests {
@@ -142,7 +153,7 @@ mod lsp_server_tests {
 
 	#[tokio::test]
 	async fn command_aborts_when_cancelled() {
-		let lsp = LspServerCommand::new(Server { stdio: false });
+		let lsp = LspServerCommand::new(Server { stdio: false }, crate::driver::DriverType::Console);
 		let token = CancellationTokenSource::new();
 		let (res, _) = tokio::join!(lsp.run(token.token().clone()), async { token.cancel() });
 		assert!(res.is_err());

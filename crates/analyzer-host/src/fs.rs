@@ -1,5 +1,4 @@
 use analyzer_abstractions::{
-	async_trait::async_trait,
 	fs::EnumerableFileSystem,
 	lsp_types::{request::Request, TextDocumentIdentifier, Url},
 	tracing::error,
@@ -24,7 +23,6 @@ impl LspEnumerableFileSystem {
 	pub fn new(request_manager: RequestManager) -> Self { Self { request_manager } }
 }
 
-// #[async_trait]
 impl EnumerableFileSystem for LspEnumerableFileSystem {
 	fn enumerate_folder<'a>(
 		&'a self,
