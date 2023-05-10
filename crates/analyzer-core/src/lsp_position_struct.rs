@@ -136,7 +136,7 @@ impl LspPos {
 		}
 
 		let (mut additional_ranges, eof) = LspPos::parse_string(&changes.text);
-		let addition_byte = *additional_ranges.last().unwrap_or(&0);
+		let addition_byte: i64 = additional_ranges.last().map_or(-1, |value| *value as i64);
 		if end_pos_exc.line as usize == self.ranges.len() {
 			self.eof = eof;
 		}
@@ -152,7 +152,7 @@ impl LspPos {
 			let end_line_byte = *self.ranges.get(end_pos_exc.line as usize).unwrap_or(self.ranges.last().unwrap());
 			additional_ranges.push(end_line_byte - end_byte + start_byte);
 		} else {
-			*additional_ranges.first_mut().unwrap() -= start_pos.character as usize;
+			//*additional_ranges.first_mut().unwrap() -= start_pos.character as usize;
 			*additional_ranges.last_mut().unwrap() += end_line_char - end_pos_exc.character as usize;
 		}
 
@@ -164,9 +164,9 @@ impl LspPos {
 			self.ranges.insert(start_pos.line as usize, *elm);
 		}
 
-		let diff = end_byte as i64 - start_byte as i64 + addition_byte as i64 - 1;
+		let diff = (addition_byte + 1) - (end_byte as i64 - start_byte as i64);
 		for elm in self.ranges.iter_mut().skip(start_pos.line as usize + additional_ranges.len()) {
-			*elm = (*elm as i64 - diff) as usize;
+			*elm = (*elm as i64 + diff) as usize;
 		}
 
 	}
