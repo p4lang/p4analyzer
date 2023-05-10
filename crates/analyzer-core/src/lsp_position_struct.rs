@@ -46,10 +46,15 @@ impl LspPos {
 	}
 
 	pub fn line_char(&self, line: usize) -> usize {
+		if line >= self.ranges.len() {
+			return 0;
+		}
+
 		let upper = self.ranges.get(line).unwrap_or(&0);
 		if line == 0 {
 			return *upper + 1;
 		}
+
 		let lower = self.ranges.get(line - 1).unwrap_or(&0);
 		upper - lower
 	}
@@ -137,9 +142,6 @@ impl LspPos {
 
 		let (mut additional_ranges, eof) = LspPos::parse_string(&changes.text);
 		let addition_byte: i64 = additional_ranges.last().map_or(-1, |value| *value as i64);
-		if end_pos_exc.line as usize == self.ranges.len() {
-			self.eof = eof;
-		}
 
 		let start_byte = self.lsp_to_byte(&start_pos);
 		let end_byte = self.lsp_to_byte(&end_pos_exc);
@@ -147,17 +149,37 @@ impl LspPos {
 			*elm += start_byte;
 		}
 
-		let end_line_char = self.line_char(end_pos_exc.line as usize);
+		let tailing_end_char = self.line_char(end_pos_exc.line as usize) - end_pos_exc.character as usize;
 		if additional_ranges.is_empty() {
 			let end_line_byte = *self.ranges.get(end_pos_exc.line as usize).unwrap_or(self.ranges.last().unwrap());
-			additional_ranges.push(end_line_byte - end_byte + start_byte);
+			let val = end_line_byte as i64 - end_byte as i64 + start_byte as i64;
+			if val < 0 {	// The whole file is being changes
+				self.ranges.clear();
+				self.eof = false;
+				return;
+			}
+			if start_pos.line as usize == self.ranges.len() {	// adding nothing to end of file
+				return;
+			}
+
+			if tailing_end_char != 0 || start_pos.character != 0 {
+				additional_ranges.push(val as usize);
+			}
 		} else {
-			//*additional_ranges.first_mut().unwrap() -= start_pos.character as usize;
-			*additional_ranges.last_mut().unwrap() += end_line_char - end_pos_exc.character as usize;
+			if changes.text.as_bytes().last() == Some(&b'\n') && end_pos_exc.line as usize != self.ranges.len() {
+				additional_ranges.push(*additional_ranges.last().unwrap());
+			}
+			*additional_ranges.last_mut().unwrap() += tailing_end_char;
+		}
+
+		if end_pos_exc.line as usize == self.ranges.len() {
+			self.eof = eof;
 		}
 
 		for _ in start_pos.line..end_pos_exc.line + 1  {
-			self.ranges.remove(start_pos.line as usize);
+			if start_pos.line as usize != self.ranges.len() {
+				self.ranges.remove(start_pos.line as usize);
+			}
 		}
 
 		for elm in additional_ranges.iter().rev()  {
@@ -168,6 +190,5 @@ impl LspPos {
 		for elm in self.ranges.iter_mut().skip(start_pos.line as usize + additional_ranges.len()) {
 			*elm = (*elm as i64 + diff) as usize;
 		}
-
 	}
 }
