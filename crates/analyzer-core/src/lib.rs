@@ -1,8 +1,8 @@
 pub mod base_abstractions;
 pub mod lexer;
+pub mod lsp_position_struct;
 pub mod parser;
 pub mod preprocessor;
-pub mod lsp_position_struct;
 
 use std::collections::HashMap;
 
@@ -104,9 +104,7 @@ impl Analyzer {
 
 	pub fn files(&self) -> Vec<String> { self.filesystem().keys().map(|k| k.path(&self.db)).collect() }
 
-	pub fn get_lsp_pos(&self, id: FileId) -> &LspPos {
-		self.buffer(id).unwrap().byte_position(&self.db)
-	}
+	pub fn get_lsp_pos(&self, id: FileId) -> &LspPos { self.buffer(id).unwrap().byte_position(&self.db) }
 }
 
 // TODO: trait for workspace logic?

@@ -2,7 +2,7 @@ use analyzer_abstractions::lsp_types::{self, Position, TextDocumentContentChange
 
 #[derive(Clone, Debug)]
 pub struct LspPos {
-	eof: bool, // for the last line we need to distinguise if it ends in \n or not
+	eof: bool, // flag indicates if the last character in file is '\n'
 	ranges: Vec<usize>,
 }
 
@@ -15,7 +15,6 @@ impl LspPos {
 		}
 
 		let bytes = string.as_bytes();
-
 		for i in 0..bytes.len() {
 			if bytes[i] == b'\n' {
 				result.push(i);
@@ -46,11 +45,13 @@ impl LspPos {
 	}
 
 	pub fn line_char(&self, line: usize) -> usize {
+		// a useful case to expect
 		if line >= self.ranges.len() {
-			return 0;
+			return 0; // no characters exist on that line
 		}
 
 		let upper = self.ranges.get(line).unwrap_or(&0);
+		// self.ranges[-1] = 0
 		if line == 0 {
 			return *upper + 1;
 		}
@@ -91,14 +92,16 @@ impl LspPos {
 		start..end
 	}
 
+	// O(log(n))
 	pub fn byte_to_lsp(&self, byte_pos: usize) -> lsp_types::Position {
+		// byte position greater than end of current file
 		if byte_pos > *self.ranges.last().unwrap_or(&0) {
-			return Position { line: self.ranges.len() as u32, character: 0 };
+			return Position { line: self.ranges.len() as u32, character: 0 }; // return next position of last line
 		}
 
 		let mut low = 0;
 		let mut high = self.ranges.len();
-
+		// binary search
 		while low < high {
 			let mid = (low + high) / 2;
 			if self.ranges[mid] == byte_pos {
@@ -110,7 +113,7 @@ impl LspPos {
 				high = mid;
 			}
 		}
-
+		// calculate character position in byte offset
 		let lower = if low == 0 { 0 } else { self.ranges[low - 1] + 1 };
 		let char = byte_pos - lower;
 		Position { line: low as u32, character: char as u32 }
@@ -132,60 +135,76 @@ impl LspPos {
 		}
 
 		// calculate position in current file
-		let start_pos = self.lsp_to_lsp(&changes.range.unwrap().start);     // inclusive
-		let end_pos_exc = self.lsp_to_lsp(&changes.range.unwrap().end);     // exclusive
-		
+		let start_pos = self.lsp_to_lsp(&changes.range.unwrap().start); // inclusive
+		let end_pos_exc = self.lsp_to_lsp(&changes.range.unwrap().end); // exclusive
+
 		// undefined behaviour
 		if start_pos > end_pos_exc {
-			panic!("range.start: {:?} is greater than range.end: {:?} in TextDocumentContentChangeEvent!", start_pos, end_pos_exc)
+			panic!(
+				"range.start: {:?} is greater than range.end: {:?} in TextDocumentContentChangeEvent!",
+				start_pos, end_pos_exc
+			)
 		}
 
+		// parse input
 		let (mut additional_ranges, eof) = LspPos::parse_string(&changes.text);
 		let addition_byte: i64 = additional_ranges.last().map_or(-1, |value| *value as i64);
 
+		// align additions to their placement in current file
 		let start_byte = self.lsp_to_byte(&start_pos);
 		let end_byte = self.lsp_to_byte(&end_pos_exc);
 		for elm in &mut additional_ranges {
 			*elm += start_byte;
 		}
 
+		// need to make addition calculations for head and tail of new additions
 		let tailing_end_char = self.line_char(end_pos_exc.line as usize) - end_pos_exc.character as usize;
 		if additional_ranges.is_empty() {
+			// special cases
 			let end_line_byte = *self.ranges.get(end_pos_exc.line as usize).unwrap_or(self.ranges.last().unwrap());
 			let val = end_line_byte as i64 - end_byte as i64 + start_byte as i64;
-			if val < 0 {	// The whole file is being changes
+			// we're deleteing the whole file
+			if val < 0 {
 				self.ranges.clear();
 				self.eof = false;
 				return;
 			}
-			if start_pos.line as usize == self.ranges.len() {	// adding nothing to end of file
+
+			// The case for deleting nothing to end of file
+			if start_pos.line as usize == self.ranges.len() {
 				return;
 			}
 
+			// The change is just a deletion
 			if tailing_end_char != 0 || start_pos.character != 0 {
 				additional_ranges.push(val as usize);
 			}
 		} else {
+			// \n is our line break, if adding to end of file don't make duplicate range
 			if changes.text.as_bytes().last() == Some(&b'\n') && end_pos_exc.line as usize != self.ranges.len() {
 				additional_ranges.push(*additional_ranges.last().unwrap());
 			}
 			*additional_ranges.last_mut().unwrap() += tailing_end_char;
 		}
 
+		// update eof flag
 		if end_pos_exc.line as usize == self.ranges.len() {
 			self.eof = eof;
 		}
 
-		for _ in start_pos.line..end_pos_exc.line + 1  {
+		// remove changed values
+		for _ in start_pos.line..end_pos_exc.line + 1 {
 			if start_pos.line as usize != self.ranges.len() {
 				self.ranges.remove(start_pos.line as usize);
 			}
 		}
 
-		for elm in additional_ranges.iter().rev()  {
+		// add new values
+		for elm in additional_ranges.iter().rev() {
 			self.ranges.insert(start_pos.line as usize, *elm);
 		}
 
+		// realign tail of old ranges
 		let diff = (addition_byte + 1) - (end_byte as i64 - start_byte as i64);
 		for elm in self.ranges.iter_mut().skip(start_pos.line as usize + additional_ranges.len()) {
 			*elm = (*elm as i64 + diff) as usize;

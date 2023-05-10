@@ -514,7 +514,8 @@ mod test {
 		base_abstractions::{Buffer, FileId},
 		lex,
 		lexer::Token,
-		Database, lsp_position_struct::LspPos,
+		lsp_position_struct::LspPos,
+		Database,
 	};
 
 	use super::{parser::*, PreprocessorBinOp as Op, PreprocessorExpression::*, PreprocessorState};

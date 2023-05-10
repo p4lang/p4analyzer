@@ -135,9 +135,13 @@ mod tests {
 		assert!(tester::load_file_str("example0.p4").is_some());
 		// check content
 		#[cfg(target_os = "windows")]
-		{	assert_eq!(content.unwrap(), "#include <core.p4>\r\n");	}	// Testing both CRLF and LF as Wasm & LSP is platform specific in EOL
+		{
+			assert_eq!(content.unwrap(), "#include <core.p4>\r\n");
+		} // Testing both CRLF and LF as Wasm & LSP is platform specific in EOL
 		#[cfg(not(target_os = "windows"))]
-		{	assert_eq!(content.unwrap(), "#include <core.p4>\n");	}
+		{
+			assert_eq!(content.unwrap(), "#include <core.p4>\n");
+		}
 	}
 	/*
 	fn simulate_message(string : &str) {

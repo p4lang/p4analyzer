@@ -1,6 +1,6 @@
 extern crate analyzer_core;
 
-use analyzer_core::{*, lsp_position_struct::LspPos};
+use analyzer_core::{lsp_position_struct::LspPos, *};
 use base_abstractions::*;
 use lexer::*;
 use pretty_assertions::assert_eq;
