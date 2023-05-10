@@ -135,7 +135,7 @@ impl LspPos {
 		}
 
 		// calculate position in current file
-		let start_pos = self.lsp_to_lsp(&changes.range.unwrap().start); // inclusive
+		let mut start_pos = self.lsp_to_lsp(&changes.range.unwrap().start); // inclusive
 		let end_pos_exc = self.lsp_to_lsp(&changes.range.unwrap().end); // exclusive
 
 		// undefined behaviour
@@ -185,6 +185,13 @@ impl LspPos {
 				additional_ranges.push(*additional_ranges.last().unwrap());
 			}
 			*additional_ranges.last_mut().unwrap() += tailing_end_char;
+		}
+
+		// we're adding to end of file
+		// if it doesn't has eof flag then merge addition onto end
+		// if it does add a new index
+		if start_pos.line as usize == self.ranges.len() && !self.eof {
+			start_pos.line -= 1;
 		}
 
 		// update eof flag

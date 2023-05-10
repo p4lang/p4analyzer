@@ -374,7 +374,9 @@ fn exhaustive_lazy_add() {
 	// test strings
 	let test_files = [
 		"012\n456\n\n9\nbcde\n".to_string(), // end in '\n'
-		"012\n456\n\n9\nbcdef".to_string(),  // doesn't end in '\n'
+		"\n012\n456\n\n9\nbcdef".to_string(),  // doesn't end in '\n'
+		// uncomment the long string for benchmarks
+//		"Alan\nTuring\nwas\nan\nEnglish\nmathematician,\nlogician,\nand\ncomputer\nscientist.\nHe\nis\nwidely\nconsidered\none\nof\nthe\nfounders\nof\nthe\nfield\nof\ntheoretical\ncomputer\nscience\nand\nartificial\nintelligence.\nDuring\nWorld\nWar\nII,\nTuring\nplayed\na\nvital\nrole\nin\nbreaking\nthe\nGerman\nEnigma\ncode,\nwhich\nhelped\nthe\nAllied\nforces\nin\ntheir\nfight\nagainst\nthe\nNazis.\nTuring's\nwork\non\ncomputability\nand\nthe\nconcept\nof\na\nTuring\nmachine\nlaid\nthe\nfoundation\nfor\nmodern\ncomputer\nscience.\nDespite\nhis\ncontributions,\nTuring\nfaced\npersecution\nfor\nhis\nhomosexuality\nand\nwas\nconvicted\nof\n\"gross\nindecency.\"\nHe\npassed\naway\nin\n1954,\nbut\nhis\nlegacy\nand\ncontributions\nto\nthe\nfield\nof\ncomputing\ncontinue\nto\nbe\ncelebrated\nto\nthis\nday.".to_string(),	// long example
 		"".to_string(),						 // empty file
 	]; 
 
@@ -391,16 +393,9 @@ fn exhaustive_lazy_add() {
 			for size in 0..file.len() + 1 {
 				for start_byte in 0..(file.len() - size + 1) {
 					// generate Event
-					let start = if start_byte == 16 {
-						Position { line: 5, character: 0 }
-					} else {
-						original_lsp.byte_to_lsp(start_byte)
-					};
-					let end = if start_byte + size == 16 {
-						Position { line: 5, character: 0 }
-					} else {
-						original_lsp.byte_to_lsp(start_byte + size)
-					};
+					let start = original_lsp.byte_to_lsp(start_byte);
+					let end = original_lsp.byte_to_lsp(start_byte + size);
+
 					let (l1, c1) = (start.line, start.character);
 					let (l2, c2) = (end.line, end.character);
 					let event = change_event((l1, c1), (l2, c2), change.to_string());
@@ -433,4 +428,6 @@ fn exhaustive_lazy_add() {
 			}
 		}
 	}
+	println!("Lazy time:    {}ns", lazy_timer.as_nanos());
+	println!("Parser time:  {}ns", parse_timer.as_nanos());
 }
