@@ -231,6 +231,12 @@ impl State {
 	}
 }
 
+impl Drop for State {
+	fn drop(&mut self) {
+			self.background_parse_channel.0.close();
+	}
+}
+
 #[derive(Clone)]
 struct BackgroundQueue(Sender<Url>);
 
