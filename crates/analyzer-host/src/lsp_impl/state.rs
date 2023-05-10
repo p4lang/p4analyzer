@@ -1,39 +1,66 @@
-use std::sync::Arc;
+use std::{
+	cell::{RefCell, RefMut},
+	sync::Arc,
+};
 
 use analyzer_abstractions::{
 	fs::AnyEnumerableFileSystem,
-	lsp_types::{TextDocumentIdentifier, TraceValue},
+	futures::future::join_all,
+	futures_extensions::async_extensions::AsyncPool,
+	lsp_types::{TraceValue, Url},
+	tracing::info,
 };
 use analyzer_core::base_abstractions::FileId;
+use async_channel::{Receiver, Sender};
+use itertools::Itertools;
 
 use crate::{
 	lsp::{
-		analyzer::{Analyzer, AnyAnalyzer},
+		analyzer::BackgroundLoad,
 		progress::{Progress, ProgressManager},
 		request::RequestManager,
-		workspace::WorkspaceManager,
+		workspace::{File, IndexError, WorkspaceManager},
 		LspProtocolError,
 	},
 	tracing::TraceValueAccessor,
 };
 
-pub(crate) struct AnalyzerWrapper(std::cell::RefCell<analyzer_core::Analyzer>);
+pub(crate) struct AnalyzerWrapper {
+	inner: RefCell<analyzer_core::Analyzer>,
+	background_queue: BackgroundQueue,
+}
 
 unsafe impl Sync for AnalyzerWrapper {}
 unsafe impl Send for AnalyzerWrapper {}
 
-impl Analyzer for AnalyzerWrapper {
-	fn unwrap(&self) -> std::cell::RefMut<analyzer_core::Analyzer> { self.0.borrow_mut() }
+impl AnalyzerWrapper {
+	pub fn new(background_channel: Sender<Url>) -> Self {
+		let background_queue = BackgroundQueue(background_channel.clone());
+		let resolve_path = |absolute_base_url: &str, path: &str| {
+			if let Ok(absolute_target_url) = Url::parse(path) {
+				return Ok(absolute_target_url.as_str().into());
+			}
 
-	fn parse_text_document_contents(&self, document_identifier: TextDocumentIdentifier, contents: String) -> FileId {
-		let mut analyzer = self.unwrap();
+			let base_url = Url::parse(absolute_base_url).unwrap();
 
-		let file_id = analyzer.file_id(document_identifier.uri.as_str());
+			match base_url.join(path) {
+				Ok(target_url) => Ok(target_url.as_str().into()),
+				Err(err) => Err(format!("Could not find path '{}' (relative to '{}'). {}", path, absolute_base_url, err)),
+			}
+		};
+		let require = move |file_path: &str| background_queue.enqueue(Url::parse(file_path).unwrap());
 
-		analyzer.update(file_id, contents);
-
-		file_id
+		Self {
+			inner: RefCell::new(analyzer_core::Analyzer::new(resolve_path, require)),
+			background_queue: BackgroundQueue(background_channel.clone()),
+		}
 	}
+
+	pub fn unwrap(&self) -> RefMut<analyzer_core::Analyzer> { self.inner.borrow_mut() }
+}
+
+impl BackgroundLoad for AnalyzerWrapper {
+	fn load(&self, file_path: Url) { self.background_queue.enqueue(file_path); }
 }
 
 /// Represents the active state of the P4 Analyzer.
@@ -43,7 +70,7 @@ pub(crate) struct State {
 	pub trace_value: Option<TraceValueAccessor>,
 
 	/// The Analyzer that will be used to parse and analyze `'.p4'` source files.
-	pub analyzer: Arc<AnyAnalyzer>,
+	pub analyzer: Arc<AnalyzerWrapper>,
 
 	/// The file system that can be used to enumerate folders and retrieve file contents.
 	pub file_system: Arc<AnyEnumerableFileSystem>,
@@ -56,6 +83,9 @@ pub(crate) struct State {
 
 	/// A [`WorkspaceManager`] that can be used to coordinate workspace and file operations.
 	workspace_manager: Option<WorkspaceManager>,
+
+	/// A [`FileChannel`] where sent files will be parsed in the background.
+	background_parse_channel: (Sender<Url>, Receiver<Url>),
 }
 
 impl State {
@@ -65,13 +95,17 @@ impl State {
 		request_manager: RequestManager,
 		file_system: Arc<AnyEnumerableFileSystem>,
 	) -> Self {
+		let background_parse_channel = async_channel::unbounded::<Url>();
+		let (sender, _) = background_parse_channel.clone();
+
 		Self {
 			trace_value,
-			analyzer: Arc::new(Box::new(AnalyzerWrapper(Default::default()))), // AnalyzerWrapper(Default::default()).into(),
+			analyzer: Arc::new(AnalyzerWrapper::new(sender)),
 			file_system,
 			request_manager,
 			progress_manager: None,
 			workspace_manager: None,
+			background_parse_channel,
 		}
 	}
 
@@ -116,7 +150,17 @@ impl State {
 	/// [`'initialize'`](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#initialize)
 	/// request from the LSP client.
 	pub(crate) fn set_workspaces(&mut self, workspace_manager: WorkspaceManager) {
-		self.workspace_manager = Some(workspace_manager);
+		self.workspace_manager.replace(workspace_manager);
+
+		// With the WorkspaceManager now in place, we can now also start processing background analyze requests for files.
+		let (_, receiver) = self.background_parse_channel.clone();
+
+		AsyncPool::spawn_work(State::process_background_analyze_requests(
+			receiver,
+			self.file_system.clone(),
+			self.workspaces().clone(),
+			self.analyzer.clone(),
+		));
 	}
 
 	/// Sets the current [`ProgressManager`] for the current instance of the P4 Analyzer.
@@ -127,4 +171,69 @@ impl State {
 	pub(crate) fn set_progress(&mut self, progress_manager: ProgressManager) {
 		self.progress_manager = Some(progress_manager);
 	}
+
+	async fn process_background_analyze_requests(
+		receiver: Receiver<Url>,
+		file_system: Arc<AnyEnumerableFileSystem>,
+		workspace_manager: WorkspaceManager,
+		analyzer: Arc<AnalyzerWrapper>,
+	) {
+		fn analyze_source_text(analyzer: &AnalyzerWrapper, uri: &str, text: String) -> FileId {
+			let mut analyzer = analyzer.unwrap();
+			let file_id = analyzer.file_id(uri);
+
+			analyzer.update(file_id, text);
+			analyzer.preprocessed(file_id);
+
+            file_id
+		}
+
+		loop {
+			match receiver.recv().await {
+				Ok(file_url) => {
+					let file_system = file_system.clone();
+					let workspace_manager = workspace_manager.clone();
+					let analyzer = analyzer.clone();
+
+					AsyncPool::spawn_work(async move {
+						info!(file_uri = file_url.as_str(), "Started background analyzing.");
+
+						let file = workspace_manager.get_file(file_url.clone());
+
+						// If the file has been opened in the IDE during the time taken to start this background
+						// analyze, then simply ignore it. The IDE is now the source of truth for this file.
+						if file.is_open_in_ide() {
+							return;
+						}
+
+						match file_system.file_contents(file_url.clone()).await {
+							Some(text) => {
+								info!(file_uri = file_url.as_str(), "Got text: {}", text);
+
+								// If the file has been opened in the IDE during the fetching of its contents, then simply
+								// throw it all away. The IDE is now the source of truth for this file...
+								if file.is_open_in_ide() { return }
+
+								// ...otherwise, update its parsed unit.
+								let file_id = analyze_source_text(&analyzer, file_url.as_str(), text);
+
+								file.set_parsed_unit(file_id, None);
+							}
+							None => file.set_index_error(IndexError::NotFound), // The file was not found
+						}
+
+						info!(file_uri = file_url.as_str(), "Finished background analyzing.");
+					});
+				}
+				Err(_) => break,
+			}
+		}
+	}
+}
+
+#[derive(Clone)]
+struct BackgroundQueue(Sender<Url>);
+
+impl BackgroundQueue {
+	pub fn enqueue(&self, file_path: Url) { self.0.send_blocking(file_path).unwrap(); }
 }

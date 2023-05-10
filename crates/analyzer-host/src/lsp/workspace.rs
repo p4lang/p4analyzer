@@ -2,7 +2,7 @@ use async_rwlock::RwLock as AsyncRwLock;
 use core::fmt::Debug;
 use std::{
 	collections::{
-		hash_map::{Entry, IntoIter, Iter},
+		hash_map::{Entry, Iter},
 		HashMap,
 	},
 	fmt::{Display, Formatter, Result as FmtResult},
@@ -13,16 +13,16 @@ use std::{
 use crate::lsp::RELATIVE_P4_SOURCEFILES_GLOBPATTERN;
 use analyzer_abstractions::{
 	fs::AnyEnumerableFileSystem,
-	futures_extensions::{async_extensions::AsyncPool, FutureCompletionSource},
+	futures_extensions::FutureCompletionSource,
 	lsp_types::{TextDocumentIdentifier, Url, WorkspaceFolder},
 	tracing::{error, info},
 };
-use async_channel::{Receiver, Sender};
 use thiserror::Error;
 
-use super::analyzer::ParsedUnit;
-
-use super::{analyzer::AnyAnalyzer, progress::ProgressManager};
+use super::{
+	analyzer::{AnyBackgroundLoad, ParsedUnit},
+	progress::ProgressManager,
+};
 
 /// Manages a collection of workspaces opened by an LSP compliant host.
 #[derive(Clone)]
@@ -38,14 +38,17 @@ impl WorkspaceManager {
 	pub fn new(
 		file_system: Arc<AnyEnumerableFileSystem>,
 		workspace_folders: Option<Vec<WorkspaceFolder>>,
-		analyzer: Arc<AnyAnalyzer>,
+		background_load: Arc<AnyBackgroundLoad>,
 	) -> Self {
 		fn to_workspace(
 			file_system: Arc<AnyEnumerableFileSystem>,
 			workspace_folder: WorkspaceFolder,
-			analyzer: Arc<AnyAnalyzer>,
+			background_load: Arc<AnyBackgroundLoad>,
 		) -> (Url, Arc<Workspace>) {
-			(workspace_folder.uri.clone(), Arc::new(Workspace::new(file_system, workspace_folder, analyzer)))
+			(
+				workspace_folder.uri.clone(),
+				Arc::new(Workspace::new(file_system, workspace_folder, background_load)),
+			)
 		}
 
 		let (has_workspaces, workspace_folders) = workspace_folders.map_or_else(
@@ -57,7 +60,7 @@ impl WorkspaceManager {
 			has_workspaces,
 			workspaces: workspace_folders
 				.into_iter()
-				.map(|wf| to_workspace(file_system.clone(), wf, analyzer.clone()))
+				.map(|wf| to_workspace(file_system.clone(), wf, background_load.clone()))
 				.collect(),
 		}
 	}
@@ -71,7 +74,7 @@ impl WorkspaceManager {
 	/// files may be made in contexts in which no workspace folders were opened. If this is the case, then the file will
 	/// be retrieved relative to the 'catch-all' workspace which is not indexed.
 	///
-	/// The overall state of the file can be determined from its [`File::get_compiled_unit`] method which will
+	/// The overall state of the file can be determined from its [`File::get_parsed_unit`] method which will
 	/// inform its final state.
 	pub fn get_file(&self, uri: Url) -> Arc<File> {
 		fn is_descendant_path(base: &Url, target: &Url) -> bool {
@@ -132,8 +135,8 @@ impl<'a> IntoIterator for &'a WorkspaceManager {
 pub(crate) struct Workspace {
 	file_system: Arc<AnyEnumerableFileSystem>,
 	workspace_folder: WorkspaceFolder,
+	background_load: Arc<AnyBackgroundLoad>,
 	files: Arc<RwLock<HashMap<Url, Arc<File>>>>,
-	parse_sender: Sender<Arc<File>>,
 }
 
 impl Workspace {
@@ -141,13 +144,9 @@ impl Workspace {
 	pub fn new(
 		file_system: Arc<AnyEnumerableFileSystem>,
 		workspace_folder: WorkspaceFolder,
-		analyzer: Arc<AnyAnalyzer>,
+		background_load: Arc<AnyBackgroundLoad>,
 	) -> Self {
-		let (sender, receiver) = async_channel::unbounded::<Arc<File>>();
-
-		AsyncPool::spawn_work(background_analyze(receiver, file_system.clone(), analyzer));
-
-		Self { file_system, workspace_folder, files: Arc::new(RwLock::new(HashMap::new())), parse_sender: sender }
+		Self { file_system, workspace_folder, background_load, files: Arc::new(RwLock::new(HashMap::new())) }
 	}
 
 	/// Gets the URL of the current [`Workspace`].
@@ -161,24 +160,18 @@ impl Workspace {
 	/// The [`File`] will be created if it is not present in the current workspace.
 	pub fn get_file(&self, uri: Url) -> Arc<File> {
 		let mut files = self.files.write().unwrap();
-		let workspace_uri = self.uri();
-		let new_uri = uri.clone();
 
-		match files.entry(uri) {
+		match files.entry(uri.clone()) {
 			Entry::Occupied(entry) => entry.get().clone(),
 			Entry::Vacant(entry) => {
-				info!(
-					workspace_uri = workspace_uri.as_str(),
-					file_uri = new_uri.as_str(),
-					"Unindexed file in workspace."
-				);
-
-				let new_document_identifier = TextDocumentIdentifier { uri: new_uri };
+				let new_document_identifier = TextDocumentIdentifier { uri: uri.clone() };
 				let new_file = Arc::new(File::new(new_document_identifier.clone()));
 
 				entry.insert(new_file.clone());
 
-				self.parse_sender.send_blocking(new_file.clone()).unwrap();
+				// The file was likely never indexed (i,e., no workspace folders were opened), so
+				// background load the file.
+				self.background_load.load(uri.clone());
 
 				new_file
 			}
@@ -186,15 +179,14 @@ impl Workspace {
 	}
 
 	pub async fn index(&self) {
-		fn write_files(s: &Workspace, document_identifiers: &Vec<TextDocumentIdentifier>) {
-			let mut files = s.files.write().unwrap();
+		fn write_files(workspace: &Workspace, document_identifiers: &Vec<TextDocumentIdentifier>) {
+			let mut files = workspace.files.write().unwrap();
 
 			for document_identifier in document_identifiers.into_iter() {
-				let new_file = Arc::new(File::new(document_identifier.clone()));
+				files.insert(document_identifier.uri.clone(), Arc::new(File::new(document_identifier.clone())));
 
-				files.insert(document_identifier.uri.clone(), new_file.clone());
-
-				s.parse_sender.send_blocking(new_file.clone()).unwrap();
+				// Background load the file now that its known to the Workspace.
+				workspace.background_load.load(document_identifier.uri.clone());
 			}
 		}
 
@@ -230,10 +222,13 @@ impl Display for Workspace {
 pub enum IndexError {
 	#[error("An unexpected error occurred during file indexing.")]
 	Unexpected,
+
+	#[error("The file could not be found.")]
+	NotFound,
 }
 
 #[derive(Clone)]
-struct FileState {
+pub(crate) struct FileState {
 	is_open_in_ide: bool,
 	parsed_unit: FutureCompletionSource<Arc<RwLock<ParsedUnit>>, IndexError>,
 }
@@ -243,7 +238,7 @@ unsafe impl Send for FileState {}
 
 #[derive(Clone)]
 pub(crate) struct File {
-	document_identifier: TextDocumentIdentifier,
+	pub document_identifier: TextDocumentIdentifier,
 	state: Arc<AsyncRwLock<FileState>>,
 }
 
@@ -266,9 +261,13 @@ impl File {
 	}
 
 	pub async fn get_parsed_unit(&self) -> Result<ParsedUnit, IndexError> {
-		let state = self.state.try_read().unwrap();
+		let state = self.state.read().await;
+		let parsed_unit = state.parsed_unit.clone();
 
-		match state.parsed_unit.future().await {
+		// Release the read-lock on state before awaiting on the parsed unit.
+		drop(state);
+
+		match parsed_unit.future().await {
 			Ok(current_parsed_unit) => Ok(current_parsed_unit.read().unwrap().clone()),
 			Err(err) => Err(err),
 		}
@@ -288,7 +287,11 @@ impl File {
 		state.is_open_in_ide = false;
 	}
 
-	fn set_parsed_unit(&self, parsed_unit: ParsedUnit, state: Option<async_rwlock::RwLockWriteGuard<FileState>>) {
+	pub(crate) fn set_parsed_unit(
+		&self,
+		parsed_unit: ParsedUnit,
+		state: Option<async_rwlock::RwLockWriteGuard<FileState>>,
+	) {
 		let mut state = state.unwrap_or_else(|| self.state.try_write().unwrap());
 
 		// If the state of the FutureCompletionSource holding a parsed unit is 'Ready', then it means that
@@ -307,6 +310,26 @@ impl File {
 			state.parsed_unit.set_value(RwLock::new(parsed_unit).into()).unwrap();
 		}
 	}
+
+	pub(crate) fn set_index_error(&self, error: IndexError) {
+		let mut state = self.state.try_write().unwrap();
+
+		// If the state of the FutureCompletionSource holding a parsed unit is 'Ready', then replace it with one
+		// that has the given error set on it.
+		//
+		// If the FutureCompletionSource is still pending, then we can simply 'complete' it with the given error.
+		if let Poll::Ready(_) = state.parsed_unit.state() {
+			state.parsed_unit = {
+				let fcs = FutureCompletionSource::new();
+
+				fcs.set_err(error).unwrap();
+
+				fcs
+			}
+		} else {
+			state.parsed_unit.set_err(error).unwrap();
+		}
+	}
 }
 
 impl Display for File {
@@ -315,45 +338,5 @@ impl Display for File {
 		write!(formatter, "({})", self.document_identifier.uri)?;
 
 		Ok(())
-	}
-}
-
-async fn background_analyze(
-	receiver: Receiver<Arc<File>>,
-	file_system: Arc<AnyEnumerableFileSystem>,
-	analyzer: Arc<AnyAnalyzer>,
-) {
-	loop {
-		match receiver.recv().await {
-			Ok(file) => {
-				info!(file_uri = file.document_identifier.uri.as_str(), "Background parsing");
-
-				// If the file has been opened in the IDE during the time taken to start this background parse, then
-				// ignore it. The IDE is now the source of truth for this file.
-				if file.is_open_in_ide() {
-					continue;
-				}
-
-				match file_system.file_contents(file.document_identifier.uri.clone()).await {
-					Some(contents) => {
-						info!(file_uri = file.document_identifier.uri.as_str(), "Got contents: {}", contents);
-
-						// If the file has been opened in the IDE during the fetching of its contents, then
-						// throw it all away. The IDE is now the source of truth for this file. Otherwise, update its
-						// parsed unit.
-						if !file.is_open_in_ide() {
-							let parsed_unit =
-								analyzer.parse_text_document_contents(file.document_identifier.clone(), contents);
-
-							file.set_parsed_unit(parsed_unit, None);
-						}
-					}
-					None => {
-						error!(file_uri = file.document_identifier.uri.as_str(), "Failed to retrieve file contents.");
-					}
-				}
-			}
-			Err(_) => break,
-		};
 	}
 }
