@@ -73,9 +73,9 @@ impl AsyncPool {
 	}
 
 	pub fn stop() {
-		let (_, receiver) = WORK_CHANNEL.with(|c| c.borrow().clone());
+		let (sender, _) = WORK_CHANNEL.with(|c| c.borrow().clone());
 
-		receiver.close();
+		sender.close();
 	}
 
 	pub fn spawn_work<T>(future: T)
