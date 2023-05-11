@@ -142,28 +142,6 @@ fn change_event((l1, c1): (u32, u32), (l2, c2): (u32, u32), t: String) -> TextDo
 	}
 }
 
-// can't trust this code without adding adding testing for itself...
-// use it as validation that the manually calculated test is correct
-fn lazy_helper(event: &TextDocumentContentChangeEvent) {
-	// create test bench lsp
-	let test_string = "012\n456\n\n9\nbcde\n".to_string();
-	let mut lsp = LspPos::parse_file(&test_string.clone());
-
-	// create file that had event applied to
-	let start_byte = lsp.lsp_to_byte(&event.range.unwrap().start);
-	let end_byte = lsp.lsp_to_byte(&event.range.unwrap().end);
-	let mut expected = "012\n456\n\n9\nbcde\n".to_string();
-	expected.replace_range(start_byte..end_byte, &event.text);
-
-	// run lazy add
-	lsp.lazy_add(&event);
-
-	// parse expected string without lazy add
-	let expected_lsp = LspPos::parse_file(&expected);
-	// Compare ranges data (should be same)
-	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
-}
-
 #[test]
 fn test_lazy_add() {
 	let original = "012\n456\n\n9\nbcde\n".to_string(); // Test String
@@ -173,7 +151,6 @@ fn test_lazy_add() {
 	// Single line
 	// start of line
 	let event = change_event((1, 0), (1, 2), "x".into());
-	//lazy_helper(&event);
 	let mut lsp = original_lsp.clone();
 	lsp.lazy_add(&event);
 	let expected_lsp = LspPos::parse_file(&"012\nx6\n\n9\nbcde\n".to_string());
@@ -181,7 +158,6 @@ fn test_lazy_add() {
 
 	// end of line
 	let event = change_event((1, 2), (2, 0), "x".into());
-	//lazy_helper(&event);
 	let mut lsp = original_lsp.clone();
 	lsp.lazy_add(&event);
 	let expected_lsp = LspPos::parse_file(&"012\n45x\n9\nbcde\n".to_string());
@@ -189,7 +165,6 @@ fn test_lazy_add() {
 
 	// entire line change
 	let event = change_event((1, 0), (2, 0), "x".into());
-	//lazy_helper(&event);
 	let mut lsp = original_lsp.clone();
 	lsp.lazy_add(&event);
 	let expected_lsp = LspPos::parse_file(&"012\nx\n9\nbcde\n".to_string());
@@ -197,7 +172,6 @@ fn test_lazy_add() {
 
 	// entire line deleted
 	let event = change_event((1, 0), (2, 0), "".into());
-	//lazy_helper(&event);
 	let mut lsp = original_lsp.clone();
 	lsp.lazy_add(&event);
 	let expected_lsp = LspPos::parse_file(&"012\n\n9\nbcde\n".to_string());
@@ -235,7 +209,6 @@ fn test_lazy_add() {
 
 	// delete multiple lines
 	let event = change_event((1, 0), (3, 0), "".into());
-	lazy_helper(&event);
 	let mut lsp = original_lsp.clone();
 	lsp.lazy_add(&event);
 	let expected_lsp = LspPos::parse_file(&"012\n9\nbcde\n".to_string());
@@ -243,7 +216,6 @@ fn test_lazy_add() {
 
 	// Change multiple lines exact
 	let event = change_event((1, 0), (4, 0), "x\ny".into());
-	lazy_helper(&event);
 	let mut lsp = original_lsp.clone();
 	lsp.lazy_add(&event);
 	let expected_lsp = LspPos::parse_file(&"012\nx\nybcde\n".to_string());
