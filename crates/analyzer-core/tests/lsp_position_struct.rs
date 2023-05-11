@@ -9,37 +9,37 @@ fn test_parse_file() {
 	let file = "".to_string();
 	let lsp = LspPos::parse_file(&file.clone());
 	let ranges: Vec<usize> = Vec::new();
-	assert_eq!(lsp.get_ranges(), ranges);
+	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(!lsp.get_eof());
 
 	let file = "\n".to_string();
 	let lsp = LspPos::parse_file(&file.clone());
 	let ranges = vec![0];
-	assert_eq!(lsp.get_ranges(), ranges);
+	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(lsp.get_eof());
 
 	let file = "0".to_string();
 	let lsp = LspPos::parse_file(&file.clone());
 	let ranges = vec![0];
-	assert_eq!(lsp.get_ranges(), ranges);
+	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(!lsp.get_eof());
 
 	let file = "0\n".to_string();
 	let lsp = LspPos::parse_file(&file.clone());
 	let ranges = vec![1];
-	assert_eq!(lsp.get_ranges(), ranges);
+	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(lsp.get_eof());
 
 	let file = "012\n456\n\n9".to_string();
 	let lsp = LspPos::parse_file(&file.clone());
 	let ranges = vec![3, 7, 8, 9];
-	assert_eq!(lsp.get_ranges(), ranges);
+	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(!lsp.get_eof());
 
 	let file = "012\n456\n\n9\n\n\n".to_string();
 	let lsp = LspPos::parse_file(&file.clone());
 	let ranges = vec![3, 7, 8, 10, 11, 12];
-	assert_eq!(lsp.get_ranges(), ranges);
+	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(lsp.get_eof());
 }
 

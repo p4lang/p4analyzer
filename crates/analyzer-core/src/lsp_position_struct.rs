@@ -35,7 +35,7 @@ impl LspPos {
 		LspPos { ranges: parse.0, eof: parse.1 }
 	}
 
-	pub fn get_ranges(&self) -> Vec<usize> { self.ranges.clone() }
+	pub fn get_ranges(&self) -> &Vec<usize> { &self.ranges }
 
 	pub fn get_eof(&self) -> bool { self.eof.clone() }
 
@@ -127,6 +127,7 @@ impl LspPos {
 
 	// used to update ranges from TextDocumentContentChangeEvent
 	// will lazily add as only parse the text to be added
+	// optimal for large files with small changes
 	pub fn lazy_add(&mut self, changes: &TextDocumentContentChangeEvent) {
 		// The whole file got changes || file was empty, so reparse as new file
 		if changes.range.is_none() || self.ranges.is_empty() {
@@ -135,7 +136,7 @@ impl LspPos {
 		}
 
 		// calculate position in current file
-		let mut start_pos = self.lsp_to_lsp(&changes.range.unwrap().start); // inclusive
+		let start_pos = self.lsp_to_lsp(&changes.range.unwrap().start); // inclusive
 		let end_pos_exc = self.lsp_to_lsp(&changes.range.unwrap().end); // exclusive
 
 		// undefined behaviour
@@ -157,12 +158,18 @@ impl LspPos {
 			*elm += start_byte;
 		}
 
+		// caching frequent conversions and calculation
+		let mut start_line = start_pos.line as usize;
+		let end_line = end_pos_exc.line as usize;
+		let end_char = end_pos_exc.character as usize;
+		let range_size = self.ranges.len();
+
 		// need to make addition calculations for head and tail of new additions
-		let tailing_end_char = self.line_char(end_pos_exc.line as usize) - end_pos_exc.character as usize;
+		let tailing_end_char = self.line_char(end_line) - end_char;
 		if additional_ranges.is_empty() {
 			// special cases
-			let end_line_byte = *self.ranges.get(end_pos_exc.line as usize).unwrap_or(self.ranges.last().unwrap());
-			let val = end_line_byte as i64 - end_byte as i64 + start_byte as i64;
+			let end_line_byte = *self.ranges.get(end_line).unwrap_or(self.ranges.last().unwrap());
+			let val = end_line_byte.wrapping_sub(end_byte).wrapping_add(start_byte) as i64;
 			// we're deleteing the whole file
 			if val < 0 {
 				self.ranges.clear();
@@ -171,7 +178,7 @@ impl LspPos {
 			}
 
 			// The case for deleting nothing to end of file
-			if start_pos.line as usize == self.ranges.len() {
+			if start_line == range_size {
 				return;
 			}
 
@@ -181,7 +188,7 @@ impl LspPos {
 			}
 		} else {
 			// \n is our line break, if adding to end of file don't make duplicate range
-			if changes.text.as_bytes().last() == Some(&b'\n') && end_pos_exc.line as usize != self.ranges.len() {
+			if changes.text.as_bytes().last() == Some(&b'\n') && end_line != range_size {
 				additional_ranges.push(*additional_ranges.last().unwrap());
 			}
 			*additional_ranges.last_mut().unwrap() += tailing_end_char;
@@ -190,30 +197,24 @@ impl LspPos {
 		// we're adding to end of file
 		// if it doesn't has eof flag then merge addition onto end
 		// if it does add a new index
-		if start_pos.line as usize == self.ranges.len() && !self.eof {
-			start_pos.line -= 1;
+		if start_line == range_size && !self.eof {
+			start_line -= 1;
 		}
 
 		// update eof flag
-		if end_pos_exc.line as usize == self.ranges.len() {
+		if end_line == range_size {
 			self.eof = eof;
 		}
 
-		// remove changed values
-		for _ in start_pos.line..end_pos_exc.line + 1 {
-			if start_pos.line as usize != self.ranges.len() {
-				self.ranges.remove(start_pos.line as usize);
-			}
-		}
-
-		// add new values
-		for elm in additional_ranges.iter().rev() {
-			self.ranges.insert(start_pos.line as usize, *elm);
-		}
+		// remove old ranges and add new ranges
+		let len = additional_ranges.len();
+		let s = (start_line).min(range_size);
+		let e = (end_line + 1).min(range_size);
+		self.ranges.splice(s..e, additional_ranges);	// used for performance benifits
 
 		// realign tail of old ranges
 		let diff = (addition_byte + 1) - (end_byte as i64 - start_byte as i64);
-		for elm in self.ranges.iter_mut().skip(start_pos.line as usize + additional_ranges.len()) {
+		for elm in self.ranges.iter_mut().skip(start_line + len) {
 			*elm = (*elm as i64 + diff) as usize;
 		}
 	}

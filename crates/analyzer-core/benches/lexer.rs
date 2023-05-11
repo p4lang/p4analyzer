@@ -11,7 +11,8 @@ fn baseline(input: String) -> Vec<char> { input.chars().into_iter().collect() }
 
 fn basic(input: String) -> Vec<(Token, Span)> {
 	let db = Database::new(|base, _| Ok(base.into()));
-	let buf = Buffer::new(&db, input.clone(), LspPos::parse_file(&input));
+	let lsp = LspPos::parse_file(&input);
+	let buf = Buffer::new(&db, input, lsp);
 	let file_id = FileId::new(&db, "foo".to_string());
 	let lexed = lex(&db, file_id, buf);
 	lexed.lexemes(&db).clone()
