@@ -1,6 +1,10 @@
 # P4 Analyzer
 A [Language Server Protocol](https://langserver.org/) (LSP) compliant analyzer for the P4 language.
 
+> **ℹ Note**  
+This project is very much a Work in Progress. Development is on-going and we're not even at Alpha quality yet.
+Our aim is to have a preview release in June. **Please remember this when raising issues.**
+
 The analyzer is provided standalone (for integration with LSP clients supported in tools such as VIM and EMacs), or as
 an extension for Visual Studio Code that uses an in-built WebAssembly version of the analyzer. The Visual Studio Code
 extension can also be configured to use the standalone analyzer if required.
