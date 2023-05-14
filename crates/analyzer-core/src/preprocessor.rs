@@ -513,7 +513,7 @@ mod test {
 		base_abstractions::{Buffer, FileId},
 		lex,
 		lexer::Token,
-		lsp_position_struct::LspPos,
+		lsp_position::LspPos,
 		Database,
 	};
 
@@ -573,7 +573,7 @@ mod test {
 		let mut pp = PreprocessorState::new(|path| FileId::new(&db, path.into()), |_| unreachable!());
 
 		let test_id = FileId::new(&db, "<test-code>.p4".into());
-		let input = Buffer::new(&db, s.into(), LspPos::parse_file(&s.to_string()));
+		let input = Buffer::new(&db, s.into(), LspPos::new(&s.to_string()));
 		let lexed = lex(&db, test_id, input);
 		let mut lexemes = lexed.lexemes(&db).iter().cloned().map(|(tk, span)| (test_id, tk, span)).collect();
 

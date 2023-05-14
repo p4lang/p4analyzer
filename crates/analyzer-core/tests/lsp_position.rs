@@ -2,42 +2,43 @@ extern crate analyzer_core;
 use std::time::{Duration, Instant};
 
 use analyzer_abstractions::lsp_types::{Position, Range, TextDocumentContentChangeEvent};
-use analyzer_core::lsp_position_struct::LspPos;
+use analyzer_core::lsp_position::LspPos;
 
 #[test]
 fn test_parse_file() {
 	let file = "".to_string();
-	let lsp = LspPos::parse_file(&file.clone());
+	let lsp = LspPos::new(&file.clone());
 	let ranges: Vec<usize> = Vec::new();
 	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(!lsp.get_eof());
 
 	let file = "\n".to_string();
-	let lsp = LspPos::parse_file(&file.clone());
+	println!("{:?}",file.as_bytes());
+	let lsp = LspPos::new(&file.clone());
 	let ranges = vec![0];
 	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(lsp.get_eof());
 
 	let file = "0".to_string();
-	let lsp = LspPos::parse_file(&file.clone());
+	let lsp = LspPos::new(&file.clone());
 	let ranges = vec![0];
 	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(!lsp.get_eof());
 
 	let file = "0\n".to_string();
-	let lsp = LspPos::parse_file(&file.clone());
+	let lsp = LspPos::new(&file.clone());
 	let ranges = vec![1];
 	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(lsp.get_eof());
 
 	let file = "012\n456\n\n9".to_string();
-	let lsp = LspPos::parse_file(&file.clone());
+	let lsp = LspPos::new(&file.clone());
 	let ranges = vec![3, 7, 8, 9];
 	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(!lsp.get_eof());
 
 	let file = "012\n456\n\n9\n\n\n".to_string();
-	let lsp = LspPos::parse_file(&file.clone());
+	let lsp = LspPos::new(&file.clone());
 	let ranges = vec![3, 7, 8, 10, 11, 12];
 	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(lsp.get_eof());
@@ -46,7 +47,7 @@ fn test_parse_file() {
 #[test]
 fn test_byte_to_lsp() {
 	let file = "012\n456\n\n9\nbcde\n".to_string();
-	let lsp = LspPos::parse_file(&file.clone());
+	let lsp = LspPos::new(&file.clone());
 
 	let res = lsp.byte_to_lsp(0);
 	assert_eq!(res, Position { line: 0, character: 0 });
@@ -72,7 +73,7 @@ fn test_byte_to_lsp() {
 	let res = lsp.byte_to_lsp(16); // Byte out of range, so return next highest LSP position
 	assert_eq!(res, Position { line: 5, character: 0 });
 	// test on empty file
-	let empty_lsp = LspPos::parse_file(&"".to_string());
+	let empty_lsp = LspPos::new(&"".to_string());
 	let res = empty_lsp.byte_to_lsp(0); // Byte out of range
 	assert_eq!(res, Position { line: 0, character: 0 });
 
@@ -83,7 +84,7 @@ fn test_byte_to_lsp() {
 #[test]
 fn test_lsp_to_byte() {
 	let file = "012\n456\n\n9\nbcde\n".to_string();
-	let lsp = LspPos::parse_file(&file.clone());
+	let lsp = LspPos::new(&file.clone());
 
 	let res = lsp.lsp_to_byte(&Position { line: 0, character: 0 });
 	assert_eq!(res, 0);
@@ -107,7 +108,7 @@ fn test_lsp_to_byte() {
 	assert_eq!(res, 16);
 
 	// test on empty file
-	let empty_lsp = LspPos::parse_file(&"".to_string());
+	let empty_lsp = LspPos::new(&"".to_string());
 	let res = empty_lsp.lsp_to_byte(&Position { line: 0, character: 0 }); // lsp position out of range
 	assert_eq!(res, 0);
 
@@ -118,7 +119,7 @@ fn test_lsp_to_byte() {
 #[test]
 fn soundness_test() {
 	let file = "012\n456\n\n9\nbcde\n".to_string();
-	let lsp = LspPos::parse_file(&file.clone());
+	let lsp = LspPos::new(&file.clone());
 
 	// round trip starting at byte
 	let b = 5;
@@ -145,7 +146,7 @@ fn change_event((l1, c1): (u32, u32), (l2, c2): (u32, u32), t: String) -> TextDo
 #[test]
 fn test_lazy_add() {
 	let original = "012\n456\n\n9\nbcde\n".to_string(); // Test String
-	let original_lsp = LspPos::parse_file(&original.clone()); // Create default LspPos
+	let original_lsp = LspPos::new(&original.clone()); // Create default LspPos
 	println!("\n{:?}\n", original_lsp.get_ranges());
 
 	// Single line
@@ -153,28 +154,28 @@ fn test_lazy_add() {
 	let event = change_event((1, 0), (1, 2), "x".into());
 	let mut lsp = original_lsp.clone();
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\nx6\n\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\nx6\n\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// end of line
 	let event = change_event((1, 2), (2, 0), "x".into());
 	let mut lsp = original_lsp.clone();
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n45x\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\n45x\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// entire line change
 	let event = change_event((1, 0), (2, 0), "x".into());
 	let mut lsp = original_lsp.clone();
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\nx\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\nx\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// entire line deleted
 	let event = change_event((1, 0), (2, 0), "".into());
 	let mut lsp = original_lsp.clone();
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\n\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// Checking diff functionality
@@ -182,21 +183,21 @@ fn test_lazy_add() {
 	let mut lsp = original_lsp.clone();
 	let event = change_event((1, 0), (1, 2), "".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n6\n\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\n6\n\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// addition same size as than deletion
 	let mut lsp = original_lsp.clone();
 	let event = change_event((1, 0), (1, 2), "xy".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\nxy6\n\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\nxy6\n\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// addition bigger than deletion
 	let mut lsp = original_lsp.clone();
 	let event = change_event((1, 0), (1, 2), "xyz".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\nxyz6\n\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\nxyz6\n\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// Multiple lines cases
@@ -204,41 +205,41 @@ fn test_lazy_add() {
 	let mut lsp = original_lsp.clone();
 	let event = change_event((3, 0), (4, 2), "".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n456\n\nde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\n456\n\nde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// delete multiple lines
 	let event = change_event((1, 0), (3, 0), "".into());
 	let mut lsp = original_lsp.clone();
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// Change multiple lines exact
 	let event = change_event((1, 0), (4, 0), "x\ny".into());
 	let mut lsp = original_lsp.clone();
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\nx\nybcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\nx\nybcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// Change multiple partial lines
 	let mut lsp = original_lsp.clone();
 	let event = change_event((1, 1), (4, 1), "x\ny".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n4x\nycde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\n4x\nycde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// Changes in place indicates (only acts as addition)
 	let mut lsp = original_lsp.clone();
 	let event = change_event((1, 1), (1, 1), "x".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n4x56\n\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\n4x56\n\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	let mut lsp = original_lsp.clone();
 	let event = change_event((2, 0), (2, 0), "hello".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n456\nhello\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\n456\nhello\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// Changes That include '\n'
@@ -246,28 +247,28 @@ fn test_lazy_add() {
 	let mut lsp = original_lsp.clone();
 	let event = change_event((2, 0), (2, 0), "\n".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n456\n\n\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\n456\n\n\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// replace
 	let mut lsp = original_lsp.clone();
 	let event = change_event((1, 3), (2, 0), "\n".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n456\n\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\n456\n\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// multiple
 	let mut lsp = original_lsp.clone();
 	let event = change_event((2, 0), (2, 0), "\n\n\n".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n456\n\n\n\n\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\n456\n\n\n\n\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// replace multiple
 	let mut lsp = original_lsp.clone();
 	let event = change_event((1, 3), (2, 0), "\n\n\n".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n456\n\n\n\n9\nbcde\n".to_string());
+	let expected_lsp = LspPos::new(&"012\n456\n\n\n\n9\nbcde\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// Corner Cases
@@ -279,60 +280,60 @@ fn test_lazy_add() {
 		text: "hello\n".to_string(),
 	};
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"hello\n".to_string());
+	let expected_lsp = LspPos::new(&"hello\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// Empty file
-	let mut lsp = LspPos::parse_file(&"".to_string());
+	let mut lsp = LspPos::new(&"".to_string());
 	let event = change_event((0, 0), (0, 0), "hello".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"hello".to_string());
+	let expected_lsp = LspPos::new(&"hello".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
-	let mut lsp = LspPos::parse_file(&"".to_string());
+	let mut lsp = LspPos::new(&"".to_string());
 	let event = change_event((1, 2), (3, 4), "hello".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"hello".to_string());
+	let expected_lsp = LspPos::new(&"hello".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// changes to start of file
 	let mut lsp = original_lsp.clone();
 	let event = change_event((0, 0), (1, 0), "xyz".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"xyz456\n\n9\nbcde\n".to_string()); // change to start of file
+	let expected_lsp = LspPos::new(&"xyz456\n\n9\nbcde\n".to_string()); // change to start of file
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// changes to end of file
 	let mut lsp = original_lsp.clone();
 	let event = change_event((4, 0), (6, 0), "xyz".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n456\n\n9\nxyz".to_string()); // change to end of file
+	let expected_lsp = LspPos::new(&"012\n456\n\n9\nxyz".to_string()); // change to end of file
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// changes to whole of file
 	let mut lsp = original_lsp.clone();
 	let event = change_event((0, 0), (5, 0), "xyz".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"xyz".to_string()); // change whole file
+	let expected_lsp = LspPos::new(&"xyz".to_string()); // change whole file
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	let mut lsp = original_lsp.clone();
 	let event = change_event((0, 0), (5, 0), "".into());
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"".to_string());
+	let expected_lsp = LspPos::new(&"".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	// Boundary check on Range
 	let mut lsp = original_lsp.clone();
 	let event = change_event((7, 0), (7, 0), "xyz".into()); // line doesn't exist
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n456\n\n9\nbcde\nxyz".to_string()); // add to end of file
+	let expected_lsp = LspPos::new(&"012\n456\n\n9\nbcde\nxyz".to_string()); // add to end of file
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	let mut lsp = original_lsp.clone();
 	let event = change_event((1, 10), (1, 15), "xyz".into()); // character doesn't exist
 	lsp.lazy_add(&event);
-	let expected_lsp = LspPos::parse_file(&"012\n456xyz\n\n9\nbcde\n".to_string()); // add to end of line
+	let expected_lsp = LspPos::new(&"012\n456xyz\n\n9\nbcde\n".to_string()); // add to end of line
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 
 	let mut lsp = original_lsp.clone();
@@ -360,7 +361,7 @@ fn exhaustive_lazy_add() {
 
 	// exhaustive search
 	for file in test_files {
-		let original_lsp = LspPos::parse_file(&file.clone()); // Create default LspPos
+		let original_lsp = LspPos::new(&file.clone()); // Create default LspPos
 		for change in test_changes {
 			for size in 0..file.len() + 1 {
 				for start_byte in 0..(file.len() - size + 1) {
@@ -383,7 +384,7 @@ fn exhaustive_lazy_add() {
 					str.replace_range(start_byte..start_byte + size, change);
 
 					let clock = Instant::now();
-					let expected_lsp = LspPos::parse_file(&str);
+					let expected_lsp = LspPos::new(&str);
 					parse_timer += clock.elapsed();
 
 					if expected_lsp.get_ranges() != lsp.get_ranges() {

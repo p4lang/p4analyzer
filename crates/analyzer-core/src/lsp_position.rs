@@ -14,15 +14,16 @@ impl LspPos {
 			return (result, false);
 		}
 
-		let bytes = string.as_bytes();
-		for i in 0..bytes.len() {
-			if bytes[i] == b'\n' {
-				result.push(i);
+		let chars = string.chars();
+		let char_count = chars.clone().count();
+		for (i, c) in chars.enumerate() {
+			if c == '\n' {
+				result.push(i);	// !Assumes every character is 1 byte but not the case!!!
 			}
 		}
 		// If there are bytes left add it to vector
-		if *result.last().unwrap_or(&(usize::MAX - 1)) != bytes.len() - 1 {
-			result.push(bytes.len() - 1);
+		if *result.last().unwrap_or(&(usize::MAX - 1)) != char_count - 1 {
+			result.push(char_count - 1);
 		}
 
 		let eof = string.as_bytes().last() == Some(&b'\n');
@@ -30,9 +31,9 @@ impl LspPos {
 		(result, eof)
 	}
 
-	pub fn parse_file(file: &String) -> Self {
-		let parse = LspPos::parse_string(&file);
-		LspPos { ranges: parse.0, eof: parse.1 }
+	pub fn new(file: &String) -> Self {
+		let (ranges, eof) = LspPos::parse_string(&file);
+		LspPos { ranges, eof }
 	}
 
 	pub fn get_ranges(&self) -> &Vec<usize> { &self.ranges }
@@ -131,7 +132,7 @@ impl LspPos {
 	pub fn lazy_add(&mut self, changes: &TextDocumentContentChangeEvent) {
 		// The whole file got changes || file was empty, so reparse as new file
 		if changes.range.is_none() || self.ranges.is_empty() {
-			*self = LspPos::parse_file(&changes.text);
+			*self = LspPos::new(&changes.text);
 			return;
 		}
 
@@ -188,7 +189,7 @@ impl LspPos {
 			}
 		} else {
 			// \n is our line break, if adding to end of file don't make duplicate range
-			if changes.text.as_bytes().last() == Some(&b'\n') && end_line != range_size {
+			if changes.text.chars().last() == Some('\n') && end_line != range_size {
 				additional_ranges.push(*additional_ranges.last().unwrap());
 			}
 			*additional_ranges.last_mut().unwrap() += tailing_end_char;

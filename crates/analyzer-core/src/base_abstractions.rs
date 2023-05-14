@@ -1,6 +1,6 @@
 pub use logos::Span;
 
-use crate::lsp_position_struct::LspPos;
+use crate::lsp_position::LspPos;
 
 /// The input buffer.
 #[salsa::input]

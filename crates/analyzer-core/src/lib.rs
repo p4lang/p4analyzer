@@ -1,6 +1,6 @@
 pub mod base_abstractions;
 pub mod lexer;
-pub mod lsp_position_struct;
+pub mod lsp_position;
 pub mod parser;
 pub mod preprocessor;
 
@@ -10,7 +10,7 @@ use logos::Logos;
 
 use base_abstractions::*;
 use lexer::*;
-use lsp_position_struct::LspPos;
+use lsp_position::LspPos;
 use preprocessor::*;
 
 // #[derive(Default)]
@@ -81,7 +81,7 @@ impl Analyzer {
 
 	pub fn update(&mut self, file_id: FileId, input: String) {
 		let mut filesystem = self.filesystem();
-		let lsp_pos = LspPos::parse_file(&input);
+		let lsp_pos = LspPos::new(&input);
 		filesystem.insert(file_id, Buffer::new(&self.db, input, lsp_pos));
 		self.fs = Fs::new(&self.db, filesystem).into();
 	}
