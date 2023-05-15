@@ -3,7 +3,7 @@ use analyzer_abstractions::lsp_types::{self, Position, TextDocumentContentChange
 #[derive(Clone, Debug)]
 pub struct LspPos {
 	eof: bool, // flag indicates if the last character in file is '\n'
-	ranges: Vec<usize>,
+	ranges: Vec<usize>,	// Each element represents the line, last byte position (see test_parse_file())
 }
 
 impl LspPos {

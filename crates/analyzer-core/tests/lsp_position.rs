@@ -13,7 +13,6 @@ fn test_parse_file() {
 	assert!(!lsp.get_eof());
 
 	let file = "\n".to_string();
-	println!("{:?}",file.as_bytes());
 	let lsp = LspPos::new(&file.clone());
 	let ranges = vec![0];
 	assert_eq!(*lsp.get_ranges(), ranges);
@@ -147,7 +146,6 @@ fn change_event((l1, c1): (u32, u32), (l2, c2): (u32, u32), t: String) -> TextDo
 fn test_lazy_add() {
 	let original = "012\n456\n\n9\nbcde\n".to_string(); // Test String
 	let original_lsp = LspPos::new(&original.clone()); // Create default LspPos
-	println!("\n{:?}\n", original_lsp.get_ranges());
 
 	// Single line
 	// start of line
