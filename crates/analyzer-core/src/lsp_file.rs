@@ -4,30 +4,29 @@ use logos::Source;	// for slice
 #[derive(Clone, Debug)]
 pub struct LspFile {
 	file: String, // File content, use OsString?
-	eof: bool, // flag indicates if the last character in file is '\n'
 	ranges: Vec<usize>,	// Each element represents the line, last byte position (see test_parse_file())
 }
 
 impl LspFile {
 
 	pub fn new(file: &String) -> Self {
-		let (ranges, eof) = LspFile::parse_string(&file);
-		LspFile { file: file.clone(), ranges, eof }
+		let ranges = LspFile::parse_string(&file);
+		LspFile { file: file.clone(), ranges }
 	}
 
 	pub fn get_ranges(&self) -> &Vec<usize> { &self.ranges }
 
-	pub fn get_eof(&self) -> bool { self.eof.clone() }
+	pub fn get_eof(&self) -> bool { self.file.chars().last().unwrap_or_default() == '\n' }
 
 	pub fn get_file(&self) -> &String {
 		&self.file
 	}
 
 	// helper function
-	fn parse_string(string: &String) -> (Vec<usize>, bool) {
+	fn parse_string(string: &String) -> Vec<usize> {
 		let mut result: Vec<usize> = Vec::new();
 		if string.is_empty() {
-			return (result, false);
+			return result;
 		}
 
 		let chars = string.chars();
@@ -44,9 +43,7 @@ impl LspFile {
 			result.push(byte_count - 1);
 		}
 
-		let eof = string.as_bytes().last() == Some(&b'\n');
-
-		(result, eof)
+		result
 	}
 
 	// used to get a valid lsp position for the current file
@@ -177,7 +174,7 @@ impl LspFile {
 		}
 
 		// parse input
-		let (mut additional_ranges, eof) = LspFile::parse_string(&changes.text);
+		let mut additional_ranges = LspFile::parse_string(&changes.text);
 		let addition_byte: i64 = additional_ranges.last().map_or(-1, |value| *value as i64);
 
 		// align additions to their placement in current file
@@ -190,11 +187,11 @@ impl LspFile {
 		// caching frequent conversions and calculation
 		let mut start_line = start_pos.line as usize;
 		let end_line = end_pos_exc.line as usize;
-		let end_char = end_pos_exc.character as usize;
 		let range_size = self.ranges.len();
 
 		// need to make addition calculations for head and tail of new additions
-		let tailing_end_char = self.line_char(end_line) - end_char;
+		let tailing_end_bytes =  self.lsp_to_byte(&Position { line: end_line as u32 + 1, character: 0 }) - end_byte;
+
 		if additional_ranges.is_empty() {
 			// special cases
 			let end_line_byte = *self.ranges.get(end_line).unwrap_or(self.ranges.last().unwrap());
@@ -203,7 +200,6 @@ impl LspFile {
 			if val < 0 {
 				self.file.clear();
 				self.ranges.clear();
-				self.eof = false;
 				return;
 			}
 
@@ -213,7 +209,7 @@ impl LspFile {
 			}
 
 			// The change is just a deletion
-			if tailing_end_char != 0 || start_pos.character != 0 {
+			if tailing_end_bytes != 0 || start_pos.character != 0 {
 				additional_ranges.push(val as usize);
 			}
 		} else {
@@ -221,19 +217,14 @@ impl LspFile {
 			if changes.text.chars().last() == Some('\n') && end_line != range_size {
 				additional_ranges.push(*additional_ranges.last().unwrap());
 			}
-			*additional_ranges.last_mut().unwrap() += tailing_end_char;
+			*additional_ranges.last_mut().unwrap() += tailing_end_bytes;
 		}
 
 		// we're adding to end of file
 		// if it doesn't has eof flag then merge addition onto end
 		// if it does add a new index
-		if start_line == range_size && !self.eof {
+		if start_line == range_size && !self.get_eof() {
 			start_line -= 1;
-		}
-
-		// update eof flag
-		if end_line == range_size {
-			self.eof = eof;
 		}
 
 		// update file

@@ -47,6 +47,52 @@ fn test_parse_file() {
 	assert_eq!(*lsp.get_file(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(lsp.get_eof());
+
+	// unicode examples
+	// 2 byte character
+	let file = "ć".to_string();
+	let lsp = LspFile::new(&file.clone());
+	let ranges = vec![1];
+	assert_eq!(*lsp.get_file(), file);
+	assert_eq!(*lsp.get_ranges(), ranges);
+	assert!(!lsp.get_eof());
+
+	let file = "ć\nć\n".to_string();
+	let lsp = LspFile::new(&file.clone());
+	let ranges = vec![2, 5];
+	assert_eq!(*lsp.get_file(), file);
+	assert_eq!(*lsp.get_ranges(), ranges);
+	assert!(lsp.get_eof());
+
+	// 3 byte character
+	let file = "⁺".to_string();
+	let lsp = LspFile::new(&file.clone());
+	let ranges = vec![2];
+	assert_eq!(*lsp.get_file(), file);
+	assert_eq!(*lsp.get_ranges(), ranges);
+	assert!(!lsp.get_eof());
+
+	let file = "⁺\n⁺\n".to_string();
+	let lsp = LspFile::new(&file.clone());
+	let ranges = vec![3, 7];
+	assert_eq!(*lsp.get_file(), file);
+	assert_eq!(*lsp.get_ranges(), ranges);
+	assert!(lsp.get_eof());
+	
+	// 4 byte character
+	let file = "𒀀".to_string();
+	let lsp = LspFile::new(&file.clone());
+	let ranges = vec![3];
+	assert_eq!(*lsp.get_file(), file);
+	assert_eq!(*lsp.get_ranges(), ranges);
+	assert!(!lsp.get_eof());
+
+	let file = "𒀀\n𒀀\n".to_string();
+	let lsp = LspFile::new(&file.clone());
+	let ranges = vec![4, 9];
+	assert_eq!(*lsp.get_file(), file);
+	assert_eq!(*lsp.get_ranges(), ranges);
+	assert!(lsp.get_eof());
 }
 
 #[test]
@@ -84,6 +130,20 @@ fn test_byte_to_lsp() {
 
 	let res = empty_lsp.byte_to_lsp(16); // Byte further out of range
 	assert_eq!(res, Position { line: 0, character: 0 });
+
+	// unicode example
+	// 4 byte character
+	let file = "𒀀\n".to_string();
+	let lsp = LspFile::new(&file.clone());
+
+	// the range of the character should result in the same position
+	for i in 0..4 {
+		let res = lsp.byte_to_lsp(i);
+		assert_eq!(res, Position { line: 0, character: 0 });
+	}
+
+	let res = lsp.byte_to_lsp(4);
+	assert_eq!(res, Position { line: 0, character: 1 });
 }
 
 #[test]
@@ -119,6 +179,15 @@ fn test_lsp_to_byte() {
 
 	let res = empty_lsp.lsp_to_byte(&Position { line: 3, character: 4 }); // lsp position further out of range
 	assert_eq!(res, 0);
+
+	// unicode example
+	let file = "𒀀\n".to_string();
+	let lsp = LspFile::new(&file.clone());
+
+	let res = lsp.lsp_to_byte(&Position { line: 0, character: 0 });
+	assert_eq!(res, 0);
+	let res = lsp.lsp_to_byte(&Position { line: 0, character: 1 });
+	assert_eq!(res, 4);
 }
 
 #[test]
@@ -394,6 +463,9 @@ fn test_lazy_add() {
 	let event = change_event((1, 1), (1, 0), "xyz".into()); // Range end is smaller than start, produce panic
 	let res = std::panic::catch_unwind(move || lsp.lazy_add(&event)); // catch panic
 	assert!(res.is_err()); // make sure it paniced
+
+	// for unicode tests look at exhaustive_lazy_add()
+	// too many unique posibilites, so programmably test it
 }
 
 #[test]
@@ -402,12 +474,13 @@ fn exhaustive_lazy_add() {
 	let test_files = [
 		"012\n456\n\n9\nbcde\n".to_string(), // end in '\n'
 		"\n012\n456\n\n9\nbcdef".to_string(),  // doesn't end in '\n'
+		"0\n2\nć\nć\n⁺\n⁺\n𒀀\n𒀀\n".to_string(), // unicode eample
 		// uncomment the long string for benchmarks
 //		"Alan\nTuring\nwas\nan\nEnglish\nmathematician,\nlogician,\nand\ncomputer\nscientist.\nHe\nis\nwidely\nconsidered\none\nof\nthe\nfounders\nof\nthe\nfield\nof\ntheoretical\ncomputer\nscience\nand\nartificial\nintelligence.\nDuring\nWorld\nWar\nII,\nTuring\nplayed\na\nvital\nrole\nin\nbreaking\nthe\nGerman\nEnigma\ncode,\nwhich\nhelped\nthe\nAllied\nforces\nin\ntheir\nfight\nagainst\nthe\nNazis.\nTuring's\nwork\non\ncomputability\nand\nthe\nconcept\nof\na\nTuring\nmachine\nlaid\nthe\nfoundation\nfor\nmodern\ncomputer\nscience.\nDespite\nhis\ncontributions,\nTuring\nfaced\npersecution\nfor\nhis\nhomosexuality\nand\nwas\nconvicted\nof\n\"gross\nindecency.\"\nHe\npassed\naway\nin\n1954,\nbut\nhis\nlegacy\nand\ncontributions\nto\nthe\nfield\nof\ncomputing\ncontinue\nto\nbe\ncelebrated\nto\nthis\nday.".to_string(),	// long example
 		"".to_string(),						 // empty file
 	]; 
 
-	let test_changes = ["", "x", "xy", "xyz", "\n", "\n\n", "\n\n\n", "\nx\n"];
+	let test_changes = ["", "x", "xy", "xyz", "\n", "\n\n", "\n\n\n", "\nx\n", "ć", "⁺", "𒀀"];
 
 	//timers
 	let mut lazy_timer = Duration::new(0, 0);
@@ -435,13 +508,15 @@ fn exhaustive_lazy_add() {
 
 					// generate expected file
 					let mut str = file.clone();
-					str.replace_range(start_byte..start_byte + size, change);
-
+					let s = original_lsp.lsp_to_byte(&start);
+					let e = original_lsp.lsp_to_byte(&end);
+					
 					let clock = Instant::now();
+					str.replace_range(s..e, change);	// Would be required without lazy add
 					let expected_lsp = LspFile::new(&str);
 					parse_timer += clock.elapsed();
 
-					if expected_lsp.get_ranges() != lsp.get_ranges() || str != *lsp.get_file() {
+					if expected_lsp.get_ranges() != lsp.get_ranges() || str != *lsp.get_file() || expected_lsp.get_eof() !=  lsp.get_eof() {
 						println!("Lazy time:    {}ns", lazy_timer.as_nanos());
 						println!("Parser time:  {}ns", parse_timer.as_nanos());
 						println!(
