@@ -1,6 +1,6 @@
 extern crate analyzer_core;
 
-use analyzer_core::{lsp_position::LspPos, *};
+use analyzer_core::{lsp_position::LspFile, *};
 use base_abstractions::*;
 use lexer::*;
 
@@ -11,7 +11,7 @@ fn baseline(input: String) -> Vec<char> { input.chars().into_iter().collect() }
 
 fn basic(input: String) -> Vec<(Token, Span)> {
 	let db = Database::new(|base, _| Ok(base.into()));
-	let lsp = LspPos::new(&input);
+	let lsp = LspFile::new(&input);
 	let buf = Buffer::new(&db, input, lsp);
 	let file_id = FileId::new(&db, "foo".to_string());
 	let lexed = lex(&db, file_id, buf);

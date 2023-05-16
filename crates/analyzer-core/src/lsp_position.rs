@@ -1,12 +1,28 @@
 use analyzer_abstractions::lsp_types::{self, Position, TextDocumentContentChangeEvent};
+use logos::Source;	// for slice
 
 #[derive(Clone, Debug)]
-pub struct LspPos {
+pub struct LspFile {
+	file: String, // File content, use OsString?
 	eof: bool, // flag indicates if the last character in file is '\n'
 	ranges: Vec<usize>,	// Each element represents the line, last byte position (see test_parse_file())
 }
 
-impl LspPos {
+impl LspFile {
+
+	pub fn new(file: &String) -> Self {
+		let (ranges, eof) = LspFile::parse_string(&file);
+		LspFile { file: file.clone(), ranges, eof }
+	}
+
+	pub fn get_ranges(&self) -> &Vec<usize> { &self.ranges }
+
+	pub fn get_eof(&self) -> bool { self.eof.clone() }
+
+	pub fn get_file(&self) -> &String {
+		&self.file
+	}
+
 	// helper function
 	fn parse_string(string: &String) -> (Vec<usize>, bool) {
 		let mut result: Vec<usize> = Vec::new();
@@ -15,30 +31,23 @@ impl LspPos {
 		}
 
 		let chars = string.chars();
-		let char_count = chars.clone().count();
-		for (i, c) in chars.enumerate() {
+		let mut byte_count = 0;
+		for (_, c) in chars.enumerate() {
+			byte_count += c.len_utf8();
 			if c == '\n' {
-				result.push(i);	// !Assumes every character is 1 byte but not the case!!!
+				result.push(byte_count - 1);
 			}
 		}
+
 		// If there are bytes left add it to vector
-		if *result.last().unwrap_or(&(usize::MAX - 1)) != char_count - 1 {
-			result.push(char_count - 1);
+		if *result.last().unwrap_or(&(usize::MAX - 1)) != byte_count - 1 {
+			result.push(byte_count - 1);
 		}
 
 		let eof = string.as_bytes().last() == Some(&b'\n');
 
 		(result, eof)
 	}
-
-	pub fn new(file: &String) -> Self {
-		let (ranges, eof) = LspPos::parse_string(&file);
-		LspPos { ranges, eof }
-	}
-
-	pub fn get_ranges(&self) -> &Vec<usize> { &self.ranges }
-
-	pub fn get_eof(&self) -> bool { self.eof.clone() }
 
 	// used to get a valid lsp position for the current file
 	fn lsp_to_lsp(&self, lsp_pos: &lsp_types::Position) -> lsp_types::Position {
@@ -51,14 +60,14 @@ impl LspPos {
 			return 0; // no characters exist on that line
 		}
 
-		let upper = self.ranges.get(line).unwrap_or(&0);
-		// self.ranges[-1] = 0
-		if line == 0 {
-			return *upper + 1;
-		}
+		let start_pos = if line == 0 {
+			0
+		} else {
+			self.ranges.get(line - 1).unwrap_or(&0) + 1
+		};
 
-		let lower = self.ranges.get(line - 1).unwrap_or(&0);
-		upper - lower
+		let slice = self.file.slice(start_pos..self.ranges[line] + 1).unwrap_or("");
+		slice.chars().count()
 	}
 
 	pub fn lsp_to_byte(&self, lsp_pos: &lsp_types::Position) -> usize {
@@ -73,18 +82,23 @@ impl LspPos {
 			return *self.ranges.last().unwrap() + 1;
 		}
 
-		// calculate upper byte and number of character in the line
-		let upper = &self.ranges[lsp_pos.line as usize];
-		let line_char = self.line_char(lsp_pos.line as usize);
+		let start_byte = if lsp_pos.line == 0 {
+			0
+		} else {
+			self.ranges.get(lsp_pos.line as usize - 1).unwrap_or(&0) + 1
+		};
 
-		let mut char = lsp_pos.character as usize;
-		// if inputed character is greater than line max character, set byte offset to max character
-		if char >= line_char {
-			char = line_char - 1;
+		// get byte offset for character position in line
+		let slice = self.file.slice(start_byte..self.ranges[lsp_pos.line as usize]).unwrap_or("").chars();
+		let mut byte_count = 0;
+		for (i, c) in slice.enumerate() {
+			if i == lsp_pos.character as usize {
+				break;
+			}
+			byte_count += c.len_utf8();
 		}
 
-		// calculate byte offset from character
-		upper - (line_char - 1 - char)
+		start_byte + byte_count
 	}
 
 	pub fn lsp_range_to_byte_range(&self, lsp_range: &lsp_types::Range) -> std::ops::Range<usize> {
@@ -96,6 +110,10 @@ impl LspPos {
 	// O(log(n))
 	pub fn byte_to_lsp(&self, byte_pos: usize) -> lsp_types::Position {
 		// byte position greater than end of current file
+		if self.ranges.is_empty() {
+			return Position { line: 0, character: 0 };
+		}
+
 		if byte_pos > *self.ranges.last().unwrap_or(&0) {
 			return Position { line: self.ranges.len() as u32, character: 0 }; // return next position of last line
 		}
@@ -116,7 +134,17 @@ impl LspPos {
 		}
 		// calculate character position in byte offset
 		let lower = if low == 0 { 0 } else { self.ranges[low - 1] + 1 };
-		let char = byte_pos - lower;
+		let slice = self.file.slice(lower..self.ranges[low]).unwrap_or("").chars();
+		let mut byte_count = lower;
+		let mut char = slice.clone().count();
+		for (i, c) in slice.enumerate() {
+			byte_count += c.len_utf8();
+			if byte_count > byte_pos {
+				char = i;
+				break;
+			}
+		}
+
 		Position { line: low as u32, character: char as u32 }
 	}
 
@@ -132,7 +160,7 @@ impl LspPos {
 	pub fn lazy_add(&mut self, changes: &TextDocumentContentChangeEvent) {
 		// The whole file got changes || file was empty, so reparse as new file
 		if changes.range.is_none() || self.ranges.is_empty() {
-			*self = LspPos::new(&changes.text);
+			*self = LspFile::new(&changes.text);
 			return;
 		}
 
@@ -149,7 +177,7 @@ impl LspPos {
 		}
 
 		// parse input
-		let (mut additional_ranges, eof) = LspPos::parse_string(&changes.text);
+		let (mut additional_ranges, eof) = LspFile::parse_string(&changes.text);
 		let addition_byte: i64 = additional_ranges.last().map_or(-1, |value| *value as i64);
 
 		// align additions to their placement in current file
@@ -173,6 +201,7 @@ impl LspPos {
 			let val = end_line_byte.wrapping_sub(end_byte).wrapping_add(start_byte) as i64;
 			// we're deleteing the whole file
 			if val < 0 {
+				self.file.clear();
 				self.ranges.clear();
 				self.eof = false;
 				return;
@@ -206,6 +235,9 @@ impl LspPos {
 		if end_line == range_size {
 			self.eof = eof;
 		}
+
+		// update file
+		self.file.replace_range(start_byte..end_byte, &changes.text);
 
 		// remove old ranges and add new ranges
 		let len = additional_ranges.len();

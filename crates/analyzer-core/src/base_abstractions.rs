@@ -1,6 +1,6 @@
 pub use logos::Span;
 
-use crate::lsp_position::LspPos;
+use crate::lsp_position::LspFile;
 
 /// The input buffer.
 #[salsa::input]
@@ -8,7 +8,7 @@ pub struct Buffer {
 	#[return_ref]
 	pub contents: String,
 	#[return_ref]
-	pub byte_position: LspPos,
+	pub byte_position: LspFile,
 }
 
 #[salsa::interned]
