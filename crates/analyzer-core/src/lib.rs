@@ -79,16 +79,15 @@ impl Analyzer {
 
 	fn filesystem(&self) -> HashMap<FileId, Buffer> { self.fs.map(|fs| fs.fs(&self.db)).unwrap_or_default() }
 
-	pub fn update(&mut self, file_id: FileId, input: String) {
+	pub fn update(&mut self, file_id: FileId, input: LspFile) {
 		let mut filesystem = self.filesystem();
-		let lsp_pos = LspFile::new(&input);
-		filesystem.insert(file_id, Buffer::new(&self.db, input, lsp_pos));
+		filesystem.insert(file_id, Buffer::new(&self.db, input));
 		self.fs = Fs::new(&self.db, filesystem).into();
 	}
 
 	pub fn input(&self, file_id: FileId) -> Option<&str> {
 		let buffer = self.buffer(file_id)?;
-		Some(buffer.contents(&self.db))
+		Some(buffer.file(&self.db).get_file())
 	}
 
 	pub fn buffer(&self, file_id: FileId) -> Option<Buffer> { self.filesystem().get(&file_id).copied() }
@@ -140,7 +139,7 @@ impl Analyzer {
 
 	pub fn files(&self) -> Vec<String> { self.filesystem().keys().map(|k| k.path(&self.db)).collect() }
 
-	pub fn get_lsp_pos(&self, id: FileId) -> &LspFile { self.buffer(id).unwrap().byte_position(&self.db) }
+	pub fn get_file(&self, id: FileId) -> &LspFile { self.buffer(id).unwrap().file(&self.db) }
 }
 
 // TODO: trait for workspace logic?
@@ -215,7 +214,7 @@ where
 
 #[salsa::tracked(return_ref)]
 pub fn lex(db: &dyn crate::Db, file_id: FileId, buf: Buffer) -> LexedBuffer {
-	let contents = buf.contents(db);
+	let contents = buf.file(db).get_file();
 	let lexer = {
 		let db = unsafe { std::mem::transmute(db) };
 		Token::lexer_with_extras(contents, Lextras { db: Some(db), file_id })

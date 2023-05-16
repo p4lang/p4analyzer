@@ -6,9 +6,7 @@ use crate::lsp_file::LspFile;
 #[salsa::input]
 pub struct Buffer {
 	#[return_ref]
-	pub contents: String,
-	#[return_ref]
-	pub byte_position: LspFile,
+	pub file: LspFile,
 }
 
 #[salsa::interned]

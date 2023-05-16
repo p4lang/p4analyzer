@@ -1,4 +1,4 @@
-use analyzer_core::base_abstractions::FileId;
+use analyzer_core::{base_abstractions::FileId, lsp_file::LspFile};
 use async_rwlock::RwLock as AsyncRwLock;
 use std::sync::Arc;
 
@@ -133,8 +133,8 @@ async fn on_text_document_did_open(
 	let mut analyzer = state.analyzer.unwrap();
 
 	let file_id = analyzer.file_id(params.text_document.uri.as_str());
-
-	analyzer.update(file_id, params.text_document.text);
+	let lsp_file = LspFile::new(&params.text_document.text);
+	analyzer.update(file_id, lsp_file);
 
 	file.open_or_update(file_id);
 
@@ -160,8 +160,11 @@ async fn on_text_document_did_change(
 		}
 	};
 
-	let lsp = analyzer.get_lsp_pos(file_id);
+	let mut lsp_file = analyzer.get_file(file_id).clone();
 	for change in params.content_changes {
+		lsp_file.lazy_add(&change);
+	}
+/*	for change in params.content_changes {
 		let analyzer_abstractions::lsp_types::TextDocumentContentChangeEvent { range, range_length: _, text } = change;
 		if let Some(range) = range {
 			let range = lsp.lsp_range_to_byte_range(&range);
@@ -170,11 +173,10 @@ async fn on_text_document_did_change(
 		} else {
 			input = text;
 		}
-	}
+	} */
 
 	// TODO: avoid cloning
-	// implement LspPos::lazy_add
-	analyzer.update(file_id, input.clone());
+	analyzer.update(file_id, lsp_file);
 	file.open_or_update(file_id);
 	let diagnostics = process_diagnostics(&analyzer, file_id, &input);
 
@@ -216,7 +218,8 @@ async fn on_text_document_did_save(
 		let file_id = analyzer.file_id(params.text_document.uri.as_str());
 		let diagnostics = process_diagnostics(&analyzer, file_id, &text);
 		// TODO: report diagnostics, and process *after* the update below!
-		analyzer.update(file_id, text);
+		let lsp_file = LspFile::new(&text);
+		analyzer.update(file_id, lsp_file);
 		file.open_or_update(file_id);
 	}
 
@@ -244,7 +247,8 @@ async fn created_file(uri: &Url, state: &Arc<AsyncRwLock<State>>) {
 		Ok(file_id) => {
 			let lock = state.write().await;
 			let content = lock.file_system.file_contents(uri.clone()).await.unwrap_or_default();
-			lock.analyzer.unwrap().update(file_id, content);
+			let lsp_file = LspFile::new(&content);
+			lock.analyzer.unwrap().update(file_id, lsp_file);
 			info!("{} file updated from file system", uri.path());
 		}
 		Err(err) => {
@@ -292,7 +296,7 @@ fn process_diagnostics(
 	input: &str,
 ) -> Vec<analyzer_abstractions::lsp_types::Diagnostic> {
 	let diagnostics = analyzer.diagnostics(file_id);
-	let lsp = analyzer.get_lsp_pos(file_id);
+	let lsp = analyzer.get_file(file_id);
 	diagnostics
 		.into_iter()
 		.map(|d| {

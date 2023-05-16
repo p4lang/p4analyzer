@@ -10,7 +10,7 @@ use analyzer_abstractions::{
 	lsp_types::{TraceValue, Url},
 	tracing::info,
 };
-use analyzer_core::base_abstractions::FileId;
+use analyzer_core::{base_abstractions::FileId, lsp_file::{self, LspFile}};
 use async_channel::{Receiver, Sender};
 use itertools::Itertools;
 
@@ -182,7 +182,8 @@ impl State {
 			let mut analyzer = analyzer.unwrap();
 			let file_id = analyzer.file_id(uri);
 
-			analyzer.update(file_id, text);
+			let lsp_file = LspFile::new(&text);
+			analyzer.update(file_id, lsp_file);
 			analyzer.preprocessed(file_id);
 
             file_id
