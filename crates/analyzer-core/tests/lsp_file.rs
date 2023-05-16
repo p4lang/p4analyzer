@@ -78,7 +78,7 @@ fn test_parse_file() {
 	assert_eq!(*lsp.get_file(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
 	assert!(lsp.get_eof());
-	
+
 	// 4 byte character
 	let file = "𒀀".to_string();
 	let lsp = LspFile::new(&file.clone());
@@ -465,20 +465,20 @@ fn test_lazy_add() {
 	assert!(res.is_err()); // make sure it paniced
 
 	// for unicode tests look at exhaustive_lazy_add()
-	// too many unique posibilites, so programmably test it
+	// too many unique possibilities, so programmably test it
 }
 
 #[test]
 fn exhaustive_lazy_add() {
 	// test strings
 	let test_files = [
-		"012\n456\n\n9\nbcde\n".to_string(), // end in '\n'
-		"\n012\n456\n\n9\nbcdef".to_string(),  // doesn't end in '\n'
+		"012\n456\n\n9\nbcde\n".to_string(),    // end in '\n'
+		"\n012\n456\n\n9\nbcdef".to_string(),   // doesn't end in '\n'
 		"0\n2\nć\nć\n⁺\n⁺\n𒀀\n𒀀\n".to_string(), // unicode eample
 		// uncomment the long string for benchmarks
-//		"Alan\nTuring\nwas\nan\nEnglish\nmathematician,\nlogician,\nand\ncomputer\nscientist.\nHe\nis\nwidely\nconsidered\none\nof\nthe\nfounders\nof\nthe\nfield\nof\ntheoretical\ncomputer\nscience\nand\nartificial\nintelligence.\nDuring\nWorld\nWar\nII,\nTuring\nplayed\na\nvital\nrole\nin\nbreaking\nthe\nGerman\nEnigma\ncode,\nwhich\nhelped\nthe\nAllied\nforces\nin\ntheir\nfight\nagainst\nthe\nNazis.\nTuring's\nwork\non\ncomputability\nand\nthe\nconcept\nof\na\nTuring\nmachine\nlaid\nthe\nfoundation\nfor\nmodern\ncomputer\nscience.\nDespite\nhis\ncontributions,\nTuring\nfaced\npersecution\nfor\nhis\nhomosexuality\nand\nwas\nconvicted\nof\n\"gross\nindecency.\"\nHe\npassed\naway\nin\n1954,\nbut\nhis\nlegacy\nand\ncontributions\nto\nthe\nfield\nof\ncomputing\ncontinue\nto\nbe\ncelebrated\nto\nthis\nday.".to_string(),	// long example
-		"".to_string(),						 // empty file
-	]; 
+		//		"Alan\nTuring\nwas\nan\nEnglish\nmathematician,\nlogician,\nand\ncomputer\nscientist.\nHe\nis\nwidely\nconsidered\none\nof\nthe\nfounders\nof\nthe\nfield\nof\ntheoretical\ncomputer\nscience\nand\nartificial\nintelligence.\nDuring\nWorld\nWar\nII,\nTuring\nplayed\na\nvital\nrole\nin\nbreaking\nthe\nGerman\nEnigma\ncode,\nwhich\nhelped\nthe\nAllied\nforces\nin\ntheir\nfight\nagainst\nthe\nNazis.\nTuring's\nwork\non\ncomputability\nand\nthe\nconcept\nof\na\nTuring\nmachine\nlaid\nthe\nfoundation\nfor\nmodern\ncomputer\nscience.\nDespite\nhis\ncontributions,\nTuring\nfaced\npersecution\nfor\nhis\nhomosexuality\nand\nwas\nconvicted\nof\n\"gross\nindecency.\"\nHe\npassed\naway\nin\n1954,\nbut\nhis\nlegacy\nand\ncontributions\nto\nthe\nfield\nof\ncomputing\ncontinue\nto\nbe\ncelebrated\nto\nthis\nday.".to_string(),	// long example
+		"".to_string(), // empty file
+	];
 
 	let test_changes = ["", "x", "xy", "xyz", "\n", "\n\n", "\n\n\n", "\nx\n", "ć", "⁺", "𒀀"];
 
@@ -510,13 +510,16 @@ fn exhaustive_lazy_add() {
 					let mut str = file.clone();
 					let s = original_lsp.lsp_to_byte(&start);
 					let e = original_lsp.lsp_to_byte(&end);
-					
+
 					let clock = Instant::now();
-					str.replace_range(s..e, change);	// Would be required without lazy add
+					str.replace_range(s..e, change); // Would be required without lazy add
 					let expected_lsp = LspFile::new(&str);
 					parse_timer += clock.elapsed();
 
-					if expected_lsp.get_ranges() != lsp.get_ranges() || str != *lsp.get_file() || expected_lsp.get_eof() !=  lsp.get_eof() {
+					if expected_lsp.get_ranges() != lsp.get_ranges()
+						|| str != *lsp.get_file()
+						|| expected_lsp.get_eof() != lsp.get_eof()
+					{
 						println!("Lazy time:    {}ns", lazy_timer.as_nanos());
 						println!("Parser time:  {}ns", parse_timer.as_nanos());
 						println!(

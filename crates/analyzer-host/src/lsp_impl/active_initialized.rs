@@ -164,7 +164,7 @@ async fn on_text_document_did_change(
 	for change in params.content_changes {
 		lsp_file.lazy_add(&change);
 	}
-/*	for change in params.content_changes {
+	/*	for change in params.content_changes {
 		let analyzer_abstractions::lsp_types::TextDocumentContentChangeEvent { range, range_length: _, text } = change;
 		if let Some(range) = range {
 			let range = lsp.lsp_range_to_byte_range(&range);
