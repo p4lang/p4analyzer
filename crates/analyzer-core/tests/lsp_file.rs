@@ -2,7 +2,7 @@ extern crate analyzer_core;
 use std::time::{Duration, Instant};
 
 use analyzer_abstractions::lsp_types::{Position, Range, TextDocumentContentChangeEvent};
-use analyzer_core::lsp_position::LspFile;
+use analyzer_core::lsp_file::LspFile;
 
 #[test]
 fn test_parse_file() {

@@ -1,6 +1,6 @@
 extern crate analyzer_core;
 
-use analyzer_core::{lsp_position::LspFile, *};
+use analyzer_core::{lsp_file::LspFile, *};
 use base_abstractions::*;
 use lexer::*;
 

@@ -1,6 +1,6 @@
 pub mod base_abstractions;
 pub mod lexer;
-pub mod lsp_position;
+pub mod lsp_file;
 pub mod parser;
 pub mod preprocessor;
 
@@ -10,7 +10,7 @@ use logos::Logos;
 
 use base_abstractions::*;
 use lexer::*;
-use lsp_position::LspFile;
+use lsp_file::LspFile;
 use preprocessor::*;
 
 // #[derive(Default)]

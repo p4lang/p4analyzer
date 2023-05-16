@@ -513,7 +513,7 @@ mod test {
 		base_abstractions::{Buffer, FileId},
 		lex,
 		lexer::Token,
-		lsp_position::LspFile,
+		lsp_file::LspFile,
 		Database,
 	};
 
