@@ -187,8 +187,7 @@ impl State {
 			let mut analyzer = analyzer.unwrap();
 			let file_id = analyzer.file_id(uri);
 
-			let lsp_file = LspFile::new(&text);
-			analyzer.update(file_id, lsp_file);
+			analyzer.update(file_id, &text);
 			analyzer.preprocessed(file_id);
 
 			file_id

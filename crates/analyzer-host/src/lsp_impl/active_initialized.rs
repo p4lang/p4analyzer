@@ -133,8 +133,7 @@ async fn on_text_document_did_open(
 	let mut analyzer = state.analyzer.unwrap();
 
 	let file_id = analyzer.file_id(params.text_document.uri.as_str());
-	let lsp_file = LspFile::new(&params.text_document.text);
-	analyzer.update(file_id, lsp_file);
+	analyzer.update(file_id, &params.text_document.text);
 
 	file.open_or_update(file_id);
 
@@ -160,23 +159,8 @@ async fn on_text_document_did_change(
 		}
 	};
 
-	let mut lsp_file = analyzer.get_file(file_id).clone();
-	for change in params.content_changes {
-		lsp_file.lazy_add(&change);
-	}
-	/*	for change in params.content_changes {
-		let analyzer_abstractions::lsp_types::TextDocumentContentChangeEvent { range, range_length: _, text } = change;
-		if let Some(range) = range {
-			let range = lsp.lsp_range_to_byte_range(&range);
-			info!("replacing range {:?} of {:?} with {:?}", range, &input[range.clone()], text);
-			input.replace_range(range, &text);
-		} else {
-			input = text;
-		}
-	} */
+	analyzer.file_change_event(file_id, &params.content_changes);
 
-	// TODO: avoid cloning
-	analyzer.update(file_id, lsp_file);
 	file.open_or_update(file_id);
 	let diagnostics = process_diagnostics(&analyzer, file_id, &input);
 
@@ -218,8 +202,7 @@ async fn on_text_document_did_save(
 		let file_id = analyzer.file_id(params.text_document.uri.as_str());
 		let diagnostics = process_diagnostics(&analyzer, file_id, &text);
 		// TODO: report diagnostics, and process *after* the update below!
-		let lsp_file = LspFile::new(&text);
-		analyzer.update(file_id, lsp_file);
+		analyzer.update(file_id, &text);
 		file.open_or_update(file_id);
 	}
 
@@ -247,8 +230,7 @@ async fn created_file(uri: &Url, state: &Arc<AsyncRwLock<State>>) {
 		Ok(file_id) => {
 			let lock = state.write().await;
 			let content = lock.file_system.file_contents(uri.clone()).await.unwrap_or_default();
-			let lsp_file = LspFile::new(&content);
-			lock.analyzer.unwrap().update(file_id, lsp_file);
+			lock.analyzer.unwrap().update(file_id, &content);
 			info!("{} file updated from file system", uri.path());
 		}
 		Err(err) => {

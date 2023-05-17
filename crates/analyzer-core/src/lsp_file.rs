@@ -1,4 +1,7 @@
-use analyzer_abstractions::lsp_types::{self, Position, TextDocumentContentChangeEvent};
+use analyzer_abstractions::{
+	lsp_types::{self, Position, TextDocumentContentChangeEvent},
+	tracing::info,
+};
 use logos::Source; // for slice
 
 #[derive(Clone, Debug)]
@@ -13,11 +16,11 @@ impl LspFile {
 		LspFile { file: file.clone(), ranges }
 	}
 
+	pub fn get_file_content(&self) -> &String { &self.file }
+
 	pub fn get_ranges(&self) -> &Vec<usize> { &self.ranges }
 
 	pub fn get_eof(&self) -> bool { self.file.chars().last().unwrap_or_default() == '\n' }
-
-	pub fn get_file(&self) -> &String { &self.file }
 
 	// helper function
 	fn parse_string(string: &String) -> Vec<usize> {
@@ -105,25 +108,13 @@ impl LspFile {
 			return Position { line: self.ranges.len() as u32, character: 0 }; // return next position of last line
 		}
 
-		let mut low = 0;
-		let mut high = self.ranges.len();
-		// binary search
-		while low < high {
-			let mid = (low + high) / 2;
-			if self.ranges[mid] == byte_pos {
-				low = mid;
-				break;
-			} else if self.ranges[mid] < byte_pos {
-				low = mid + 1;
-			} else {
-				high = mid;
-			}
-		}
+		let line = self.ranges.binary_search(&byte_pos).unwrap_or_else(|x| x);
+
 		// calculate character position in byte offset
-		let lower = if low == 0 { 0 } else { self.ranges[low - 1] + 1 };
-		let slice = self.file.slice(lower..self.ranges[low]).unwrap_or("").chars();
-		let mut byte_count = lower;
+		let mut byte_count = if line == 0 { 0 } else { self.ranges[line - 1] + 1 };
+		let slice = self.file.slice(byte_count..self.ranges[line]).unwrap_or("").chars();
 		let mut char = slice.clone().count();
+
 		for (i, c) in slice.enumerate() {
 			byte_count += c.len_utf8();
 			if byte_count > byte_pos {
@@ -132,7 +123,7 @@ impl LspFile {
 			}
 		}
 
-		Position { line: low as u32, character: char as u32 }
+		Position { line: line as u32, character: char as u32 }
 	}
 
 	pub fn byte_range_to_lsp_range(&self, byte_range: &std::ops::Range<usize>) -> lsp_types::Range {
@@ -182,8 +173,8 @@ impl LspFile {
 		// need to make addition calculations for head and tail of new additions
 		let tailing_end_bytes = self.lsp_to_byte(&Position { line: end_line as u32 + 1, character: 0 }) - end_byte;
 
+		// special cases if change text is empty
 		if additional_ranges.is_empty() {
-			// special cases
 			let end_line_byte = *self.ranges.get(end_line).unwrap_or(self.ranges.last().unwrap());
 			let val = end_line_byte.wrapping_sub(end_byte).wrapping_add(start_byte) as i64;
 			// we're deleteing the whole file
@@ -218,7 +209,9 @@ impl LspFile {
 		}
 
 		// update file
-		self.file.replace_range(start_byte..end_byte, &changes.text);
+		let range = start_byte..end_byte;
+		info!("replacing range {:?} of {:?} with {:?}", range, &self.file[range.clone()], &changes.text);
+		self.file.replace_range(range, &changes.text);
 
 		// remove old ranges and add new ranges
 		let len = additional_ranges.len();
