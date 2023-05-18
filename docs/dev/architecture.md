@@ -5,17 +5,16 @@ Protocol (LSP) client. The WebAssembly/Node.js build will be deployed as part of
 thereby negating the need to download any platform specific assets when the extension is first initialized.
 
 This document describes some of the high level architectural pieces that exist in the project, and can be used as a
-guide when looking at navigating the codebase for the first time.
+guide when navigating the codebase for the first time.
 
 ## <a name="analyzer-host"></a> The `AnalyzerHost` and `Analyzer`
 The `Analyzer` is responsible for ingesting P4 source code and producing a structured model of that P4 code that is
-highly optimized for querying. The model maintained by the `Analyzer` is fully resolved and wholly maintained in
+highly optimized for querying. The model maintained by it is fully resolved and wholly maintained in
 memory, and as such, having no direct access to I/O, will be derived from the received LSP notifications directly.
-Request and Notification Handlers adapt the LSP messages to one or more calls to the core Analyzer. This design will
-allow the core Analyzer to be used outside of a Language Server context and in other tools such as Formatters and
-Linters.
+Request and Notification Handlers adapt the LSP messages to one or more calls into it. This design will
+allow the core to be used outside of a Language Server context, such as within Format and Linting tools for example.
 
-Since the `Analyzer` cannot perform any I/O directly, it will rely on a host to provide these (and other) services
+Since the `Analyzer` cannot perform any I/O directly, it relies on a host to provide these (and other) services
 on its behalf. The following diagram shows this composition:
 
 ![AnalyzerHost and Analyzer composition.](diagrams/analyzer-host.svg)
@@ -24,9 +23,9 @@ The `AnalyzerHost` will receive LSP client requests and notifications via the _r
 will also send any responses and server notifications to the _send_ port of the same channel if a response is required
 for that message.
 
-Since it is possible for the LSP server to make requests on the LSP client (which is managed via the `RequestManager`),
-interally, the `AnalyzerHost` will filter responses from requests and notifications before sending them onto additional
-internal `MessageChannel`s. Requests and Notifications are processed by a simple finite state machine
+Using the `RequestManager`, the LSP server can make requests to the LSP client. Internally, it will filter responses
+to these requests from the clients own requests and notification before sending them over additional internal
+`MessageChannel`s. Requests and Notifications are processed by a simple finite state machine
 (`ProtocolMachine`) that models the LSP. For any given LSP implementation, a server has a lifecycle that is fully
 managed by the client. The `ProtocolMachine` simply ensures that the server is in a valid state for a given request,
 based on the state transitions that are causal to the previously processed requests and notifications.
@@ -35,7 +34,7 @@ A `WorkspaceManager` will manage one or more `Workspace`s (root folders of inter
 Typically, this will represent the _roots_ of projects that have been opened by the client IDE, but it may also include
 the _roots_ to library files that should be included in the analysis. During initialization, in which the client
 provides these _root_ paths, the `Workspace`s will be iterated over in order to _prime_ the `Analyzer` with the
-initial set of source file texts (a process known as indexing). If the contents of a file is modified on disk, then
+initial set of source file texts (a process known as indexing). If the contents of a file are modified on disk, then
 either the LSP client will send an appropriate notification describing the change; or, if this is unsupported
 by LSP clients, a custom File Watching service that runs outside the `AnalyzerHost` will need to do the same.
 
@@ -68,11 +67,10 @@ with a given _driver type_ which is responsible for receiving requests and notif
 transport it supports. Currently we provide the typical STDIN/STDOUT transport, and have a `Console` driver to manage
 it.
 
-A receiver thread will read
-buffered data from `stdin` and write it to the _send_ port of the `stdin_channel`. Inversely, a send thread will
-receive `Message`s from the _receive_ port of the `stdout_channel`, and write it directly to `stdout`. The opposite
-ports of `stdin_channel` and `stdout_channel` are then presented to the `AnalyzerHost`, which as we saw previously,
-uses them to receive requests and send responses.
+A receiver thread will read buffered data from `stdin` and write it to the _send_ port of the `stdin_channel`.
+Inversely, a send thread will receive `Message`s from the _receive_ port of the `stdout_channel`, and write it directly
+to `stdout`. The opposite ports of `stdin_channel` and `stdout_channel` are then presented to the `AnalyzerHost`, which
+as we saw previously, uses them to receive requests and send responses.
 
 Once started, `Console` is simply responsible for reading and writing JSON-RPC messages to the `MessageChannel`
 that is supplied to `AnalyzerHost`.

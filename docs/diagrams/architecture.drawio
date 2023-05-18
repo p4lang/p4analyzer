@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="kiC7Fy-Wdv5dh07NvFkj" name="AnalyzerHost Channels">
-        <mxGraphModel dx="1810" dy="1144" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="1">
+        <mxGraphModel dx="671" dy="979" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="1">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -295,7 +295,7 @@
         </mxGraphModel>
     </diagram>
     <diagram name="Native /LSPServerCommand" id="7uf0tBBzx-ZlqhHjrKZB">
-        <mxGraphModel dx="3010" dy="1144" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" background="none" math="0" shadow="1">
+        <mxGraphModel dx="1871" dy="979" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" background="none" math="0" shadow="1">
             <root>
                 <mxCell id="_cCrCONWq11tglR61idp-0"/>
                 <mxCell id="_cCrCONWq11tglR61idp-1" parent="_cCrCONWq11tglR61idp-0"/>
@@ -689,8 +689,8 @@
                 <mxCell id="_cCrCONWq11tglR61idp-39" value="" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fontSize=10;" parent="_cCrCONWq11tglR61idp-1" vertex="1">
                     <mxGeometry x="-131" y="628.61" width="80" height="62.5" as="geometry"/>
                 </mxCell>
-                <mxCell id="q4wLHDyQ3EZVPnw7VNSG-0" value="&amp;nbsp; Console" style="rounded=1;whiteSpace=wrap;html=1;arcSize=4;align=left;verticalAlign=top;fillColor=none;" vertex="1" parent="_cCrCONWq11tglR61idp-1">
-                    <mxGeometry x="-190" y="507.42" width="160" height="192.58" as="geometry"/>
+                <mxCell id="q4wLHDyQ3EZVPnw7VNSG-0" value="&amp;nbsp; Console" style="rounded=1;whiteSpace=wrap;html=1;arcSize=4;align=left;verticalAlign=top;fillColor=none;" parent="_cCrCONWq11tglR61idp-1" vertex="1">
+                    <mxGeometry x="-150" y="507.42" width="120" height="192.58" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>
