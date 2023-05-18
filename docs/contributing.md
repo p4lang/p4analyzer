@@ -18,7 +18,7 @@ you are running P4 Analyzer stand-alone (i.e., you are configuring it as part of
 setup), then run '`p4analyzer --version`' to retrieve the version number.
 
 If possible, try and include an _isolated_ way in which the bug can be reproduced, and describe both the expected
-and actual behaviors. When creating your bug, please add the `'C-bug'` label to it.
+and actual behaviors. When creating your bug, please add the `'bug'` label to it.
 
 ## Have an idea for an improvement, or a new feature?
 We also accept _proposals_ for features or ideas as issues. Use the 'Proposal' Issue template to ensure that your new
