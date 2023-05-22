@@ -1,6 +1,5 @@
 {
 	"name": "p4-analyzer",
-	"version": "0.0.0",
 	"description": "A WebAssembly based LSP compliant P4 analyzer.",
 	"main": "./lib/index.js",
 	"bin": {
