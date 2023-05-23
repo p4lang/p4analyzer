@@ -5,5 +5,17 @@
 	"implicitDependencies": [
 		"p4-analyzer"
 	],
-	"includedScripts": ["build", "package"]
+	"includedScripts": ["build", "package"],
+	"targets": {
+		"set-version": {
+			"executor": "./tools:version",
+			"options": {
+				"packages": [
+					"package.json",
+					"../p4-analyzer/package.json",
+					"../../crates/p4-analyzer/Cargo.toml"
+				]
+			}
+		}
+	}
 }

@@ -1,0 +1,21 @@
+{
+  "title": "Version",
+  "description": "Sets a version number in the current set of Rust crates and Node.js packages.",
+  "cli": "nx",
+  "type": "object",
+  "properties": {
+    "local": {
+      "type": "boolean",
+      "description": "Forces the version to be based on the current commit.",
+      "default": false
+    },
+		"packages": {
+			"type": "array",
+			"description": "The collection of path 'globs' identifying the 'package.json' or 'Cargo.toml' files to update.",
+			"items": {
+				"type": "string"
+			}
+		}
+  },
+  "required": ["packages"]
+}

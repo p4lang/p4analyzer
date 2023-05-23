@@ -31,6 +31,13 @@ use tracing_appender::{
 pub async fn main() {
 	match P4Analyzer::from_env() {
 		Ok(cmd) => {
+			// If the `version` option is set, then simply display the version number and exit.
+			if cmd.version {
+				println!(env!("CARGO_PKG_VERSION"));
+
+				return;
+			}
+
 			let default_logging_layer = create_default_logging_layer::<Registry>(&cmd);
 			let mut layers = if let Some((layer, _)) = default_logging_layer { vec![layer] } else { vec![] };
 

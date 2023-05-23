@@ -1,0 +1,16 @@
+{
+	"compilerOptions": {
+		"sourceMap": true,
+		"rootDir": "src",
+		"outDir": "lib",
+		"declaration": false,
+		"target": "ES2021",
+		"lib": [
+			"ES2021"
+		],
+		"module": "CommonJS"
+	},
+	"include": [
+		"src/**/*"
+	]
+}

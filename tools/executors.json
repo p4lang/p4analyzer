@@ -1,0 +1,9 @@
+{
+	"executors": {
+		"version": {
+			"implementation": "./lib/version.js",
+			"schema": "./version_schema.json",
+			"description": "Updates the version number of crates and packages in the Workspace."
+		}
+	}
+}
