@@ -46,6 +46,7 @@ jobs:
       - name: Build
         run: |
           npm ci
+          npm run set-version
           npm run build
           npm run package
           cargo build --all-targets --locked
