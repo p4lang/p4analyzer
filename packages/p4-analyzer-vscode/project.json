@@ -5,7 +5,7 @@
 	"implicitDependencies": [
 		"p4-analyzer"
 	],
-	"includedScripts": ["build", "package"],
+	"includedScripts": ["build", "build-nix", "build-windows",  "package"],
 	"targets": {
 		"set-version": {
 			"executor": "./tools:version",
