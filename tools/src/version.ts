@@ -1,6 +1,6 @@
 import { ExecutorContext, logger, readJsonFile } from "@nrwl/devkit";
 import { execSync } from "node:child_process";
-import { join, resolve } from "node:path";
+import { join, resolve, normalize } from "node:path";
 import { writePackageJson } from "./jsonUtils";
 import { writeTomlManifest } from "./tomlUtils";
 
@@ -117,10 +117,10 @@ export default async function versionPackagesExecutor(options: Options, context:
 
 		logger.info(`Setting '${packageTargetPath}' to version '${version}'.`);
 
-		if (packageTargetPath.endsWith("/package.json")) {
+		if (packageTargetPath.endsWith(normalize("/package.json"))) {
 			writePackageJson(packageTargetPath, version);
 		}
-		else if (packageTargetPath.endsWith("/Cargo.toml")) {
+		else if (packageTargetPath.endsWith(normalize("/Cargo.toml"))) {
 			await writeTomlManifest(packageTargetPath, version);
 		}
 		else {
