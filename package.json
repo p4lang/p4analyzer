@@ -8,7 +8,8 @@
 		"build": "run-script-os",
 		"build:nix": "nx run-many --target=build-nix --all",
 		"build:windows": "nx run-many --target=build-windows --all",
-		"package": "nx run-many --target=package --all"
+		"package": "nx run-many --target=package --all",
+		"set-version": "nx run-many --target=set-version --all --verbose"
 	},
 	"workspaces": {
 		"packages": [
@@ -27,6 +28,7 @@
 		"run-script-os": "^1.1.6",
 		"typescript": "^4",
 		"@vscode/vsce": "^2.19.0",
-		"@types/webpack": "~5.28"
+		"@types/webpack": "~5.28",
+		"@iarna/toml": "~2.2"
 	}
 }

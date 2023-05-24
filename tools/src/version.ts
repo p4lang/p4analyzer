@@ -2,6 +2,7 @@ import { ExecutorContext, logger, readJsonFile } from "@nrwl/devkit";
 import { execSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { writePackageJson } from "./jsonUtils";
+import { writeTomlManifest } from "./tomlUtils";
 
 const SemVerRegEx = /^(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)(?:-(?<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
@@ -120,7 +121,7 @@ export default async function versionPackagesExecutor(options: Options, context:
 			writePackageJson(packageTargetPath, version);
 		}
 		else if (packageTargetPath.endsWith("/Cargo.toml")) {
-			// TODO: Read and write the .toml file
+			await writeTomlManifest(packageTargetPath, version);
 		}
 		else {
 			logger.fatal(`Unsupported package target: '${packageTargetPath}'.`);
