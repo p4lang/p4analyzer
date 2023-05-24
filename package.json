@@ -9,6 +9,7 @@
 		"build:nix": "nx run-many --target=build-nix --all",
 		"build:windows": "nx run-many --target=build-windows --all",
 		"package": "nx run-many --target=package --all",
+		"preset-version": "tsc -p ./tools",
 		"set-version": "nx run-many --target=set-version --all --verbose"
 	},
 	"workspaces": {
