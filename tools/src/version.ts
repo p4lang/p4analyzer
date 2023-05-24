@@ -112,10 +112,10 @@ export default async function versionPackagesExecutor(options: Options, context:
 		context.root,
 		context.workspace.projects[context.projectName].root);
 
+	let success = true;
+
 	for (const packageTarget of options.packages) {
 		const packageTargetPath = resolve(projectRoot, packageTarget);
-
-		logger.info(`Setting '${packageTargetPath}' to version '${version}'.`);
 
 		if (packageTargetPath.endsWith(normalize("/package.json"))) {
 			writePackageJson(packageTargetPath, version);
@@ -124,12 +124,14 @@ export default async function versionPackagesExecutor(options: Options, context:
 			await writeTomlManifest(packageTargetPath, version);
 		}
 		else {
-			logger.fatal(`Unsupported package target: '${packageTargetPath}'.`);
+			logger.info(`Unsupported package target: '${packageTargetPath}'.`);
+
+			success = false;
 		}
 	}
 
 	return {
-		success: true
+		success
 	}
 }
 
