@@ -6,7 +6,7 @@ pub mod preprocessor;
 
 use std::collections::HashMap;
 
-use analyzer_abstractions::lsp_types::TextDocumentContentChangeEvent;
+use lsp_types::TextDocumentContentChangeEvent;
 use logos::Logos;
 
 use base_abstractions::*;
@@ -95,8 +95,7 @@ impl Analyzer {
 
 	pub fn update(&mut self, file_id: FileId, input: &String) {
 		let mut filesystem = self.filesystem();
-		let lsp_file = LspFile::new(input);
-		filesystem.insert(file_id, Buffer::new(&self.db, lsp_file));
+		filesystem.insert(file_id, new_buffer(&self.db, input));
 		self.fs = Fs::new(&self.db, filesystem).into();
 	}
 

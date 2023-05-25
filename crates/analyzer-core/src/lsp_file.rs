@@ -1,7 +1,4 @@
-use analyzer_abstractions::{
-	lsp_types::{self, Position, TextDocumentContentChangeEvent},
-	tracing::info,
-};
+use lsp_types::{self, Position, TextDocumentContentChangeEvent};
 use logos::Source; // for slice
 
 #[derive(Clone, Debug)]
@@ -19,8 +16,6 @@ impl LspFile {
 	pub fn get_file_content(&self) -> &String { &self.file }
 
 	pub fn get_ranges(&self) -> &Vec<usize> { &self.ranges }
-
-	pub fn get_eof(&self) -> bool { self.file.chars().last().unwrap_or_default() == '\n' }
 
 	// helper function
 	fn parse_string(string: &String) -> Vec<usize> {
@@ -129,7 +124,7 @@ impl LspFile {
 	pub fn byte_range_to_lsp_range(&self, byte_range: &std::ops::Range<usize>) -> lsp_types::Range {
 		let start = self.byte_to_lsp(byte_range.start);
 		let end = self.byte_to_lsp(byte_range.end);
-		analyzer_abstractions::lsp_types::Range::new(start, end)
+		lsp_types::Range::new(start, end)
 	}
 
 	// used to update ranges from TextDocumentContentChangeEvent
@@ -204,22 +199,22 @@ impl LspFile {
 		// we're adding to end of file
 		// if it doesn't has eof flag then merge addition onto end
 		// if it does add a new index
-		if start_line == range_size && !self.get_eof() {
+		if start_line == range_size && self.file.chars().last() != Some('\n') {
 			start_line -= 1;
 		}
 
 		// update file
 		let range = start_byte..end_byte;
-		info!("replacing range {:?} of {:?} with {:?}", range, &self.file[range.clone()], &changes.text);
+		//info!("replacing range {:?} of {:?} with {:?}", range, &self.file[range.clone()], &changes.text);
 		self.file.replace_range(range, &changes.text);
 
 		// remove old ranges and add new ranges
 		let len = additional_ranges.len();
 		let s = (start_line).min(range_size);
 		let e = (end_line + 1).min(range_size);
-		self.ranges.splice(s..e, additional_ranges); // used for performance benifits
+		self.ranges.splice(s..e, additional_ranges); // used for performance benefits
 
-		// realign tail of old ranges
+		// realignment of tail end of old ranges
 		let diff = (addition_byte + 1) - (end_byte as i64 - start_byte as i64);
 		for elm in self.ranges.iter_mut().skip(start_line + len) {
 			*elm = (*elm as i64 + diff) as usize;

@@ -1,4 +1,4 @@
-use analyzer_core::{base_abstractions::FileId, lsp_file::LspFile};
+use analyzer_core::{base_abstractions::FileId};
 use async_rwlock::RwLock as AsyncRwLock;
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use analyzer_abstractions::{
 		CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
 		DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
 		DidOpenTextDocumentParams, DidSaveTextDocumentParams, FileChangeType, Hover, HoverContents, HoverParams,
-		MarkupContent, MarkupKind, Position, SetTraceParams, Url,
+		MarkupContent, MarkupKind, SetTraceParams, Url,
 	},
 	tracing::{error, info},
 };

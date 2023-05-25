@@ -10,10 +10,7 @@ use analyzer_abstractions::{
 	lsp_types::{TraceValue, Url},
 	tracing::info,
 };
-use analyzer_core::{
-	base_abstractions::FileId,
-	lsp_file::{self, LspFile},
-};
+use analyzer_core::base_abstractions::FileId;
 use async_channel::{Receiver, Sender};
 use itertools::Itertools;
 

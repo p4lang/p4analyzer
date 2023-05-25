@@ -1,7 +1,7 @@
 extern crate analyzer_core;
 use std::time::{Duration, Instant};
 
-use analyzer_abstractions::lsp_types::{Position, Range, TextDocumentContentChangeEvent};
+use lsp_types::{Position, Range, TextDocumentContentChangeEvent};
 use analyzer_core::lsp_file::LspFile;
 
 #[test]
@@ -11,42 +11,36 @@ fn test_parse_file() {
 	let ranges: Vec<usize> = Vec::new();
 	assert_eq!(*lsp.get_file_content(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
-	assert!(!lsp.get_eof());
 
 	let file = "\n".to_string();
 	let lsp = LspFile::new(&file.clone());
 	let ranges = vec![0];
 	assert_eq!(*lsp.get_file_content(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
-	assert!(lsp.get_eof());
 
 	let file = "0".to_string();
 	let lsp = LspFile::new(&file.clone());
 	let ranges = vec![0];
 	assert_eq!(*lsp.get_file_content(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
-	assert!(!lsp.get_eof());
 
 	let file = "0\n".to_string();
 	let lsp = LspFile::new(&file.clone());
 	let ranges = vec![1];
 	assert_eq!(*lsp.get_file_content(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
-	assert!(lsp.get_eof());
 
 	let file = "012\n456\n\n9".to_string();
 	let lsp = LspFile::new(&file.clone());
 	let ranges = vec![3, 7, 8, 9];
 	assert_eq!(*lsp.get_file_content(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
-	assert!(!lsp.get_eof());
 
 	let file = "012\n456\n\n9\n\n\n".to_string();
 	let lsp = LspFile::new(&file.clone());
 	let ranges = vec![3, 7, 8, 10, 11, 12];
 	assert_eq!(*lsp.get_file_content(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
-	assert!(lsp.get_eof());
 
 	// unicode examples
 	// 2 byte character
@@ -55,14 +49,12 @@ fn test_parse_file() {
 	let ranges = vec![1];
 	assert_eq!(*lsp.get_file_content(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
-	assert!(!lsp.get_eof());
 
 	let file = "ć\nć\n".to_string();
 	let lsp = LspFile::new(&file.clone());
 	let ranges = vec![2, 5];
 	assert_eq!(*lsp.get_file_content(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
-	assert!(lsp.get_eof());
 
 	// 3 byte character
 	let file = "⁺".to_string();
@@ -70,14 +62,12 @@ fn test_parse_file() {
 	let ranges = vec![2];
 	assert_eq!(*lsp.get_file_content(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
-	assert!(!lsp.get_eof());
 
 	let file = "⁺\n⁺\n".to_string();
 	let lsp = LspFile::new(&file.clone());
 	let ranges = vec![3, 7];
 	assert_eq!(*lsp.get_file_content(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
-	assert!(lsp.get_eof());
 
 	// 4 byte character
 	let file = "𒀀".to_string();
@@ -85,14 +75,12 @@ fn test_parse_file() {
 	let ranges = vec![3];
 	assert_eq!(*lsp.get_file_content(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
-	assert!(!lsp.get_eof());
 
 	let file = "𒀀\n𒀀\n".to_string();
 	let lsp = LspFile::new(&file.clone());
 	let ranges = vec![4, 9];
 	assert_eq!(*lsp.get_file_content(), file);
 	assert_eq!(*lsp.get_ranges(), ranges);
-	assert!(lsp.get_eof());
 }
 
 #[test]
@@ -518,7 +506,6 @@ fn exhaustive_lazy_add() {
 
 					if expected_lsp.get_ranges() != lsp.get_ranges()
 						|| str != *lsp.get_file_content()
-						|| expected_lsp.get_eof() != lsp.get_eof()
 					{
 						println!("Lazy time:    {}ns", lazy_timer.as_nanos());
 						println!("Parser time:  {}ns", parse_timer.as_nanos());
@@ -528,7 +515,6 @@ fn exhaustive_lazy_add() {
 						);
 						assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
 						assert_eq!(str, *lsp.get_file_content());
-						assert_eq!(expected_lsp.get_eof(), lsp.get_eof());
 					}
 				}
 			}

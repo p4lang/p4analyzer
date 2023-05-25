@@ -44,12 +44,12 @@ dependencies = [
 name = "analyzer-core"
 version = "0.1.0"
 dependencies = [
- "analyzer-abstractions",
  "anyhow",
  "criterion",
  "itertools",
  "lazy_static",
  "logos",
+ "lsp-types",
  "nom",
  "oorandom",
  "parking_lot",
