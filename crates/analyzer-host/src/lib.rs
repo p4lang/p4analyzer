@@ -4,6 +4,7 @@ pub mod json_rpc;
 mod lsp;
 mod lsp_impl;
 pub mod tracing;
+pub mod native_fs;
 
 use analyzer_abstractions::{
 	fs::AnyEnumerableFileSystem, futures::future::join4 as join_all, futures_extensions::async_extensions::AsyncPool,
