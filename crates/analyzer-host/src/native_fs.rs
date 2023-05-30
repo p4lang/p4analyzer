@@ -3,28 +3,65 @@
 #[cfg(not(target_arch = "wasm32"))] // should be sufficient
 #[cfg(not(target_family = "wasm"))] // extra safety
 pub mod native_fs {
-    use std::sync::Arc;
+    use std::{sync::Arc, path::PathBuf};
 
-    use analyzer_abstractions::{fs::EnumerableFileSystem, lsp_types::{Url, TextDocumentIdentifier}, BoxFuture};
+    use analyzer_abstractions::{fs::EnumerableFileSystem, lsp_types::{Url, TextDocumentIdentifier, FileCreate, FileEvent, FileChangeType}, BoxFuture};
     use async_channel::Sender;
     use cancellation::CancellationToken;
-    use notify::RecommendedWatcher;
+    use notify::{Event, Watcher, RecursiveMode};
     use regex::Regex;
 
-    use crate::json_rpc::message::Message;
+    use crate::json_rpc::message::{Message, Notification, self};
 
     struct NativeFs {
-        token: Arc<CancellationToken>,      // needed to tell the thread to stop
-        request_sender: Sender<Message>,    // needed to let the analyzer-host that the file has been changed
+        token: Arc<CancellationToken>,      // needed to tell watcher when to unwatch
+        watcher: notify::ReadDirectoryChangesWatcher,
+        watching: Vec<String>,
     }
     
     impl NativeFs {
         pub fn new(token: Arc<CancellationToken>, request_sender: Sender<Message>) -> Self {
-            NativeFs { token, request_sender }
+            let watcher: notify::ReadDirectoryChangesWatcher = notify::recommended_watcher(move |res| {
+                match res {
+                    Ok(event) => {
+                        if let Some(mess) = Self::file_change(event) {
+                            futures::executor::block_on(request_sender.send(mess));
+                        }
+                    },
+                    Err(e) => println!("watch error: {:?}", e),
+                }
+            }).unwrap();
+
+            NativeFs { token, watcher, watching : Vec::new() }
         }
 
-        fn start_file_watch() {
-            todo!()
+        fn start_folder_watch(mut self, folder_uri: Url) {
+            self.watching.push(folder_uri.path().into());   // add path to vector
+            self.watcher.watch(folder_uri.path().as_ref(), RecursiveMode::Recursive).unwrap();  // start watcher
+        }
+        
+        fn file_change(event: Event) -> Option<Message> {
+            let paths = event.paths;
+            match event.kind {
+                notify::EventKind::Any => None,
+                notify::EventKind::Access(_) => None,
+                notify::EventKind::Create(_) => Self::create_message(paths, FileChangeType::CREATED),
+                notify::EventKind::Modify(_) => Self::create_message(paths, FileChangeType::CHANGED),
+                notify::EventKind::Remove(_) => Self::create_message(paths, FileChangeType::DELETED),
+                notify::EventKind::Other => None,
+            }
+        }
+
+        fn create_message(paths: Vec<PathBuf>, event_type: FileChangeType) -> Option<Message> {          
+            let files = paths.into_iter().map(
+                |x| FileEvent{  uri: Url::parse(x.to_str().unwrap()).unwrap(), typ: event_type }
+            ).collect();
+
+            let create_files_params = analyzer_abstractions::lsp_types::DidChangeWatchedFilesParams{ changes: files };
+            let params = serde_json::json!(create_files_params);
+
+            // no sure of the difference between `workspace/didChangeWatchedFiles` and `workspace/didDeleteFiles` or `workspace/didCreateFiles`
+            Some(Message::Notification(Notification { method: "workspace/didChangeWatchedFiles".into(), params }))
         }
     }
     
@@ -36,6 +73,8 @@ pub mod native_fs {
 		        file_pattern: String,
 	        ) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {
                 
+                self.start_folder_watch(folder_uri.clone());    // add folder to watch list
+
                 async fn enumerate_folder(
                     folder_uri: Url,
                     file_pattern: String,

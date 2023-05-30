@@ -68,6 +68,7 @@ dependencies = [
  "cancellation",
  "dyn-clonable",
  "dyn-clone",
+ "futures",
  "itertools",
  "notify",
  "regex",
