@@ -49,7 +49,6 @@ dependencies = [
  "itertools",
  "lazy_static",
  "logos",
- "lsp-types",
  "nom",
  "oorandom",
  "parking_lot",

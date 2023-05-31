@@ -1,5 +1,33 @@
-use lsp_types::{self, Position, TextDocumentContentChangeEvent};
 use logos::Source; // for slice
+
+#[derive(Debug, Eq, PartialEq, PartialOrd, Copy, Clone, Default)]
+pub struct Position {
+	pub line: usize,	// lsp_types uses u32
+	pub character: usize,
+}
+
+impl Position {
+	pub fn new(line: usize, character: usize) -> Position {
+		Position{line, character}
+	}
+}
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
+pub struct Range {
+	pub start: Position,
+	pub end: Position,
+}
+
+impl Range {
+	pub fn new(start: Position, end: Position) -> Range {
+		Range{start, end}
+	}
+}
+
+pub struct ChangeEvent {
+	pub range: Option<Range>,
+    pub text: String,
+}
 
 #[derive(Clone, Debug)]
 pub struct LspFile {
@@ -42,7 +70,7 @@ impl LspFile {
 	}
 
 	// used to get a valid lsp position for the current file
-	fn lsp_to_lsp(&self, lsp_pos: &lsp_types::Position) -> lsp_types::Position {
+	fn lsp_to_lsp(&self, lsp_pos: &Position) -> Position {
 		self.byte_to_lsp(self.lsp_to_byte(lsp_pos))
 	}
 
@@ -58,7 +86,7 @@ impl LspFile {
 		slice.chars().count()
 	}
 
-	pub fn lsp_to_byte(&self, lsp_pos: &lsp_types::Position) -> usize {
+	pub fn lsp_to_byte(&self, lsp_pos: &Position) -> usize {
 		// O(1) time complexity
 		// file is empty
 		if self.ranges.is_empty() {
@@ -66,18 +94,18 @@ impl LspFile {
 		}
 
 		// line greater than contain, return last byte + 1
-		if lsp_pos.line as usize >= self.ranges.len() {
+		if lsp_pos.line >= self.ranges.len() {
 			return *self.ranges.last().unwrap() + 1;
 		}
 
 		let start_byte =
-			if lsp_pos.line == 0 { 0 } else { self.ranges.get(lsp_pos.line as usize - 1).unwrap_or(&0) + 1 };
+			if lsp_pos.line == 0 { 0 } else { self.ranges.get(lsp_pos.line - 1).unwrap_or(&0) + 1 };
 
 		// get byte offset for character position in line
-		let slice = self.file.slice(start_byte..self.ranges[lsp_pos.line as usize]).unwrap_or("").chars();
+		let slice = self.file.slice(start_byte..self.ranges[lsp_pos.line]).unwrap_or("").chars();
 		let mut byte_count = 0;
 		for (i, c) in slice.enumerate() {
-			if i == lsp_pos.character as usize {
+			if i == lsp_pos.character {
 				break;
 			}
 			byte_count += c.len_utf8();
@@ -86,21 +114,21 @@ impl LspFile {
 		start_byte + byte_count
 	}
 
-	pub fn lsp_range_to_byte_range(&self, lsp_range: &lsp_types::Range) -> std::ops::Range<usize> {
+	pub fn lsp_range_to_byte_range(&self, lsp_range: &Range) -> std::ops::Range<usize> {
 		let start = self.lsp_to_byte(&lsp_range.start);
 		let end = self.lsp_to_byte(&lsp_range.end);
 		start..end
 	}
 
 	// O(log(n))
-	pub fn byte_to_lsp(&self, byte_pos: usize) -> lsp_types::Position {
+	pub fn byte_to_lsp(&self, byte_pos: usize) -> Position {
 		// byte position greater than end of current file
 		if self.ranges.is_empty() {
 			return Position { line: 0, character: 0 };
 		}
 
 		if byte_pos > *self.ranges.last().unwrap_or(&0) {
-			return Position { line: self.ranges.len() as u32, character: 0 }; // return next position of last line
+			return Position { line: self.ranges.len(), character: 0 }; // return next position of last line
 		}
 
 		let line = self.ranges.binary_search(&byte_pos).unwrap_or_else(|x| x);
@@ -118,19 +146,19 @@ impl LspFile {
 			}
 		}
 
-		Position { line: line as u32, character: char as u32 }
+		Position { line, character: char }
 	}
 
-	pub fn byte_range_to_lsp_range(&self, byte_range: &std::ops::Range<usize>) -> lsp_types::Range {
+	pub fn byte_range_to_lsp_range(&self, byte_range: &std::ops::Range<usize>) -> Range {
 		let start = self.byte_to_lsp(byte_range.start);
 		let end = self.byte_to_lsp(byte_range.end);
-		lsp_types::Range::new(start, end)
+		Range{ start, end }
 	}
 
 	// used to update ranges from TextDocumentContentChangeEvent
 	// will lazily add as only parse the text to be added
 	// optimal for large files with small changes
-	pub fn lazy_add(&mut self, changes: &TextDocumentContentChangeEvent) {
+	pub fn lazy_add(&mut self, changes: &ChangeEvent) {
 		// The whole file got changes || file was empty, so reparse as new file
 		if changes.range.is_none() || self.ranges.is_empty() {
 			*self = LspFile::new(&changes.text);
@@ -161,12 +189,12 @@ impl LspFile {
 		}
 
 		// caching frequent conversions and calculation
-		let mut start_line = start_pos.line as usize;
-		let end_line = end_pos_exc.line as usize;
+		let mut start_line = start_pos.line;
+		let end_line = end_pos_exc.line;
 		let range_size = self.ranges.len();
 
 		// need to make addition calculations for head and tail of new additions
-		let tailing_end_bytes = self.lsp_to_byte(&Position { line: end_line as u32 + 1, character: 0 }) - end_byte;
+		let tailing_end_bytes = self.lsp_to_byte(&Position { line: end_line + 1, character: 0 }) - end_byte;
 
 		// special cases if change text is empty
 		if additional_ranges.is_empty() {

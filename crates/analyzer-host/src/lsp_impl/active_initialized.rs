@@ -1,4 +1,4 @@
-use analyzer_core::{base_abstractions::FileId};
+use analyzer_core::{base_abstractions::FileId, lsp_file::ChangeEvent};
 use async_rwlock::RwLock as AsyncRwLock;
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use analyzer_abstractions::{
 		CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
 		DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
 		DidOpenTextDocumentParams, DidSaveTextDocumentParams, FileChangeType, Hover, HoverContents, HoverParams,
-		MarkupContent, MarkupKind, SetTraceParams, Url,
+		MarkupContent, MarkupKind, SetTraceParams, Url, Range, Position,
 	},
 	tracing::{error, info},
 };
@@ -20,7 +20,6 @@ use analyzer_abstractions::{
 use crate::{
 	fsm::LspServerStateDispatcher,
 	lsp::{
-		dispatch::Dispatch,
 		dispatch_target::{HandlerError, HandlerResult},
 		state::LspServerState,
 		DispatchBuilder,
@@ -159,7 +158,20 @@ async fn on_text_document_did_change(
 		}
 	};
 
-	analyzer.file_change_event(file_id, &params.content_changes);
+	// no comment...
+	let event_change = params.content_changes.into_iter().map(
+		|x|
+
+		ChangeEvent { range: match x.range {
+    		Some(y) => Some(analyzer_core::lsp_file::Range{ 
+				start: analyzer_core::lsp_file::Position{ line: y.start.line as usize, character: y.start.character as usize },
+				end: analyzer_core::lsp_file::Position{ line: y.end.line as usize, character: y.end.character as usize } }),
+    		None => None,
+		} 
+		, text: x.text }
+	).collect();
+
+	analyzer.file_change_event(file_id, &event_change);
 
 	file.open_or_update(file_id);
 	let diagnostics = process_diagnostics(&analyzer, file_id, &input);
@@ -286,7 +298,11 @@ fn process_diagnostics(
 			use analyzer_core::base_abstractions::Severity;
 
 			Diagnostic {
-				range: lsp.byte_range_to_lsp_range(&d.location),
+				// no comment...
+				range: Range{ 
+					start: Position{ line: lsp.byte_to_lsp(d.location.start).line as u32, character: lsp.byte_to_lsp(d.location.start).character as u32 },
+					end: Position { line: lsp.byte_to_lsp(d.location.end).line as u32, character: lsp.byte_to_lsp(d.location.end).character as u32 } 
+				},
 				severity: Some(match d.severity {
 					Severity::Info => DiagnosticSeverity::INFORMATION,
 					Severity::Hint => DiagnosticSeverity::HINT,

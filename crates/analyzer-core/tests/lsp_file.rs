@@ -1,8 +1,7 @@
 extern crate analyzer_core;
 use std::time::{Duration, Instant};
 
-use lsp_types::{Position, Range, TextDocumentContentChangeEvent};
-use analyzer_core::lsp_file::LspFile;
+use analyzer_core::lsp_file::{LspFile, Position, ChangeEvent, Range};
 
 fn check_parse_file(file: String, result: Vec<usize>) {
 	let lsp = LspFile::new(&file.clone());
@@ -152,15 +151,14 @@ fn soundness_test() {
 }
 
 // helper function
-fn change_event((l1, c1): (u32, u32), (l2, c2): (u32, u32), t: String) -> TextDocumentContentChangeEvent {
-	TextDocumentContentChangeEvent {
+fn change_event((l1, c1): (usize, usize), (l2, c2): (usize, usize), t: String) -> ChangeEvent {
+	ChangeEvent {
 		range: Some(Range::new(Position::new(l1, c1), Position::new(l2, c2))),
-		range_length: None, // depreciated
 		text: t,
 	}
 }
 
-fn check_lazy_add(event: TextDocumentContentChangeEvent, expect_str: String) {
+fn check_lazy_add(event: ChangeEvent, expect_str: String) {
 	// Both should be global consts 
 	let original = "012\n456\n\n9\nbcde\n".to_string(); // Test String
 	let mut lsp = LspFile::new(&original.clone()); // Create default LspPos
@@ -239,9 +237,8 @@ fn test_lazy_add() {
 	// Corner Cases
 	// No Range provide
 	let mut lsp = original_lsp.clone();
-	let event = TextDocumentContentChangeEvent {
+	let event = ChangeEvent {
 		range: None,
-		range_length: None, // depreciated
 		text: "hello\n".to_string(),
 	};
 	lsp.lazy_add(&event);

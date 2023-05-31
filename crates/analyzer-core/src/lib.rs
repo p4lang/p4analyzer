@@ -6,12 +6,11 @@ pub mod preprocessor;
 
 use std::collections::HashMap;
 
-use lsp_types::TextDocumentContentChangeEvent;
 use logos::Logos;
 
 use base_abstractions::*;
 use lexer::*;
-use lsp_file::LspFile;
+use lsp_file::{LspFile, ChangeEvent};
 use preprocessor::*;
 
 // #[derive(Default)]
@@ -80,7 +79,7 @@ impl Analyzer {
 
 	fn filesystem(&self) -> HashMap<FileId, Buffer> { self.fs.map(|fs| fs.fs(&self.db)).unwrap_or_default() }
 
-	pub fn file_change_event(&mut self, file_id: FileId, event_vec: &Vec<TextDocumentContentChangeEvent>) {
+	pub fn file_change_event(&mut self, file_id: FileId, event_vec: &Vec<ChangeEvent>) {
 		let mut filesystem = self.filesystem();
 
 		// TODO: avoid cloning
