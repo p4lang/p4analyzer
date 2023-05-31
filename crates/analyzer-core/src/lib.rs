@@ -95,7 +95,7 @@ impl Analyzer {
 
 	pub fn update(&mut self, file_id: FileId, input: &String) {
 		let mut filesystem = self.filesystem();
-		filesystem.insert(file_id, new_buffer(&self.db, input));
+		filesystem.insert(file_id, Buffer::from_string(&self.db, input));
 		self.fs = Fs::new(&self.db, filesystem).into();
 	}
 

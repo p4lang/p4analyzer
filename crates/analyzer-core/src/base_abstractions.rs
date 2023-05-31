@@ -10,9 +10,11 @@ pub struct Buffer {
 	pub file: LspFile,
 }
 
-pub fn new_buffer(db: &Database, file: &String) -> Buffer {
-	let lsp_file = LspFile::new(file);
-	Buffer::new(db, lsp_file)
+impl Buffer {
+	pub fn from_string(db: &Database, file: &String) -> Buffer {
+		let lsp_file = LspFile::new(file);
+		Buffer::new(db, lsp_file)
+	}
 }
 
 #[salsa::interned]
