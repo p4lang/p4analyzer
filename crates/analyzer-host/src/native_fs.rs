@@ -6,7 +6,7 @@ pub mod native_fs {
 
 	use analyzer_abstractions::{
 		fs::EnumerableFileSystem,
-		lsp_types::{FileChangeType, FileCreate, FileEvent, TextDocumentIdentifier, Url},
+		lsp_types::{FileChangeType, FileEvent, TextDocumentIdentifier, Url},
 		BoxFuture,
 	};
 	use async_channel::Sender;
@@ -18,13 +18,13 @@ pub mod native_fs {
 
 	pub struct NativeFs {
 		token: Arc<CancellationToken>, // needed to tell watcher when to unwatch
-		watcher: notify::ReadDirectoryChangesWatcher,
+		watcher: notify::RecommendedWatcher,
 		watching: Vec<String>,
 	}
 
 	impl NativeFs {
 		pub fn new(token: Arc<CancellationToken>, request_sender: Sender<Message>) -> Self {
-			let watcher: notify::ReadDirectoryChangesWatcher = notify::recommended_watcher(move |res| match res {
+			let watcher = notify::recommended_watcher(move |res| match res {
 				Ok(event) => {
 					if let Some(mess) = Self::file_change(event) {
 						let _ = futures::executor::block_on(request_sender.send(mess));
