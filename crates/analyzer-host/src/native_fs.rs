@@ -35,6 +35,7 @@ pub mod native_fs {
             NativeFs { token, watcher, watching : Vec::new() }
         }
 
+        // No current way to called the `watcher.unwatch()` function
         fn start_folder_watch(mut self, folder_uri: Url) {
             self.watching.push(folder_uri.path().into());   // add path to vector
             self.watcher.watch(folder_uri.path().as_ref(), RecursiveMode::Recursive).unwrap();  // start watcher
@@ -73,7 +74,11 @@ pub mod native_fs {
 		        file_pattern: String,
 	        ) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {
                 
-                self.start_folder_watch(folder_uri.clone());    // add folder to watch list
+                /// This is intended for the watching of Addition/Changes/Delition in the current directory
+                /// Issue is that enumerate_folder() doesn't take a mutable self
+                /// Nor does filesystem at time of creation get access to workspace manager as that is at a [`State`] level
+                /// 
+                //self.start_folder_watch(folder_uri.clone());    // add folder to watch list
 
                 async fn enumerate_folder(
                     folder_uri: Url,
