@@ -15,6 +15,9 @@ xflags::xflags! {
 		///  Displays the version number.
 		optional -v,--version
 
+        /// Optional flag for choosing the native filesystem instead of LSP Requsts
+        optional -n,--nativefile
+
 		/// Starts executing the LSP server (default command).
 		default cmd server {
 			/// Use the 'stdio' transport (default).
@@ -30,6 +33,7 @@ pub struct P4Analyzer {
     pub logpath: Option<PathBuf>,
     pub loglevel: Option<String>,
     pub version: bool,
+    pub nativefile: bool,
     pub subcommand: P4AnalyzerCmd,
 }
 

@@ -18,6 +18,7 @@ mod main_tests {
 			loglevel: None,
 			subcommand: P4AnalyzerCmd::Server(flags::Server { stdio: false }),
     		version: false,
+			nativefile: false,
 		};
 		let res = create_default_logging_layer::<Registry>(&cmd);
 		assert!(res.is_none());

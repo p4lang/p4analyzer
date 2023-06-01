@@ -38,6 +38,16 @@ pub async fn main() {
 				return;
 			}
 
+			// native file system isn't supported for web assembly
+			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(not(target_family = "wasm"))]
+			{
+				if cmd.nativefile {
+					println!("Flag not supported!!!\nWeb assembly doesn't support system calls by design.\n");
+					return;
+				}
+			}
+
 			let default_logging_layer = create_default_logging_layer::<Registry>(&cmd);
 			let mut layers = if let Some((layer, _)) = default_logging_layer { vec![layer] } else { vec![] };
 

@@ -18,6 +18,7 @@ serde = "1.0.143"
 serde_json = "1.0.83"
 thiserror = "1.0.37"
 tracing-subscriber = "0.3.16"
-notify = "6.0.0"
 regex = "1.8.3"
 futures = "0.3.28"
+[target.'cfg(windows)'.dependencies]
+notify = "6.0.0"
