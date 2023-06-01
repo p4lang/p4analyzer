@@ -3,8 +3,8 @@ mod fsm;
 pub mod json_rpc;
 mod lsp;
 mod lsp_impl;
-pub mod tracing;
 pub mod native_fs;
+pub mod tracing;
 
 use analyzer_abstractions::{
 	fs::AnyEnumerableFileSystem, futures::future::join4 as join_all, futures_extensions::async_extensions::AsyncPool,
@@ -19,8 +19,7 @@ use json_rpc::message::Message;
 use std::sync::Arc;
 use tracing::TraceValueAccessor;
 
-use crate::lsp::request::RequestManager;
-use crate::native_fs::native_fs::NativeFs;
+use crate::{lsp::request::RequestManager, native_fs::native_fs::NativeFs};
 
 /// A tuple type that represents both a sender and a receiver of [`Message`] instances.
 pub type MessageChannel = (Sender<Message>, Receiver<Message>);
@@ -60,12 +59,13 @@ impl AnalyzerHost {
 		// If no file system was supplied, then default to the standard LSP based one.
 		let file_system: AnyEnumerableFileSystem = match self.file_system.as_ref() {
 			Some(fs) => fs.clone(),
-			None => 
+			None => {
 				if native_fs {
 					Arc::new(Mutex::new(Box::new(NativeFs::new(cancel_token.clone(), requests_sender.clone()))))
 				} else {
 					Arc::new(Mutex::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone()))))
-				},
+				}
+			}
 		};
 
 		match join_all(
@@ -123,7 +123,8 @@ impl AnalyzerHost {
 		requests_receiver: Receiver<Message>,
 		cancel_token: Arc<CancellationToken>,
 	) -> Result<(), OperationCanceled> {
-		{ // Scope: for `protocol_machine`.
+		{
+			// Scope: for `protocol_machine`.
 			let mut protocol_machine = LspProtocolMachine::new(self.trace_value.clone(), request_manager, file_system);
 
 			while protocol_machine.is_active() && !cancel_token.is_canceled() {

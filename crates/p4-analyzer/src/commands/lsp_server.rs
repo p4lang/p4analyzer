@@ -59,7 +59,10 @@ impl Command for LspServerCommand {
 		// with the client extensions built as part of the P4 Analyzer Visual Studio Code extension.
 		let host = AnalyzerHost::new(self.driver.get_message_channel(), self.trace_value(), None);
 
-		match tokio::join!(host.start(cancel_token.clone(), self.config.nativefile), self.driver.start(cancel_token.clone())) {
+		match tokio::join!(
+			host.start(cancel_token.clone(), self.config.nativefile),
+			self.driver.start(cancel_token.clone())
+		) {
 			(Ok(_), Ok(_)) => Ok(()),
 			_ => Err(CommandInvocationError::Cancelled),
 		}

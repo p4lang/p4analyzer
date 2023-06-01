@@ -184,8 +184,12 @@ impl Workspace {
 			}
 		}
 
-		let document_identifiers =
-			self.file_system.lock().await.enumerate_folder(self.uri(), RELATIVE_P4_SOURCEFILES_GLOBPATTERN.into()).await;
+		let document_identifiers = self
+			.file_system
+			.lock()
+			.await
+			.enumerate_folder(self.uri(), RELATIVE_P4_SOURCEFILES_GLOBPATTERN.into())
+			.await;
 
 		info!(
 			workspace_uri = self.uri().as_str(),

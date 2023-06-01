@@ -20,8 +20,8 @@ xflags::xflags! {
 			/// Use the 'stdio' transport (default).
 			optional --stdio
 
-            /// Optional flag for choosing the native filesystem instead of LSP Requsts
-            optional -n,--nativefile
+			/// Optional flag for choosing the native filesystem instead of LSP Requsts
+			optional -n,--nativefile
 		}
 	}
 }
@@ -30,37 +30,31 @@ xflags::xflags! {
 // Run `env UPDATE_XFLAGS=1 cargo build` to regenerate.
 #[derive(Debug)]
 pub struct P4Analyzer {
-    pub logpath: Option<PathBuf>,
-    pub loglevel: Option<String>,
-    pub version: bool,
-    pub subcommand: P4AnalyzerCmd,
+	pub logpath: Option<PathBuf>,
+	pub loglevel: Option<String>,
+	pub version: bool,
+	pub subcommand: P4AnalyzerCmd,
 }
 
 #[derive(Debug)]
 pub enum P4AnalyzerCmd {
-    Server(Server),
+	Server(Server),
 }
 
 #[derive(Debug)]
 pub struct Server {
-    pub stdio: bool,
-    pub nativefile: bool,
+	pub stdio: bool,
+	pub nativefile: bool,
 }
 
 impl P4Analyzer {
-    #[allow(dead_code)]
-    pub fn from_env_or_exit() -> Self {
-        Self::from_env_or_exit_()
-    }
+	#[allow(dead_code)]
+	pub fn from_env_or_exit() -> Self { Self::from_env_or_exit_() }
 
-    #[allow(dead_code)]
-    pub fn from_env() -> xflags::Result<Self> {
-        Self::from_env_()
-    }
+	#[allow(dead_code)]
+	pub fn from_env() -> xflags::Result<Self> { Self::from_env_() }
 
-    #[allow(dead_code)]
-    pub fn from_vec(args: Vec<std::ffi::OsString>) -> xflags::Result<Self> {
-        Self::from_vec_(args)
-    }
+	#[allow(dead_code)]
+	pub fn from_vec(args: Vec<std::ffi::OsString>) -> xflags::Result<Self> { Self::from_vec_(args) }
 }
 // generated end

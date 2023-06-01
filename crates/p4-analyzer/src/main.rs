@@ -53,7 +53,7 @@ pub async fn main() {
 					}
 
 					RunnableCommand(LspServerCommand::new(config, DriverType::Console))
-				},
+				}
 				_ => unreachable!(),
 			};
 
