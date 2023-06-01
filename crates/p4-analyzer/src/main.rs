@@ -38,21 +38,22 @@ pub async fn main() {
 				return;
 			}
 
-			// native file system isn't supported for web assembly
-			#[cfg(not(target_arch = "wasm32"))]
-			#[cfg(not(target_family = "wasm"))]
-			{
-				if cmd.nativefile {
-					println!("Flag not supported!!!\nWeb assembly doesn't support system calls by design.\n");
-					return;
-				}
-			}
-
 			let default_logging_layer = create_default_logging_layer::<Registry>(&cmd);
 			let mut layers = if let Some((layer, _)) = default_logging_layer { vec![layer] } else { vec![] };
 
 			let cmd = match cmd.subcommand {
-				P4AnalyzerCmd::Server(config) => RunnableCommand(LspServerCommand::new(config, DriverType::Console)),
+				P4AnalyzerCmd::Server(config) => {
+					// native file system isn't supported for web assembly
+					#[cfg(not(target_arch = "wasm32"))]
+					{
+						if config.nativefile {
+							println!("Flag not supported!!!\nWeb assembly doesn't support system calls by design.\n");
+							return;
+						}
+					}
+
+					RunnableCommand(LspServerCommand::new(config, DriverType::Console))
+				},
 				_ => unreachable!(),
 			};
 

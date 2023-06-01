@@ -1,7 +1,6 @@
 // Web Assembly is a sandbox, and by design shouldn't have access to network, file systenm, or underlying operating system.
 // Simply removing this file system code from wasm build is the best way
-#[cfg(not(target_arch = "wasm32"))] // should be sufficient
-#[cfg(not(target_family = "wasm"))] // extra safety
+#[cfg(not(target_arch = "wasm32"))]
 pub mod native_fs {
     use std::{sync::Arc, path::PathBuf};
 
@@ -13,7 +12,7 @@ pub mod native_fs {
 
     use crate::json_rpc::message::{Message, Notification};
 
-    struct NativeFs {
+    pub struct NativeFs {
         token: Arc<CancellationToken>,      // needed to tell watcher when to unwatch
         watcher: notify::ReadDirectoryChangesWatcher,
         watching: Vec<String>,
@@ -117,4 +116,40 @@ pub mod native_fs {
             Box::pin(file_contents(file_uri))
         }
     }
+}
+
+// add wasm32 version for build to be completed but it's unreachable code
+#[cfg(target_arch = "wasm32")]
+pub mod native_fs {
+    use std::sync::Arc;
+
+    use analyzer_abstractions::fs::EnumerableFileSystem;
+    use async_channel::Sender;
+    use cancellation::CancellationToken;
+
+    use crate::json_rpc::message::Message;
+
+    pub struct NativeFs {  }
+    
+    impl NativeFs {
+        pub fn new(_: Arc<CancellationToken>, _: Sender<Message>) -> Self {
+            unreachable!("Wasm run-time reached native only code: NativeFs::new() !!!")
+        }
+    }
+
+    impl EnumerableFileSystem for NativeFs {
+        fn enumerate_folder<'a>(
+		        &'a mut self,
+		        _: analyzer_abstractions::lsp_types::Url,
+		        _: String,
+	        ) -> analyzer_abstractions::BoxFuture<'a, Vec<analyzer_abstractions::lsp_types::TextDocumentIdentifier>> {
+            unreachable!("Wasm run-time reached native only code: NativeFs::enumerate_folder() !!!")
+        }
+
+        fn file_contents<'a>(&'a self, _: analyzer_abstractions::lsp_types::Url) -> analyzer_abstractions::BoxFuture<'a, Option<String>> {
+            unreachable!("Wasm run-time reached native only code: NativeFs::file_contents() !!!")
+        }
+    }
+
+
 }

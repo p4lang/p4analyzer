@@ -49,7 +49,7 @@ impl LspServer {
 
 		subscriber::set_global_default(subscriber).expect("Unable to set global tracing subscriber.");
 
-		match join(host.start(self.cts.token().clone()), self.on_receive()).await {
+		match join(host.start(self.cts.token().clone(), false), self.on_receive()).await {
 			(Ok(_), Ok(_)) => Ok(JsValue::UNDEFINED),
 			_ => Err(JsValue::from(Error::new("The server was stopped."))),
 		}

@@ -20,6 +20,7 @@ use std::sync::Arc;
 use tracing::TraceValueAccessor;
 
 use crate::lsp::request::RequestManager;
+use crate::native_fs::native_fs::NativeFs;
 
 /// A tuple type that represents both a sender and a receiver of [`Message`] instances.
 pub type MessageChannel = (Sender<Message>, Receiver<Message>);
@@ -52,14 +53,19 @@ impl AnalyzerHost {
 	///
 	/// Once started, request messages will be received through the message channel, forwarded for processing to the internal
 	/// state machine, with response messages sent back through the message channel for the client to process.
-	pub async fn start(&self, cancel_token: Arc<CancellationToken>) -> Result<(), OperationCanceled> {
+	pub async fn start(&self, cancel_token: Arc<CancellationToken>, native_fs: bool) -> Result<(), OperationCanceled> {
 		let (requests_sender, requests_receiver) = async_channel::unbounded::<Message>();
 		let (responses_sender, responses_receiver) = async_channel::unbounded::<Message>();
 		let request_manager = RequestManager::new((self.sender.clone(), responses_receiver.clone()));
 		// If no file system was supplied, then default to the standard LSP based one.
 		let file_system: AnyEnumerableFileSystem = match self.file_system.as_ref() {
 			Some(fs) => fs.clone(),
-			None => Arc::new(Mutex::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone())))),
+			None => 
+				if native_fs {
+					Arc::new(Mutex::new(Box::new(NativeFs::new(cancel_token.clone(), requests_sender.clone()))))
+				} else {
+					Arc::new(Mutex::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone()))))
+				},
 		};
 
 		match join_all(
