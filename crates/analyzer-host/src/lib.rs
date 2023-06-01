@@ -14,6 +14,7 @@ use async_channel::{Receiver, Sender};
 use cancellation::{CancellationToken, OperationCanceled};
 use fs::LspEnumerableFileSystem;
 use fsm::LspProtocolMachine;
+use futures::lock::Mutex;
 use json_rpc::message::Message;
 use std::sync::Arc;
 use tracing::TraceValueAccessor;
@@ -28,7 +29,7 @@ pub struct AnalyzerHost {
 	sender: Sender<Message>,
 	receiver: Receiver<Message>,
 	trace_value: Option<TraceValueAccessor>,
-	file_system: Option<Arc<AnyEnumerableFileSystem>>,
+	file_system: Option<AnyEnumerableFileSystem>,
 }
 
 impl AnalyzerHost {
@@ -40,7 +41,7 @@ impl AnalyzerHost {
 	pub fn new(
 		message_channel: MessageChannel,
 		trace_value: Option<TraceValueAccessor>,
-		file_system: Option<Arc<AnyEnumerableFileSystem>>,
+		file_system: Option<AnyEnumerableFileSystem>,
 	) -> Self {
 		let (sender, receiver) = message_channel;
 
@@ -56,9 +57,9 @@ impl AnalyzerHost {
 		let (responses_sender, responses_receiver) = async_channel::unbounded::<Message>();
 		let request_manager = RequestManager::new((self.sender.clone(), responses_receiver.clone()));
 		// If no file system was supplied, then default to the standard LSP based one.
-		let file_system: Arc<AnyEnumerableFileSystem> = match self.file_system.as_ref() {
+		let file_system: AnyEnumerableFileSystem = match self.file_system.as_ref() {
 			Some(fs) => fs.clone(),
-			None => Arc::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone()))),
+			None => Arc::new(Mutex::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone())))),
 		};
 
 		match join_all(
@@ -112,7 +113,7 @@ impl AnalyzerHost {
 	async fn run_protocol_machine(
 		&self,
 		request_manager: RequestManager,
-		file_system: Arc<AnyEnumerableFileSystem>,
+		file_system: AnyEnumerableFileSystem,
 		requests_receiver: Receiver<Message>,
 		cancel_token: Arc<CancellationToken>,
 	) -> Result<(), OperationCanceled> {

@@ -25,7 +25,7 @@ impl LspEnumerableFileSystem {
 
 impl EnumerableFileSystem for LspEnumerableFileSystem {
 	fn enumerate_folder<'a>(
-		&'a self,
+		&'a mut self,
 		file_uri: Url,
 		file_pattern: String,
 	) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {

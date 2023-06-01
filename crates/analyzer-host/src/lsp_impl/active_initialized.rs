@@ -241,7 +241,7 @@ async fn created_file(uri: &Url, state: &Arc<AsyncRwLock<State>>) {
 	match file.get_parsed_unit().await {
 		Ok(file_id) => {
 			let lock = state.write().await;
-			let content = lock.file_system.file_contents(uri.clone()).await.unwrap_or_default();
+			let content = lock.file_system.lock().await.file_contents(uri.clone()).await.unwrap_or_default();
 			lock.analyzer.unwrap().update(file_id, content);
 			info!("{} file updated from file system", uri.path());
 		}

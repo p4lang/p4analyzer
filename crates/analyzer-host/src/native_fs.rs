@@ -11,7 +11,7 @@ pub mod native_fs {
     use notify::{Event, Watcher, RecursiveMode};
     use regex::Regex;
 
-    use crate::json_rpc::message::{Message, Notification, self};
+    use crate::json_rpc::message::{Message, Notification};
 
     struct NativeFs {
         token: Arc<CancellationToken>,      // needed to tell watcher when to unwatch
@@ -25,7 +25,7 @@ pub mod native_fs {
                 match res {
                     Ok(event) => {
                         if let Some(mess) = Self::file_change(event) {
-                            futures::executor::block_on(request_sender.send(mess));
+                            let _ = futures::executor::block_on(request_sender.send(mess));
                         }
                     },
                     Err(e) => println!("watch error: {:?}", e),
@@ -36,7 +36,7 @@ pub mod native_fs {
         }
 
         // No current way to called the `watcher.unwatch()` function
-        fn start_folder_watch(mut self, folder_uri: Url) {
+        fn start_folder_watch(&mut self, folder_uri: Url) {
             self.watching.push(folder_uri.path().into());   // add path to vector
             self.watcher.watch(folder_uri.path().as_ref(), RecursiveMode::Recursive).unwrap();  // start watcher
         }
@@ -69,16 +69,12 @@ pub mod native_fs {
     // EnumerableFileSystem part of NativeFs will just use std::fs methods for the functions
     impl EnumerableFileSystem for NativeFs {
         fn enumerate_folder<'a>(
-		        &'a self,
+		        &'a mut self,
 		        folder_uri: Url,
 		        file_pattern: String,
 	        ) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {
                 
-                /// This is intended for the watching of Addition/Changes/Delition in the current directory
-                /// Issue is that enumerate_folder() doesn't take a mutable self
-                /// Nor does filesystem at time of creation get access to workspace manager as that is at a [`State`] level
-                /// 
-                //self.start_folder_watch(folder_uri.clone());    // add folder to watch list
+                self.start_folder_watch(folder_uri.clone());    // add folder to watch list
 
                 async fn enumerate_folder(
                     folder_uri: Url,

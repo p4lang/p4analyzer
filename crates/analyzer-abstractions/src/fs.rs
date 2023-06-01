@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use futures::lock::Mutex;
 use lsp_types::{TextDocumentIdentifier, Url};
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +24,7 @@ pub trait EnumerableFileSystem {
 	///
 	/// `file_pattern` is file glob pattern like `'*.p4'` that will be matched on paths relative to `folder_uri`.
 	fn enumerate_folder<'a>(
-		&'a self,
+		&'a mut self,
 		folder_uri: Url,
 		file_pattern: String,
 	) -> BoxFuture<'a, Vec<TextDocumentIdentifier>>;
@@ -30,4 +33,4 @@ pub trait EnumerableFileSystem {
 	fn file_contents<'a>(&'a self, file_uri: Url) -> BoxFuture<'a, Option<String>>;
 }
 
-pub type AnyEnumerableFileSystem = Box<dyn EnumerableFileSystem + Send + Sync + 'static>;
+pub type AnyEnumerableFileSystem = Arc<Mutex<Box<dyn EnumerableFileSystem + Send + Sync + 'static>>>;
