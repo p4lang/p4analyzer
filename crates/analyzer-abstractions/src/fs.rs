@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, any::Any};
 
 use futures::lock::Mutex;
 use lsp_types::{TextDocumentIdentifier, Url};
@@ -31,6 +31,8 @@ pub trait EnumerableFileSystem {
 
 	/// Retrieves the contents of a given file.
 	fn file_contents<'a>(&'a self, file_uri: Url) -> BoxFuture<'a, Option<String>>;
+
+	fn as_any(&mut self) ->  &mut dyn Any;
 }
 
 pub type AnyEnumerableFileSystem = Arc<Mutex<Box<dyn EnumerableFileSystem + Send + Sync + 'static>>>;

@@ -2,7 +2,7 @@
 // Simply removing this file system code from wasm build is the best way
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native_fs {
-	use std::{path::PathBuf, sync::Arc};
+	use std::{path::PathBuf, sync::Arc, thread, any::Any};
 
 	use analyzer_abstractions::{
 		fs::EnumerableFileSystem,
@@ -11,19 +11,19 @@ pub mod native_fs {
 	};
 	use async_channel::Sender;
 	use cancellation::CancellationToken;
+	use futures::lock::Mutex;
 	use notify::{Event, RecursiveMode, Watcher};
 	use regex::Regex;
 
 	use crate::json_rpc::message::{Message, Notification};
 
 	pub struct NativeFs {
-		token: Arc<CancellationToken>, // needed to tell watcher when to unwatch
 		watcher: notify::RecommendedWatcher,
-		watching: Vec<String>,
+		watching: Vec<Url>,
 	}
 
 	impl NativeFs {
-		pub fn new(token: Arc<CancellationToken>, request_sender: Sender<Message>) -> Self {
+		pub fn new(token: Arc<CancellationToken>, request_sender: Sender<Message>) -> Arc<Mutex<Box<dyn EnumerableFileSystem + Send + Sync + 'static>>> {
 			let watcher = notify::recommended_watcher(move |res| match res {
 				Ok(event) => {
 					if let Some(mess) = Self::file_change(event) {
@@ -34,14 +34,38 @@ pub mod native_fs {
 			})
 			.unwrap();
 
-			NativeFs { token, watcher, watching: Vec::new() }
+			let object: Arc<Mutex<Box<dyn EnumerableFileSystem + Send + Sync + 'static>>> = Arc::new(Mutex::new(Box::new(NativeFs { watcher, watching: Vec::new() })));
+
+			// Start a new thread as CancellationToken::run() is blocking
+			// only 1 FileSystem should exist per P4Analyzer so not to worried about many child threads
+			let clone = object.clone();
+			thread::spawn(move || {
+				token.run(|| {
+					futures::executor::block_on(clone.lock()).as_any().downcast_mut::<NativeFs>().unwrap().stop_watching_all();
+				}, 
+				|| {});
+			});
+
+			object
 		}
 
 		// No current way to called the `watcher.unwatch()` function
-		fn start_folder_watch(&mut self, folder_uri: Url) {
-			self.watching.push(folder_uri.path().into()); // add path to vector
-			self.watcher.watch(folder_uri.path().as_ref(), RecursiveMode::Recursive).unwrap();
-			// start watcher
+		fn start_folder_watch(&mut self, folder_uri: &Url) {
+			self.watching.push(folder_uri.clone()); // add path to vector
+			self.watcher.watch(folder_uri.path().as_ref(), RecursiveMode::Recursive).unwrap(); // start watcher		
+		}
+
+		fn stop_watching_all(&mut self) {
+			for elm in &self.watching {
+				self.watcher.unwatch(elm.path().as_ref()).unwrap();
+			}
+			self.watching.clear();
+		}
+
+		// has to be manually called
+		pub fn stop_folder_watch(&mut self, folder_uri: &Url) {
+			self.watching.retain(|x| *x != *folder_uri); // remove from vector
+			self.watcher.unwatch(folder_uri.path().as_ref()).unwrap();	// if exists with unwatch it
 		}
 
 		fn file_change(event: Event) -> Option<Message> {
@@ -72,12 +96,16 @@ pub mod native_fs {
 
 	// EnumerableFileSystem part of NativeFs will just use std::fs methods for the functions
 	impl EnumerableFileSystem for NativeFs {
+		fn as_any(&mut self) -> &mut dyn Any {
+			self
+		}
+
 		fn enumerate_folder<'a>(
 			&'a mut self,
 			folder_uri: Url,
 			file_pattern: String,
 		) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {
-			self.start_folder_watch(folder_uri.clone()); // add folder to watch list
+			self.start_folder_watch(&folder_uri); // add folder to watch list
 
 			async fn enumerate_folder(folder_uri: Url, file_pattern: String) -> Vec<TextDocumentIdentifier> {
 				let folder = folder_uri.path();
@@ -126,22 +154,27 @@ pub mod native_fs {
 #[cfg(target_arch = "wasm32")]
 pub mod native_fs {
 	use std::sync::Arc;
-
+	use std::any::Any;
 	use analyzer_abstractions::fs::EnumerableFileSystem;
 	use async_channel::Sender;
 	use cancellation::CancellationToken;
+use futures::lock::Mutex;
 
 	use crate::json_rpc::message::Message;
 
 	pub struct NativeFs {}
 
 	impl NativeFs {
-		pub fn new(_: Arc<CancellationToken>, _: Sender<Message>) -> Self {
+		pub fn new(_: Arc<CancellationToken>, _: Sender<Message>) -> Arc<Mutex<Box<dyn EnumerableFileSystem + Send + Sync + 'static>>> {
 			unreachable!("Wasm run-time reached native only code: NativeFs::new() !!!")
 		}
 	}
 
 	impl EnumerableFileSystem for NativeFs {
+		fn as_any(&mut self) -> &mut dyn Any {
+			unreachable!("Wasm run-time reached native only code: NativeFs::as_any() !!!")
+		}
+
 		fn enumerate_folder<'a>(
 			&'a mut self,
 			_: analyzer_abstractions::lsp_types::Url,

@@ -61,7 +61,7 @@ impl AnalyzerHost {
 			Some(fs) => fs.clone(),
 			None => {
 				if native_fs {
-					Arc::new(Mutex::new(Box::new(NativeFs::new(cancel_token.clone(), requests_sender.clone()))))
+					NativeFs::new(cancel_token.clone(), requests_sender.clone())
 				} else {
 					Arc::new(Mutex::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone()))))
 				}
