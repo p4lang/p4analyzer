@@ -2,14 +2,12 @@ use logos::Source; // for slice
 
 #[derive(Debug, Eq, PartialEq, PartialOrd, Copy, Clone, Default)]
 pub struct Position {
-	pub line: usize,	// lsp_types uses u32
+	pub line: usize, // lsp_types uses u32
 	pub character: usize,
 }
 
 impl Position {
-	pub fn new(line: usize, character: usize) -> Position {
-		Position{line, character}
-	}
+	pub fn new(line: usize, character: usize) -> Position { Position { line, character } }
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
@@ -19,14 +17,12 @@ pub struct Range {
 }
 
 impl Range {
-	pub fn new(start: Position, end: Position) -> Range {
-		Range{start, end}
-	}
+	pub fn new(start: Position, end: Position) -> Range { Range { start, end } }
 }
 
 pub struct ChangeEvent {
 	pub range: Option<Range>,
-    pub text: String,
+	pub text: String,
 }
 
 #[derive(Clone, Debug)]
@@ -70,9 +66,7 @@ impl LspFile {
 	}
 
 	// used to get a valid lsp position for the current file
-	fn lsp_to_lsp(&self, lsp_pos: &Position) -> Position {
-		self.byte_to_lsp(self.lsp_to_byte(lsp_pos))
-	}
+	fn lsp_to_lsp(&self, lsp_pos: &Position) -> Position { self.byte_to_lsp(self.lsp_to_byte(lsp_pos)) }
 
 	pub fn line_char(&self, line: usize) -> usize {
 		// a useful case to expect
@@ -98,8 +92,7 @@ impl LspFile {
 			return *self.ranges.last().unwrap() + 1;
 		}
 
-		let start_byte =
-			if lsp_pos.line == 0 { 0 } else { self.ranges.get(lsp_pos.line - 1).unwrap_or(&0) + 1 };
+		let start_byte = if lsp_pos.line == 0 { 0 } else { self.ranges.get(lsp_pos.line - 1).unwrap_or(&0) + 1 };
 
 		// get byte offset for character position in line
 		let slice = self.file.slice(start_byte..self.ranges[lsp_pos.line]).unwrap_or("").chars();
@@ -152,7 +145,7 @@ impl LspFile {
 	pub fn byte_range_to_lsp_range(&self, byte_range: &std::ops::Range<usize>) -> Range {
 		let start = self.byte_to_lsp(byte_range.start);
 		let end = self.byte_to_lsp(byte_range.end);
-		Range{ start, end }
+		Range { start, end }
 	}
 
 	// used to update ranges from TextDocumentContentChangeEvent

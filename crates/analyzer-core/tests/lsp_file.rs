@@ -1,7 +1,7 @@
 extern crate analyzer_core;
 use std::time::{Duration, Instant};
 
-use analyzer_core::lsp_file::{LspFile, Position, ChangeEvent, Range};
+use analyzer_core::lsp_file::{ChangeEvent, LspFile, Position, Range};
 
 fn check_parse_file(file: String, result: Vec<usize>) {
 	let lsp = LspFile::new(&file.clone());
@@ -152,14 +152,11 @@ fn soundness_test() {
 
 // helper function
 fn change_event((l1, c1): (usize, usize), (l2, c2): (usize, usize), t: String) -> ChangeEvent {
-	ChangeEvent {
-		range: Some(Range::new(Position::new(l1, c1), Position::new(l2, c2))),
-		text: t,
-	}
+	ChangeEvent { range: Some(Range::new(Position::new(l1, c1), Position::new(l2, c2))), text: t }
 }
 
 fn check_lazy_add(event: ChangeEvent, expect_str: String) {
-	// Both should be global consts 
+	// Both should be global consts
 	let original = "012\n456\n\n9\nbcde\n".to_string(); // Test String
 	let mut lsp = LspFile::new(&original.clone()); // Create default LspPos
 
@@ -176,7 +173,7 @@ fn check_lazy_add(event: ChangeEvent, expect_str: String) {
 
 #[test]
 fn test_lazy_add() {
-	// Both should be global consts 
+	// Both should be global consts
 	let original = "012\n456\n\n9\nbcde\n".to_string(); // Test String
 	let mut original_lsp = LspFile::new(&original.clone()); // Create default LspPos
 
@@ -237,10 +234,7 @@ fn test_lazy_add() {
 	// Corner Cases
 	// No Range provide
 	let mut lsp = original_lsp.clone();
-	let event = ChangeEvent {
-		range: None,
-		text: "hello\n".to_string(),
-	};
+	let event = ChangeEvent { range: None, text: "hello\n".to_string() };
 	lsp.lazy_add(&event);
 	let expected_lsp = LspFile::new(&"hello\n".to_string());
 	assert_eq!(expected_lsp.get_ranges(), lsp.get_ranges());
@@ -335,9 +329,7 @@ fn exhaustive_lazy_add() {
 					let expected_lsp = LspFile::new(&str);
 					parse_timer += clock.elapsed();
 
-					if expected_lsp.get_ranges() != lsp.get_ranges()
-						|| str != *lsp.get_file_content()
-					{
+					if expected_lsp.get_ranges() != lsp.get_ranges() || str != *lsp.get_file_content() {
 						println!("Lazy time:    {}ns", lazy_timer.as_nanos());
 						println!("Parser time:  {}ns", parse_timer.as_nanos());
 						println!(

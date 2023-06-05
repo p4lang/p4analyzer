@@ -510,7 +510,7 @@ impl<'a> PreprocessorState<'a> {
 #[cfg(test)]
 mod test {
 	use crate::{
-		base_abstractions::{FileId, Buffer},
+		base_abstractions::{Buffer, FileId},
 		lex,
 		lexer::Token,
 		Database,

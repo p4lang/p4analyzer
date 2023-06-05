@@ -10,7 +10,7 @@ use logos::Logos;
 
 use base_abstractions::*;
 use lexer::*;
-use lsp_file::{LspFile, ChangeEvent};
+use lsp_file::{ChangeEvent, LspFile};
 use preprocessor::*;
 
 // #[derive(Default)]

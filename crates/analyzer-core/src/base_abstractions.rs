@@ -1,7 +1,6 @@
 pub use logos::Span;
 
-use crate::lsp_file::LspFile;
-use crate::Database;
+use crate::{lsp_file::LspFile, Database};
 
 /// The input buffer.
 #[salsa::input]
