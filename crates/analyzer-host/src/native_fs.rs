@@ -69,7 +69,13 @@ pub mod native_fs {
 		}
 
 		fn file_change(event: Event) -> Option<Message> {
-			let paths = event.paths;
+			let mut paths = event.paths;
+			
+			paths.retain(|x| x.ends_with(".p4"));
+			if paths.is_empty() {
+				return None;
+			}
+			
 			match event.kind {
 				notify::EventKind::Any => None,
 				notify::EventKind::Access(_) => None,
@@ -158,7 +164,7 @@ pub mod native_fs {
 	use analyzer_abstractions::fs::EnumerableFileSystem;
 	use async_channel::Sender;
 	use cancellation::CancellationToken;
-use futures::lock::Mutex;
+	use futures::lock::Mutex;
 
 	use crate::json_rpc::message::Message;
 
@@ -190,4 +196,33 @@ use futures::lock::Mutex;
 			unreachable!("Wasm run-time reached native only code: NativeFs::file_contents() !!!")
 		}
 	}
+}
+
+#[cfg(test)]
+mod tests {
+	use cancellation::CancellationTokenSource;
+
+use crate::json_rpc::message::Message;
+
+use super::{*, native_fs::NativeFs};
+	use std::fs;
+
+    #[test]
+    fn it_works() {
+		// build test file location
+        let dir_name = "test_directory";
+        if fs::metadata(dir_name).is_ok() {
+            panic!("Directory '{}' already exists!", dir_name);
+        }
+        fs::create_dir(dir_name).expect("Failed to create directory");
+		
+		// build NativeFs
+		let token = CancellationTokenSource::new();
+		let (send, req) = async_channel::unbounded::<Message>();
+		let object = NativeFs::new(token.token().clone(), send.clone());
+		
+
+		// clean up
+		fs::remove_dir(dir_name).expect("Failed to delete directory");
+    }
 }
