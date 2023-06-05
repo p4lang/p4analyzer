@@ -75,7 +75,7 @@ pub(crate) struct State {
 	pub analyzer: Arc<AnalyzerWrapper>,
 
 	/// The file system that can be used to enumerate folders and retrieve file contents.
-	pub file_system: AnyEnumerableFileSystem,
+	pub file_system: Arc<AnyEnumerableFileSystem>,
 
 	/// The [`RequestManager`] instance to use when sending LSP client requests.
 	pub request_manager: RequestManager,
@@ -95,7 +95,7 @@ impl State {
 	pub fn new(
 		trace_value: Option<TraceValueAccessor>,
 		request_manager: RequestManager,
-		file_system: AnyEnumerableFileSystem,
+		file_system: Arc<AnyEnumerableFileSystem>,
 	) -> Self {
 		let background_parse_channel = async_channel::unbounded::<Url>();
 		let (sender, _) = background_parse_channel.clone();
@@ -176,7 +176,7 @@ impl State {
 
 	async fn process_background_analyze_requests(
 		receiver: Receiver<Url>,
-		file_system: AnyEnumerableFileSystem,
+		file_system: Arc<AnyEnumerableFileSystem>,
 		workspace_manager: WorkspaceManager,
 		analyzer: Arc<AnalyzerWrapper>,
 	) {
@@ -193,7 +193,7 @@ impl State {
 		loop {
 			match receiver.recv().await {
 				Ok(file_url) => {
-					let file_system_clone = Arc::clone(&file_system);
+					let file_system = file_system.clone();
 					let workspace_manager = workspace_manager.clone();
 					let analyzer = analyzer.clone();
 
@@ -208,7 +208,7 @@ impl State {
 							return;
 						}
 
-						match file_system_clone.lock().await.file_contents(file_url.clone()).await {
+						match file_system.file_contents(file_url.clone()).await {
 							Some(text) => {
 								info!(file_uri = file_url.as_str(), "Got text: {}", text);
 

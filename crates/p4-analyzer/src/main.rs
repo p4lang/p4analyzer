@@ -1,6 +1,7 @@
 mod cli;
 mod commands;
 mod driver;
+mod native_fs;
 
 use analyzer_abstractions::tracing::{subscriber, Level, Subscriber};
 use analyzer_host::tracing::tracing_subscriber::{
@@ -42,18 +43,7 @@ pub async fn main() {
 			let mut layers = if let Some((layer, _)) = default_logging_layer { vec![layer] } else { vec![] };
 
 			let cmd = match cmd.subcommand {
-				P4AnalyzerCmd::Server(config) => {
-					// native file system isn't supported for web assembly
-					#[cfg(not(target_arch = "wasm32"))]
-					{
-						if config.nativefile {
-							println!("Flag not supported!!!\nWeb assembly doesn't support system calls by design.\n");
-							return;
-						}
-					}
-
-					RunnableCommand(LspServerCommand::new(config, DriverType::Console))
-				}
+				P4AnalyzerCmd::Server(config) => RunnableCommand(LspServerCommand::new(config, DriverType::Console)),
 				_ => unreachable!(),
 			};
 

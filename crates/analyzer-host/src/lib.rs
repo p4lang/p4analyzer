@@ -3,7 +3,6 @@ mod fsm;
 pub mod json_rpc;
 mod lsp;
 mod lsp_impl;
-pub mod native_fs;
 pub mod tracing;
 
 use analyzer_abstractions::{
@@ -14,12 +13,11 @@ use async_channel::{Receiver, Sender};
 use cancellation::{CancellationToken, OperationCanceled};
 use fs::LspEnumerableFileSystem;
 use fsm::LspProtocolMachine;
-use futures::lock::Mutex;
 use json_rpc::message::Message;
 use std::sync::Arc;
 use tracing::TraceValueAccessor;
 
-use crate::{lsp::request::RequestManager, native_fs::native_fs::NativeFs};
+use crate::lsp::request::RequestManager;
 
 /// A tuple type that represents both a sender and a receiver of [`Message`] instances.
 pub type MessageChannel = (Sender<Message>, Receiver<Message>);
@@ -29,7 +27,7 @@ pub struct AnalyzerHost {
 	sender: Sender<Message>,
 	receiver: Receiver<Message>,
 	trace_value: Option<TraceValueAccessor>,
-	file_system: Option<AnyEnumerableFileSystem>,
+	file_system: Option<Arc<AnyEnumerableFileSystem>>,
 }
 
 impl AnalyzerHost {
@@ -41,7 +39,7 @@ impl AnalyzerHost {
 	pub fn new(
 		message_channel: MessageChannel,
 		trace_value: Option<TraceValueAccessor>,
-		file_system: Option<AnyEnumerableFileSystem>,
+		file_system: Option<Arc<AnyEnumerableFileSystem>>,
 	) -> Self {
 		let (sender, receiver) = message_channel;
 
@@ -52,20 +50,14 @@ impl AnalyzerHost {
 	///
 	/// Once started, request messages will be received through the message channel, forwarded for processing to the internal
 	/// state machine, with response messages sent back through the message channel for the client to process.
-	pub async fn start(&self, cancel_token: Arc<CancellationToken>, native_fs: bool) -> Result<(), OperationCanceled> {
+	pub async fn start(&self, cancel_token: Arc<CancellationToken>) -> Result<(), OperationCanceled> {
 		let (requests_sender, requests_receiver) = async_channel::unbounded::<Message>();
 		let (responses_sender, responses_receiver) = async_channel::unbounded::<Message>();
 		let request_manager = RequestManager::new((self.sender.clone(), responses_receiver.clone()));
 		// If no file system was supplied, then default to the standard LSP based one.
-		let file_system: AnyEnumerableFileSystem = match self.file_system.as_ref() {
+		let file_system: Arc<AnyEnumerableFileSystem> = match self.file_system.as_ref() {
 			Some(fs) => fs.clone(),
-			None => {
-				if native_fs {
-					NativeFs::new(cancel_token.clone(), requests_sender.clone())
-				} else {
-					Arc::new(Mutex::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone()))))
-				}
-			}
+			None => Arc::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone()))),
 		};
 
 		match join_all(
@@ -119,7 +111,7 @@ impl AnalyzerHost {
 	async fn run_protocol_machine(
 		&self,
 		request_manager: RequestManager,
-		file_system: AnyEnumerableFileSystem,
+		file_system: Arc<AnyEnumerableFileSystem>,
 		requests_receiver: Receiver<Message>,
 		cancel_token: Arc<CancellationToken>,
 	) -> Result<(), OperationCanceled> {

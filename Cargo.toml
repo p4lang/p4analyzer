@@ -1,7 +1,5 @@
 [workspace]
 members = ["./crates/*"]
-edition = "2021"
-resolver = "2"
 
 [profile.release]
 debug = 2

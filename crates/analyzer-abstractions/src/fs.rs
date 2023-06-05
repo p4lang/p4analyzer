@@ -1,8 +1,6 @@
-use std::{sync::Arc, any::Any};
-
-use futures::lock::Mutex;
 use lsp_types::{TextDocumentIdentifier, Url};
 use serde::{Deserialize, Serialize};
+use std::any::Any;
 
 use crate::BoxFuture;
 
@@ -24,7 +22,7 @@ pub trait EnumerableFileSystem {
 	///
 	/// `file_pattern` is file glob pattern like `'*.p4'` that will be matched on paths relative to `folder_uri`.
 	fn enumerate_folder<'a>(
-		&'a mut self,
+		&'a self,
 		folder_uri: Url,
 		file_pattern: String,
 	) -> BoxFuture<'a, Vec<TextDocumentIdentifier>>;
@@ -32,7 +30,11 @@ pub trait EnumerableFileSystem {
 	/// Retrieves the contents of a given file.
 	fn file_contents<'a>(&'a self, file_uri: Url) -> BoxFuture<'a, Option<String>>;
 
-	fn as_any(&mut self) ->  &mut dyn Any;
+	// Signals if the applied filesystem uses Native OS Reads or requests to LSP client
+	fn is_native(&self) -> bool;
+
+	// Allows dyn object to be turned to dyn Any for a concret type to be produced
+	fn as_any(&mut self) -> &mut dyn Any;
 }
 
-pub type AnyEnumerableFileSystem = Arc<Mutex<Box<dyn EnumerableFileSystem + Send + Sync + 'static>>>;
+pub type AnyEnumerableFileSystem = Box<dyn EnumerableFileSystem + Send + Sync + 'static>;

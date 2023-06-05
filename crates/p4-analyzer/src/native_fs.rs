@@ -1,11 +1,8 @@
-// Web Assembly is a sandbox, and by design shouldn't have access to network, file systenm, or underlying operating system.
-// Simply removing this file system code from wasm build is the best way
-#[cfg(not(target_arch = "wasm32"))]
 pub mod native_fs {
-	use std::{path::PathBuf, sync::Arc, thread, any::Any};
+	use std::{any::Any, path::PathBuf, sync::Arc, thread};
 
 	use analyzer_abstractions::{
-		fs::EnumerableFileSystem,
+		fs::{AnyEnumerableFileSystem, EnumerableFileSystem},
 		lsp_types::{FileChangeType, FileEvent, TextDocumentIdentifier, Url},
 		BoxFuture,
 	};
@@ -15,16 +12,16 @@ pub mod native_fs {
 	use notify::{Event, RecursiveMode, Watcher};
 	use regex::Regex;
 
-	use crate::json_rpc::message::{Message, Notification};
+	use analyzer_host::json_rpc::message::{Message, Notification};
 
 	pub struct NativeFs {
-		watcher: notify::RecommendedWatcher,
-		watching: Vec<Url>,
+		//	watcher: notify::RecommendedWatcher,
+		//	watching: Vec<Url>,
 	}
 
 	impl NativeFs {
-		pub fn new(token: Arc<CancellationToken>, request_sender: Sender<Message>) -> Arc<Mutex<Box<dyn EnumerableFileSystem + Send + Sync + 'static>>> {
-			let watcher = notify::recommended_watcher(move |res| match res {
+		pub fn new() -> AnyEnumerableFileSystem {
+			/*let watcher = notify::recommended_watcher(move |res| match res {
 				Ok(event) => {
 					if let Some(mess) = Self::file_change(event) {
 						let _ = futures::executor::block_on(request_sender.send(mess));
@@ -32,27 +29,29 @@ pub mod native_fs {
 				}
 				Err(e) => println!("watch error: {:?}", e),
 			})
-			.unwrap();
+			.unwrap();*/
 
-			let object: Arc<Mutex<Box<dyn EnumerableFileSystem + Send + Sync + 'static>>> = Arc::new(Mutex::new(Box::new(NativeFs { watcher, watching: Vec::new() })));
+			//let object: Arc<Mutex<Box<dyn EnumerableFileSystem + Send + Sync + 'static>>> = Arc::new(Mutex::new(Box::new(NativeFs { watcher, watching: Vec::new() })));
+			let object: AnyEnumerableFileSystem = Box::new(NativeFs {});
 
+			/*
 			// Start a new thread as CancellationToken::run() is blocking
 			// only 1 FileSystem should exist per P4Analyzer so not to worried about many child threads
 			let clone = object.clone();
 			thread::spawn(move || {
 				token.run(|| {
 					futures::executor::block_on(clone.lock()).as_any().downcast_mut::<NativeFs>().unwrap().stop_watching_all();
-				}, 
+				},
 				|| {});
 			});
-
+			*/
 			object
 		}
-
+		/*
 		// No current way to called the `watcher.unwatch()` function
 		fn start_folder_watch(&mut self, folder_uri: &Url) {
 			self.watching.push(folder_uri.clone()); // add path to vector
-			self.watcher.watch(folder_uri.path().as_ref(), RecursiveMode::Recursive).unwrap(); // start watcher		
+			self.watcher.watch(folder_uri.path().as_ref(), RecursiveMode::Recursive).unwrap(); // start watcher
 		}
 
 		fn stop_watching_all(&mut self) {
@@ -70,12 +69,12 @@ pub mod native_fs {
 
 		fn file_change(event: Event) -> Option<Message> {
 			let mut paths = event.paths;
-			
+
 			paths.retain(|x| x.ends_with(".p4"));
 			if paths.is_empty() {
 				return None;
 			}
-			
+
 			match event.kind {
 				notify::EventKind::Any => None,
 				notify::EventKind::Access(_) => None,
@@ -98,20 +97,20 @@ pub mod native_fs {
 			// no sure of the difference between `workspace/didChangeWatchedFiles` and `workspace/didDeleteFiles` or `workspace/didCreateFiles`
 			Some(Message::Notification(Notification { method: "workspace/didChangeWatchedFiles".into(), params }))
 		}
+		*/
 	}
-
 	// EnumerableFileSystem part of NativeFs will just use std::fs methods for the functions
 	impl EnumerableFileSystem for NativeFs {
-		fn as_any(&mut self) -> &mut dyn Any {
-			self
-		}
+		fn as_any(&mut self) -> &mut dyn Any { self }
+
+		fn is_native(&self) -> bool { true }
 
 		fn enumerate_folder<'a>(
-			&'a mut self,
+			&'a self,
 			folder_uri: Url,
 			file_pattern: String,
 		) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {
-			self.start_folder_watch(&folder_uri); // add folder to watch list
+			//self.start_folder_watch(&folder_uri); // add folder to watch list
 
 			async fn enumerate_folder(folder_uri: Url, file_pattern: String) -> Vec<TextDocumentIdentifier> {
 				let folder = folder_uri.path();
@@ -156,73 +155,30 @@ pub mod native_fs {
 	}
 }
 
-// add wasm32 version for build to be completed but it's unreachable code
-#[cfg(target_arch = "wasm32")]
-pub mod native_fs {
-	use std::sync::Arc;
-	use std::any::Any;
-	use analyzer_abstractions::fs::EnumerableFileSystem;
-	use async_channel::Sender;
-	use cancellation::CancellationToken;
-	use futures::lock::Mutex;
-
-	use crate::json_rpc::message::Message;
-
-	pub struct NativeFs {}
-
-	impl NativeFs {
-		pub fn new(_: Arc<CancellationToken>, _: Sender<Message>) -> Arc<Mutex<Box<dyn EnumerableFileSystem + Send + Sync + 'static>>> {
-			unreachable!("Wasm run-time reached native only code: NativeFs::new() !!!")
-		}
-	}
-
-	impl EnumerableFileSystem for NativeFs {
-		fn as_any(&mut self) -> &mut dyn Any {
-			unreachable!("Wasm run-time reached native only code: NativeFs::as_any() !!!")
-		}
-
-		fn enumerate_folder<'a>(
-			&'a mut self,
-			_: analyzer_abstractions::lsp_types::Url,
-			_: String,
-		) -> analyzer_abstractions::BoxFuture<'a, Vec<analyzer_abstractions::lsp_types::TextDocumentIdentifier>> {
-			unreachable!("Wasm run-time reached native only code: NativeFs::enumerate_folder() !!!")
-		}
-
-		fn file_contents<'a>(
-			&'a self,
-			_: analyzer_abstractions::lsp_types::Url,
-		) -> analyzer_abstractions::BoxFuture<'a, Option<String>> {
-			unreachable!("Wasm run-time reached native only code: NativeFs::file_contents() !!!")
-		}
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use cancellation::CancellationTokenSource;
 
-use crate::json_rpc::message::Message;
+	use analyzer_host::json_rpc::message::Message;
 
-use super::{*, native_fs::NativeFs};
+	use super::{native_fs::NativeFs, *};
 	use std::fs;
 
-    #[test]
-    fn it_works() {
+	#[test]
+	fn it_works() {
 		// build test file location
-        let dir_name = "test_directory";
-        if fs::metadata(dir_name).is_ok() {
-            panic!("Directory '{}' already exists!", dir_name);
-        }
-        fs::create_dir(dir_name).expect("Failed to create directory");
-		
+		let dir_name = "test_directory";
+		if fs::metadata(dir_name).is_ok() {
+			panic!("Directory '{}' already exists!", dir_name);
+		}
+		fs::create_dir(dir_name).expect("Failed to create directory");
+
 		// build NativeFs
 		let token = CancellationTokenSource::new();
 		let (send, req) = async_channel::unbounded::<Message>();
-		let object = NativeFs::new(token.token().clone(), send.clone());
-		
+		let object = NativeFs::new();
 
 		// clean up
 		fs::remove_dir(dir_name).expect("Failed to delete directory");
-    }
+	}
 }

@@ -38,7 +38,7 @@ impl LspProtocolMachine {
 	pub fn new(
 		trace_value: Option<TraceValueAccessor>,
 		request_manager: RequestManager,
-		file_system: AnyEnumerableFileSystem,
+		file_system: Arc<AnyEnumerableFileSystem>,
 	) -> Self {
 		let dispatchers = RwLock::new(LspProtocolMachine::create_dispatchers());
 

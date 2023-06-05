@@ -26,12 +26,12 @@ impl LspEnumerableFileSystem {
 }
 
 impl EnumerableFileSystem for LspEnumerableFileSystem {
-	fn as_any(&mut self) -> &mut dyn Any {
-		self
-	}
+	fn as_any(&mut self) -> &mut dyn Any { self }
+
+	fn is_native(&self) -> bool { false }
 
 	fn enumerate_folder<'a>(
-		&'a mut self,
+		&'a self,
 		file_uri: Url,
 		file_pattern: String,
 	) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {

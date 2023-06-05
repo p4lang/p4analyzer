@@ -23,6 +23,9 @@ ctrlc = "3.2.3"
 tracing-appender = "0.2.2"
 queues = "1.0.2"
 async-std = "1.12.0"
+notify = "6.0.0"
+regex = "1.8.3"
+futures = "0.3.28"
 
 [dev-dependencies]
 tester = { path = "../tester" }

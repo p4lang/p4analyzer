@@ -16,7 +16,7 @@ mod main_tests {
 		let cmd = P4Analyzer {
 			logpath: None,
 			loglevel: None,
-			subcommand: P4AnalyzerCmd::Server(flags::Server { stdio: false, nativefile: false }),
+			subcommand: P4AnalyzerCmd::Server(flags::Server { stdio: false, nativefilewatch: false }),
 			version: false,
 		};
 		let res = create_default_logging_layer::<Registry>(&cmd);
@@ -64,7 +64,8 @@ mod main_tests {
 
 		let mut buffer = BufferStruct::new(queue);
 
-		let lsp = LspServerCommand::new(Server { stdio: false, nativefile: false }, DriverType::Buffer(buffer.clone()));
+		let lsp =
+			LspServerCommand::new(Server { stdio: false, nativefilewatch: false }, DriverType::Buffer(buffer.clone()));
 		let obj = RunnableCommand::<LspServerCommand>(lsp);
 
 		let future = RunnableCommand::<LspServerCommand>::run(&obj);
@@ -154,7 +155,8 @@ mod lsp_server_tests {
 
 	#[tokio::test]
 	async fn command_aborts_when_cancelled() {
-		let lsp = LspServerCommand::new(Server { stdio: false, nativefile: false }, crate::driver::DriverType::Console);
+		let lsp =
+			LspServerCommand::new(Server { stdio: false, nativefilewatch: false }, crate::driver::DriverType::Console);
 		let token = CancellationTokenSource::new();
 		let (res, _) = tokio::join!(lsp.run(token.token().clone()), async { token.cancel() });
 		assert!(res.is_err());

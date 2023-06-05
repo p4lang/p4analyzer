@@ -36,12 +36,12 @@ impl WorkspaceManager {
 	///
 	/// If `workspace_folders` is [`None`], then a root workspace folder will be used by default.
 	pub fn new(
-		file_system: AnyEnumerableFileSystem,
+		file_system: Arc<AnyEnumerableFileSystem>,
 		workspace_folders: Option<Vec<WorkspaceFolder>>,
 		background_load: Arc<AnyBackgroundLoad>,
 	) -> Self {
 		fn to_workspace(
-			file_system: AnyEnumerableFileSystem,
+			file_system: Arc<AnyEnumerableFileSystem>,
 			workspace_folder: WorkspaceFolder,
 			background_load: Arc<AnyBackgroundLoad>,
 		) -> (Url, Arc<Workspace>) {
@@ -127,7 +127,7 @@ impl<'a> IntoIterator for &'a WorkspaceManager {
 /// Encapsulates a collection of related files opened as part of a set managed by an LSP compliant host.
 #[derive(Clone)]
 pub(crate) struct Workspace {
-	file_system: AnyEnumerableFileSystem,
+	file_system: Arc<AnyEnumerableFileSystem>,
 	workspace_folder: WorkspaceFolder,
 	background_load: Arc<AnyBackgroundLoad>,
 	files: Arc<RwLock<HashMap<Url, Arc<File>>>>,
@@ -136,7 +136,7 @@ pub(crate) struct Workspace {
 impl Workspace {
 	/// Initializes a new [`Workspace`].
 	pub fn new(
-		file_system: AnyEnumerableFileSystem,
+		file_system: Arc<AnyEnumerableFileSystem>,
 		workspace_folder: WorkspaceFolder,
 		background_load: Arc<AnyBackgroundLoad>,
 	) -> Self {
@@ -184,12 +184,8 @@ impl Workspace {
 			}
 		}
 
-		let document_identifiers = self
-			.file_system
-			.lock()
-			.await
-			.enumerate_folder(self.uri(), RELATIVE_P4_SOURCEFILES_GLOBPATTERN.into())
-			.await;
+		let document_identifiers =
+			self.file_system.enumerate_folder(self.uri(), RELATIVE_P4_SOURCEFILES_GLOBPATTERN.into()).await;
 
 		info!(
 			workspace_uri = self.uri().as_str(),
