@@ -1,5 +1,6 @@
 pub mod base_abstractions;
 pub mod lexer;
+pub mod lsp_file;
 pub mod parser;
 pub mod preprocessor;
 
@@ -9,6 +10,7 @@ use logos::Logos;
 
 use base_abstractions::*;
 use lexer::*;
+use lsp_file::{ChangeEvent, LspFile};
 use preprocessor::*;
 
 // #[derive(Default)]
@@ -77,15 +79,28 @@ impl Analyzer {
 
 	fn filesystem(&self) -> HashMap<FileId, Buffer> { self.fs.map(|fs| fs.fs(&self.db)).unwrap_or_default() }
 
-	pub fn update(&mut self, file_id: FileId, input: String) {
+	pub fn file_change_event(&mut self, file_id: FileId, event_vec: &Vec<ChangeEvent>) {
 		let mut filesystem = self.filesystem();
-		filesystem.insert(file_id, Buffer::new(&self.db, input));
+
+		// TODO: avoid cloning
+		let mut lsp_file = self.get_file(file_id).clone();
+		for event in event_vec {
+			lsp_file.lazy_add(event);
+		}
+
+		filesystem.insert(file_id, Buffer::new(&self.db, lsp_file));
+		self.fs = Fs::new(&self.db, filesystem).into();
+	}
+
+	pub fn update(&mut self, file_id: FileId, input: &String) {
+		let mut filesystem = self.filesystem();
+		filesystem.insert(file_id, Buffer::from_string(&self.db, input));
 		self.fs = Fs::new(&self.db, filesystem).into();
 	}
 
 	pub fn input(&self, file_id: FileId) -> Option<&str> {
 		let buffer = self.buffer(file_id)?;
-		Some(buffer.contents(&self.db))
+		Some(buffer.file(&self.db).get_file_content())
 	}
 
 	pub fn buffer(&self, file_id: FileId) -> Option<Buffer> { self.filesystem().get(&file_id).copied() }
@@ -136,6 +151,8 @@ impl Analyzer {
 	pub fn path(&self, id: FileId) -> String { id.path(&self.db) }
 
 	pub fn files(&self) -> Vec<String> { self.filesystem().keys().map(|k| k.path(&self.db)).collect() }
+
+	pub fn get_file(&self, id: FileId) -> &LspFile { self.buffer(id).unwrap().file(&self.db) }
 }
 
 // TODO: trait for workspace logic?
@@ -210,7 +227,7 @@ where
 
 #[salsa::tracked(return_ref)]
 pub fn lex(db: &dyn crate::Db, file_id: FileId, buf: Buffer) -> LexedBuffer {
-	let contents = buf.contents(db);
+	let contents = buf.file(db).get_file_content();
 	let lexer = {
 		let db = unsafe { std::mem::transmute(db) };
 		Token::lexer_with_extras(contents, Lextras { db: Some(db), file_id })

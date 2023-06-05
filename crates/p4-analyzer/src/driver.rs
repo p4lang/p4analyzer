@@ -29,7 +29,6 @@ pub enum DriverType {
 }
 
 impl DriverType {
-
 	fn to_driver(&self) -> Driver {
 		match self {
 			DriverType::Console => console_driver(),
@@ -64,9 +63,7 @@ pub fn console_driver() -> Driver {
 }
 
 impl Driver {
-	pub fn new(driver_type: DriverType) -> Driver {
-		driver_type.to_driver()
-	}
+	pub fn new(driver_type: DriverType) -> Driver { driver_type.to_driver() }
 
 	/// Retrieves a [`MessageChannel`] from which [`Message`] instances can be received from (i.e., `stdin`) and sent to (i.e., `stdout`).
 	pub fn get_message_channel(&self) -> MessageChannel {

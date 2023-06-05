@@ -1,4 +1,4 @@
-use analyzer_core::base_abstractions::FileId;
+use analyzer_core::{base_abstractions::FileId, lsp_file::ChangeEvent};
 use async_rwlock::RwLock as AsyncRwLock;
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use analyzer_abstractions::{
 		CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
 		DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
 		DidOpenTextDocumentParams, DidSaveTextDocumentParams, FileChangeType, Hover, HoverContents, HoverParams,
-		MarkupContent, MarkupKind, Position, SetTraceParams, Url,
+		MarkupContent, MarkupKind, Position, Range, SetTraceParams, Url,
 	},
 	tracing::{error, info},
 };
@@ -20,7 +20,6 @@ use analyzer_abstractions::{
 use crate::{
 	fsm::LspServerStateDispatcher,
 	lsp::{
-		dispatch::Dispatch,
 		dispatch_target::{HandlerError, HandlerResult},
 		state::LspServerState,
 		DispatchBuilder,
@@ -133,8 +132,7 @@ async fn on_text_document_did_open(
 	let mut analyzer = state.analyzer.unwrap();
 
 	let file_id = analyzer.file_id(params.text_document.uri.as_str());
-
-	analyzer.update(file_id, params.text_document.text);
+	analyzer.update(file_id, &params.text_document.text);
 
 	file.open_or_update(file_id);
 
@@ -160,19 +158,22 @@ async fn on_text_document_did_change(
 		}
 	};
 
-	for change in params.content_changes {
-		let analyzer_abstractions::lsp_types::TextDocumentContentChangeEvent { range, range_length: _, text } = change;
-		if let Some(range) = range {
-			let range = lsp_range_to_byte_range(&input, range);
-			info!("replacing range {:?} of {:?} with {:?}", range, &input[range.clone()], text);
-			input.replace_range(range, &text);
-		} else {
-			input = text;
-		}
-	}
+	use analyzer_abstractions::lsp_types::TextDocumentContentChangeEvent;
+	let event_change = params
+		.content_changes
+		.into_iter()
+		.map(|TextDocumentContentChangeEvent { range, text, range_length: _ }| {
+			use analyzer_core::lsp_file as core;
+			let range = range.map(|Range { start, end }| core::Range {
+				start: core::Position { line: start.line as usize, character: start.character as usize },
+				end: core::Position { line: end.line as usize, character: end.character as usize },
+			});
+			ChangeEvent { range, text }
+		})
+		.collect();
 
-	// TODO: avoid cloning
-	analyzer.update(file_id, input.clone());
+	analyzer.file_change_event(file_id, &event_change);
+
 	file.open_or_update(file_id);
 	let diagnostics = process_diagnostics(&analyzer, file_id, &input);
 
@@ -214,7 +215,7 @@ async fn on_text_document_did_save(
 		let file_id = analyzer.file_id(params.text_document.uri.as_str());
 		let diagnostics = process_diagnostics(&analyzer, file_id, &text);
 		// TODO: report diagnostics, and process *after* the update below!
-		analyzer.update(file_id, text);
+		analyzer.update(file_id, &text);
 		file.open_or_update(file_id);
 	}
 
@@ -242,7 +243,7 @@ async fn created_file(uri: &Url, state: &Arc<AsyncRwLock<State>>) {
 		Ok(file_id) => {
 			let lock = state.write().await;
 			let content = lock.file_system.file_contents(uri.clone()).await.unwrap_or_default();
-			lock.analyzer.unwrap().update(file_id, content);
+			lock.analyzer.unwrap().update(file_id, &content);
 			info!("{} file updated from file system", uri.path());
 		}
 		Err(err) => {
@@ -290,15 +291,21 @@ fn process_diagnostics(
 	input: &str,
 ) -> Vec<analyzer_abstractions::lsp_types::Diagnostic> {
 	let diagnostics = analyzer.diagnostics(file_id);
-
+	let lsp = analyzer.get_file(file_id);
 	diagnostics
 		.into_iter()
 		.map(|d| {
 			use analyzer_abstractions::lsp_types::{Diagnostic, DiagnosticSeverity};
 			use analyzer_core::base_abstractions::Severity;
 
+			let std::ops::Range { start, end } = d.location;
+			let (start, end) = (lsp.byte_to_lsp(start), lsp.byte_to_lsp(end));
+			let range = Range {
+				start: Position { line: start.line as u32, character: start.character as u32 },
+				end: Position { line: end.line as u32, character: end.character as u32 },
+			};
 			Diagnostic {
-				range: byte_range_to_lsp_range(input, d.location),
+				range,
 				severity: Some(match d.severity {
 					Severity::Info => DiagnosticSeverity::INFORMATION,
 					Severity::Hint => DiagnosticSeverity::HINT,
@@ -310,47 +317,4 @@ fn process_diagnostics(
 			}
 		})
 		.collect()
-}
-
-fn lsp_range_to_byte_range(input: &str, range: analyzer_abstractions::lsp_types::Range) -> std::ops::Range<usize> {
-	let start = position_to_byte_offset(input, range.start);
-	let end = position_to_byte_offset(input, range.end);
-	start..end
-}
-
-fn byte_range_to_lsp_range(input: &str, range: std::ops::Range<usize>) -> analyzer_abstractions::lsp_types::Range {
-	let start = byte_offset_to_position(input, range.start);
-	let end = byte_offset_to_position(input, range.end);
-	analyzer_abstractions::lsp_types::Range::new(start, end)
-}
-
-// FIXME: UTF8?
-fn position_to_byte_offset(input: &str, pos: Position) -> usize {
-	let Position { line: line_index, character } = pos;
-	let line_index = line_index as usize;
-
-	let mut offset = 0;
-	for (index, line) in input.split_inclusive('\n').enumerate() {
-		if index == line_index {
-			offset += line.as_bytes().len().min(character as usize);
-			break;
-		}
-		offset += line.as_bytes().len()
-	}
-	offset
-}
-
-fn byte_offset_to_position(input: &str, offset: usize) -> Position {
-	let mut line_number = 0;
-	let mut offset_counter = 0;
-
-	for (index, line) in input.split_inclusive('\n').enumerate() {
-		line_number = index;
-		if offset_counter + line.len() > offset {
-			break;
-		}
-		offset_counter += line.len();
-	}
-
-	Position::new(line_number as u32, (offset - offset_counter) as u32)
 }

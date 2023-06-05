@@ -1,10 +1,19 @@
 pub use logos::Span;
 
+use crate::{lsp_file::LspFile, Database};
+
 /// The input buffer.
 #[salsa::input]
 pub struct Buffer {
 	#[return_ref]
-	pub contents: String,
+	pub file: LspFile,
+}
+
+impl Buffer {
+	pub fn from_string(db: &Database, file: &String) -> Buffer {
+		let lsp_file = LspFile::new(file);
+		Buffer::new(db, lsp_file)
+	}
 }
 
 #[salsa::interned]

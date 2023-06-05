@@ -45,7 +45,9 @@ impl AnalyzerWrapper {
 
 			match base_url.join(path) {
 				Ok(target_url) => Ok(target_url.as_str().into()),
-				Err(err) => Err(format!("Could not find path '{}' (relative to '{}'). {}", path, absolute_base_url, err)),
+				Err(err) => {
+					Err(format!("Could not find path '{}' (relative to '{}'). {}", path, absolute_base_url, err))
+				}
 			}
 		};
 		let require = move |file_path: &str| background_queue.enqueue(Url::parse(file_path).unwrap());
@@ -182,10 +184,10 @@ impl State {
 			let mut analyzer = analyzer.unwrap();
 			let file_id = analyzer.file_id(uri);
 
-			analyzer.update(file_id, text);
+			analyzer.update(file_id, &text);
 			analyzer.preprocessed(file_id);
 
-            file_id
+			file_id
 		}
 
 		loop {
@@ -212,7 +214,9 @@ impl State {
 
 								// If the file has been opened in the IDE during the fetching of its contents, then simply
 								// throw it all away. The IDE is now the source of truth for this file...
-								if file.is_open_in_ide() { return }
+								if file.is_open_in_ide() {
+									return;
+								}
 
 								// ...otherwise, update its parsed unit.
 								let file_id = analyze_source_text(&analyzer, file_url.as_str(), text);
@@ -232,9 +236,7 @@ impl State {
 }
 
 impl Drop for State {
-	fn drop(&mut self) {
-			self.background_parse_channel.0.close();
-	}
+	fn drop(&mut self) { self.background_parse_channel.0.close(); }
 }
 
 #[derive(Clone)]
