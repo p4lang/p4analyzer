@@ -1,7 +1,7 @@
 pub mod fs;
 mod fsm;
 pub mod json_rpc;
-mod lsp;
+pub mod lsp;
 mod lsp_impl;
 pub mod tracing;
 
