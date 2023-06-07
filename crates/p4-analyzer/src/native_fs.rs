@@ -1,110 +1,19 @@
 pub mod native_fs {
-	use std::{any::Any, path::{PathBuf, Path}, sync::Arc, thread};
-
 	use analyzer_abstractions::{
 		fs::{AnyEnumerableFileSystem, EnumerableFileSystem},
-		lsp_types::{FileChangeType, FileEvent, TextDocumentIdentifier, Url},
+		lsp_types::{TextDocumentIdentifier, Url},
 		BoxFuture,
 	};
-	use async_channel::Sender;
-	use cancellation::CancellationToken;
-	use futures::lock::Mutex;
-	use notify::{Event, RecursiveMode, Watcher};
 	use glob::glob;
-	use analyzer_host::json_rpc::message::{Message, Notification};
 
-	pub struct NativeFs {
-		//	watcher: notify::RecommendedWatcher,
-		//	watching: Vec<Url>,
-	}
+	pub struct NativeFs {}
 
 	impl NativeFs {
-		pub fn new() -> AnyEnumerableFileSystem {
-			/*let watcher = notify::recommended_watcher(move |res| match res {
-				Ok(event) => {
-					if let Some(mess) = Self::file_change(event) {
-						let _ = futures::executor::block_on(request_sender.send(mess));
-					}
-				}
-				Err(e) => println!("watch error: {:?}", e),
-			})
-			.unwrap();*/
-
-			//let object: Arc<Mutex<Box<dyn EnumerableFileSystem + Send + Sync + 'static>>> = Arc::new(Mutex::new(Box::new(NativeFs { watcher, watching: Vec::new() })));
-			let object: AnyEnumerableFileSystem = Box::new(NativeFs {});
-
-			/*
-			// Start a new thread as CancellationToken::run() is blocking
-			// only 1 FileSystem should exist per P4Analyzer so not to worried about many child threads
-			let clone = object.clone();
-			thread::spawn(move || {
-				token.run(|| {
-					futures::executor::block_on(clone.lock()).as_any().downcast_mut::<NativeFs>().unwrap().stop_watching_all();
-				},
-				|| {});
-			});
-			*/
-			object
-		}
-		/*
-		// No current way to called the `watcher.unwatch()` function
-		fn start_folder_watch(&mut self, folder_uri: &Url) {
-			self.watching.push(folder_uri.clone()); // add path to vector
-			self.watcher.watch(folder_uri.path().as_ref(), RecursiveMode::Recursive).unwrap(); // start watcher
-		}
-
-		fn stop_watching_all(&mut self) {
-			for elm in &self.watching {
-				self.watcher.unwatch(elm.path().as_ref()).unwrap();
-			}
-			self.watching.clear();
-		}
-
-		// has to be manually called
-		pub fn stop_folder_watch(&mut self, folder_uri: &Url) {
-			self.watching.retain(|x| *x != *folder_uri); // remove from vector
-			self.watcher.unwatch(folder_uri.path().as_ref()).unwrap();	// if exists with unwatch it
-		}
-
-		fn file_change(event: Event) -> Option<Message> {
-			let mut paths = event.paths;
-
-			paths.retain(|x| x.ends_with(".p4"));
-			if paths.is_empty() {
-				return None;
-			}
-
-			match event.kind {
-				notify::EventKind::Any => None,
-				notify::EventKind::Access(_) => None,
-				notify::EventKind::Create(_) => Self::create_message(paths, FileChangeType::CREATED),
-				notify::EventKind::Modify(_) => Self::create_message(paths, FileChangeType::CHANGED),
-				notify::EventKind::Remove(_) => Self::create_message(paths, FileChangeType::DELETED),
-				notify::EventKind::Other => None,
-			}
-		}
-
-		fn create_message(paths: Vec<PathBuf>, event_type: FileChangeType) -> Option<Message> {
-			let files = paths
-				.into_iter()
-				.map(|x| FileEvent { uri: Url::parse(x.to_str().unwrap()).unwrap(), typ: event_type })
-				.collect();
-
-			let create_files_params = analyzer_abstractions::lsp_types::DidChangeWatchedFilesParams { changes: files };
-			let params = serde_json::json!(create_files_params);
-
-			// no sure of the difference between `workspace/didChangeWatchedFiles` and `workspace/didDeleteFiles` or `workspace/didCreateFiles`
-			Some(Message::Notification(Notification { method: "workspace/didChangeWatchedFiles".into(), params }))
-		}
-		*/
+		pub fn new() -> AnyEnumerableFileSystem { Box::new(NativeFs {}) }
 	}
 
 	// EnumerableFileSystem part of NativeFs will just use std::fs methods for the functions
 	impl EnumerableFileSystem for NativeFs {
-		fn as_any(&mut self) -> &mut dyn Any { self }
-
-		fn is_native(&self) -> bool { true }
-
 		fn enumerate_folder<'a>(
 			&'a self,
 			folder_uri: Url,
@@ -150,10 +59,10 @@ pub mod native_fs {
 
 #[cfg(test)]
 mod tests {
+	use super::native_fs::NativeFs;
 	use analyzer_abstractions::lsp_types::Url;
-	use super::{native_fs::NativeFs};
-	use std::{fs, path::PathBuf};
 	use analyzer_host::lsp::RELATIVE_P4_SOURCEFILES_GLOBPATTERN;
+	use std::{fs, path::PathBuf};
 
 	#[tokio::test]
 	async fn test_enumerate_folder() {
@@ -170,8 +79,8 @@ mod tests {
 		let url = Url::from_directory_path(fs::canonicalize(&PathBuf::from(dir_name)).unwrap()).unwrap();
 
 		// tests
-		let result = object.enumerate_folder(url.clone(), RELATIVE_P4_SOURCEFILES_GLOBPATTERN.into()).await;		
-		
+		let result = object.enumerate_folder(url.clone(), RELATIVE_P4_SOURCEFILES_GLOBPATTERN.into()).await;
+
 		// Number of results
 		assert_eq!(result.len(), 3);
 		// URL content
@@ -253,7 +162,7 @@ mod tests {
 		let result = object.enumerate_folder(url.clone(), RELATIVE_P4_SOURCEFILES_GLOBPATTERN.into()).await;
 		// pass URL into file_content()
 		let conent = object.file_contents(result[0].uri.clone()).await;
-		
+
 		// tests
 		assert!(conent.is_some());
 		assert_eq!(conent.unwrap(), test_string);

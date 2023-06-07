@@ -1,6 +1,5 @@
 use lsp_types::{TextDocumentIdentifier, Url};
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 
 use crate::BoxFuture;
 
@@ -29,12 +28,6 @@ pub trait EnumerableFileSystem {
 
 	/// Retrieves the contents of a given file.
 	fn file_contents<'a>(&'a self, file_uri: Url) -> BoxFuture<'a, Option<String>>;
-
-	// Signals if the applied filesystem uses Native OS Reads or requests to LSP client
-	fn is_native(&self) -> bool;
-
-	// Allows dyn object to be turned to dyn Any for a concret type to be produced
-	fn as_any(&mut self) -> &mut dyn Any;
 }
 
 pub type AnyEnumerableFileSystem = Box<dyn EnumerableFileSystem + Send + Sync + 'static>;

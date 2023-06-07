@@ -19,9 +19,6 @@ xflags::xflags! {
 		default cmd server {
 			/// Use the 'stdio' transport (default).
 			optional --stdio
-
-			/// Optional flag for choosing the native file watcher instead of let LSP client to handle it with Requsts
-			optional -n,--nativefilewatch
 		}
 	}
 }
@@ -44,7 +41,6 @@ pub enum P4AnalyzerCmd {
 #[derive(Debug)]
 pub struct Server {
 	pub stdio: bool,
-	pub nativefilewatch: bool,
 }
 
 impl P4Analyzer {

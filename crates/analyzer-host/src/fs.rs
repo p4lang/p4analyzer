@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use analyzer_abstractions::{
 	fs::EnumerableFileSystem,
 	lsp_types::{request::Request, TextDocumentIdentifier, Url},
@@ -26,10 +24,6 @@ impl LspEnumerableFileSystem {
 }
 
 impl EnumerableFileSystem for LspEnumerableFileSystem {
-	fn as_any(&mut self) -> &mut dyn Any { self }
-
-	fn is_native(&self) -> bool { false }
-
 	fn enumerate_folder<'a>(
 		&'a self,
 		file_uri: Url,
