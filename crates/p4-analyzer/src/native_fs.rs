@@ -19,15 +19,17 @@ pub mod native_fs {
 			folder_uri: Url,
 			file_pattern: String,
 		) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {
-			//self.start_folder_watch(&folder_uri); // add folder to watch list
 
 			async fn enumerate_folder(folder_uri: Url, file_pattern: String) -> Vec<TextDocumentIdentifier> {
-				let folder = folder_uri.to_file_path().unwrap();
-				let glob_pattern = folder.to_str().unwrap().to_owned() + file_pattern.as_str();
+				let mut folder_uri = folder_uri.clone();
+				folder_uri.path_segments_mut().unwrap().push(&file_pattern);
+				
+				let glob_pattern = folder_uri.to_file_path().unwrap();
+				let glob_pattern = glob_pattern.to_str().unwrap();
 
 				let mut output = Vec::new();
 
-				for files in glob(glob_pattern.as_str()).expect("Failed to read glob pattern") {
+				for files in glob(glob_pattern).expect("Failed to read glob pattern") {
 					match files {
 						Ok(path) => output.push(TextDocumentIdentifier { uri: Url::from_file_path(path).unwrap() }),
 						Err(e) => println!("{:?}", e),
@@ -63,11 +65,23 @@ mod tests {
 	use analyzer_abstractions::lsp_types::Url;
 	use analyzer_host::lsp::RELATIVE_P4_SOURCEFILES_GLOBPATTERN;
 	use std::{fs, path::PathBuf};
+	
+	struct CleanUp {
+		dir: String
+	}
+
+	impl Drop for CleanUp {
+		fn drop(&mut self) {
+			fs::remove_dir_all(self.dir.clone()).expect("Failed to delete directory");
+		}
+	}
 
 	#[tokio::test]
 	async fn test_enumerate_folder() {
 		// build test file_name location
 		let dir_name = "./test_directory0";
+		let clean_obj = CleanUp{dir: dir_name.into()};
+
 		fs::create_dir(dir_name).expect("Failed to create directory");
 		fs::File::create("./test_directory0/file1.p4").unwrap();
 		fs::File::create("./test_directory0/file2.not_p4").unwrap();
@@ -109,13 +123,15 @@ mod tests {
 		assert!(result[4].uri.to_file_path().unwrap().parent().unwrap().to_str().unwrap().ends_with("subdirectory0"));
 
 		// clean up
-		fs::remove_dir_all(dir_name).expect("Failed to delete directory");
+		drop(clean_obj);
 	}
 
 	#[tokio::test]
 	async fn test_file_content() {
 		// build test file_name
 		let dir_name = "./test_directory1";
+		let clean_obj = CleanUp{dir: dir_name.into()};
+		
 		let file_name = "./test_directory1/file0.p4";
 		let test_string = "hello world\n";
 		fs::create_dir(dir_name).expect("Failed to create directory");
@@ -141,13 +157,15 @@ mod tests {
 		assert_eq!(res.unwrap(), test_string);
 
 		// clean up
-		fs::remove_dir_all(dir_name).expect("Failed to delete directory");
+		drop(clean_obj);
 	}
 
 	#[tokio::test]
 	async fn test_both_together() {
 		// build test file_name
 		let dir_name = "./test_directory2";
+		let clean_obj = CleanUp{dir: dir_name.into()};
+
 		let file_name = "./test_directory2/file0.p4";
 		let test_string = "This is file0.p4 content\n";
 		fs::create_dir(dir_name).expect("Failed to create directory");
@@ -168,6 +186,6 @@ mod tests {
 		assert_eq!(conent.unwrap(), test_string);
 
 		// clean up
-		fs::remove_dir_all(dir_name).expect("Failed to delete directory");
+		drop(clean_obj);
 	}
 }
