@@ -21,6 +21,4 @@ pub(crate) fn create_dispatcher() -> LspServerStateDispatcher {
 }
 
 /// Responds to an 'exit' notification from the LSP client.
-async fn on_exit(_: LspServerState, _: (), _: Arc<AsyncRwLock<State>>) -> HandlerResult<()> {
-	Ok(())
-}
+async fn on_exit(_: LspServerState, _: (), _: Arc<AsyncRwLock<State>>) -> HandlerResult<()> { Ok(()) }

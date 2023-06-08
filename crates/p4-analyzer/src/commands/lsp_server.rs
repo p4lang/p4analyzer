@@ -1,6 +1,7 @@
 use crate::{
 	cli::flags::Server,
 	driver::{Driver, DriverType},
+	native_fs::native_fs::NativeFs,
 	Command, CommandInvocationError,
 };
 use analyzer_abstractions::{async_trait::async_trait, tracing::Subscriber};
@@ -57,7 +58,8 @@ impl Command for LspServerCommand {
 	async fn run(&self, cancel_token: Arc<CancellationToken>) -> Result<(), CommandInvocationError> {
 		// Passing `None` as the `file_system`. This will then default to the LSP based file system that works
 		// with the client extensions built as part of the P4 Analyzer Visual Studio Code extension.
-		let host = AnalyzerHost::new(self.driver.get_message_channel(), self.trace_value(), None);
+		let host =
+			AnalyzerHost::new(self.driver.get_message_channel(), self.trace_value(), Some(Arc::new(NativeFs::new())));
 
 		match tokio::join!(host.start(cancel_token.clone()), self.driver.start(cancel_token.clone())) {
 			(Ok(_), Ok(_)) => Ok(()),

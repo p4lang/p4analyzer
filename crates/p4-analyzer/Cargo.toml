@@ -23,6 +23,7 @@ ctrlc = "3.2.3"
 tracing-appender = "0.2.2"
 queues = "1.0.2"
 async-std = "1.12.0"
+glob = "0.3.1"
 
 [dev-dependencies]
 tester = { path = "../tester" }

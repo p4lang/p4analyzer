@@ -1,7 +1,7 @@
 pub mod fs;
 mod fsm;
 pub mod json_rpc;
-mod lsp;
+pub mod lsp;
 mod lsp_impl;
 pub mod tracing;
 
@@ -115,7 +115,8 @@ impl AnalyzerHost {
 		requests_receiver: Receiver<Message>,
 		cancel_token: Arc<CancellationToken>,
 	) -> Result<(), OperationCanceled> {
-		{ // Scope: for `protocol_machine`.
+		{
+			// Scope: for `protocol_machine`.
 			let mut protocol_machine = LspProtocolMachine::new(self.trace_value.clone(), request_manager, file_system);
 
 			while protocol_machine.is_active() && !cancel_token.is_canceled() {

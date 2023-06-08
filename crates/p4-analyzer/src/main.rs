@@ -1,6 +1,7 @@
 mod cli;
 mod commands;
 mod driver;
+mod native_fs;
 
 use analyzer_abstractions::tracing::{subscriber, Level, Subscriber};
 use analyzer_host::tracing::tracing_subscriber::{
