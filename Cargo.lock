@@ -959,6 +959,7 @@ name = "lsif-p4"
 version = "0.0.0"
 dependencies = [
  "analyzer-host",
+ "cancellation",
  "lsp-types 0.94.0",
  "p4-analyzer",
  "serde",

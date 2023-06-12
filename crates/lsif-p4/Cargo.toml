@@ -15,5 +15,6 @@ xflags = "0.3.0"        # CLI arguments
 lsp-types = "0.94.0"    # LSIF types
 serde = "1.0.164"       # JSon
 serde_json = "1.0.96"   # JSon
+cancellation = "0.1.0"  # CancellationTokenSource
 
 [dev-dependencies]

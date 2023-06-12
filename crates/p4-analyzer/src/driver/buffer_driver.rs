@@ -40,7 +40,7 @@ impl BufferStruct {
 		loop {
 			match self.read_queue_count.try_lock() {
 				Ok(mut guard) => {
-					if *guard == 0 {
+					if *guard == 0 || self.data.read().unwrap().input_queue.size() == 0 {
 						drop(guard);
 						async_std::task::sleep(Duration::from_millis(1)).await;
 						continue;
@@ -50,11 +50,6 @@ impl BufferStruct {
 					drop(guard); // drop lock to avoid dead locks
 			 // now wait for data lock because we're been give the all clear
 					let mut lock = self.data.write().unwrap();
-
-					if lock.input_queue.size() == 0 {
-						// return if empty
-						return Ok(None);
-					}
 
 					let ret = Some(lock.input_queue.remove().unwrap());
 					return Ok(ret);

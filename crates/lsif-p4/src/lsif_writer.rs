@@ -4,7 +4,11 @@ use lsp_types::{lsif::*, NumberOrString, Hover, HoverContents, MarkedString};
 
 use crate::flags::LsifP4Cmd;
 
-// TODO: Make it a PImpl design in Rust
+// TODO: Make it a PImpl design in Rust - stop anyone from accessing id or file accidentaly
+/// LsifWriter is a simple API that handles file creation to the LSIF standard
+/// Aim is for each 'append' function to be given the required data it needs and produce the Vertex & add it to the file.
+/// It should also link it with the required Edges.
+/// Then return the newly created Vertex ID for producer to reference for other Edges later on
 pub struct LsifWriter {
     settings: Arc<LsifP4Cmd>,
     id: i32,        // never call this directly, use get_id()
