@@ -42,6 +42,7 @@ impl LsifWriter {
     
         let mut file = File::create(&filepath).expect("Failed to create output file!");
         file.write_all(self.file.as_bytes()).expect("Failed to write to output file!");
+        println!("Finished Generating LSIF file to {:?}", filepath);
     }
 
     pub fn text_document_hover(&mut self) {

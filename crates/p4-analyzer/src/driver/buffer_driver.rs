@@ -48,7 +48,8 @@ impl BufferStruct {
 
 					*guard -= 1; // confirm we're doing a Read
 					drop(guard); // drop lock to avoid dead locks
-			 // now wait for data lock because we're been give the all clear
+					
+			 		// now wait for data lock because we're been give the all clear
 					let mut lock = self.data.write().unwrap();
 
 					let ret = Some(lock.input_queue.remove().unwrap());
@@ -82,6 +83,8 @@ impl BufferStruct {
 		}
 	}
 
+	// TODO: Change visablity for these 2 helper functions
+	// ! Only use in Driver
 	pub async fn message_read(&self) -> io::Result<Option<Message>> {
 		loop {
 			match self.read_queue().await {
@@ -91,6 +94,7 @@ impl BufferStruct {
 		}
 	}
 
+	// ! Only use in Driver
 	pub async fn message_write(&self, message: Message) -> io::Result<()> {
 		loop {
 			match self.data.try_write() {
@@ -108,7 +112,7 @@ impl BufferStruct {
 	// Not advised as if driver attempt a read when emtpy, it will close
 	// Also requires lock to remain thread safe
 	// proper way is to create a Queue with items already in stack, and pass to BufferStruct::new()
-	fn add_to_queue_blocking(&mut self, mut add: Queue<Message>) {
+	pub fn add_to_queue_blocking(&self, mut add: Queue<Message>) {
 		let mut lock = self.data.write().unwrap();
 		while let Ok(mess) = add.remove() {
 			lock.input_queue.add(mess).unwrap();
