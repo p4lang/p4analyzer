@@ -1,6 +1,8 @@
 mod main_tests {
 	extern crate queues;
-	use crate::{
+	use std::sync::Arc;
+
+use crate::{
 		cli::flags::{self, P4Analyzer, P4AnalyzerCmd, Server},
 		commands::lsp_server::LspServerCommand,
 		create_default_logging_layer,
@@ -37,7 +39,7 @@ mod main_tests {
 		assert!(get_logfile_stem().contains("p4analyzer-"));
 	}
 
-	async fn lsp_test_messages(buffer: &mut BufferStruct) {
+	async fn lsp_test_messages(buffer: Arc<BufferStruct>) {
 		buffer.allow_read_blocking(); // Initialize Message sent
 		let resp0 = buffer.get_output_buffer().await;
 		assert_eq!(resp0.len(), 1);
@@ -62,13 +64,13 @@ mod main_tests {
 		queue.add(default_shutdown_message()).unwrap();
 		queue.add(default_exit_message()).unwrap();
 
-		let mut buffer = BufferStruct::new(queue);
+		let mut buffer = Arc::new(BufferStruct::new(queue));
 
 		let lsp = LspServerCommand::new(Server { stdio: false }, DriverType::Buffer(buffer.clone()));
 		let obj = RunnableCommand::<LspServerCommand>(lsp);
 
 		let future = RunnableCommand::<LspServerCommand>::run(&obj);
-		let test_future = lsp_test_messages(&mut buffer);
+		let test_future = lsp_test_messages(buffer);
 
 		tokio::join!(future, test_future);
 	}
@@ -76,7 +78,9 @@ mod main_tests {
 
 mod driver_tests {
 	extern crate queues;
-	use crate::{
+	use std::sync::Arc;
+
+use crate::{
 		driver::{
 			buffer_driver::{self, BufferStruct},
 			console_driver,
@@ -111,7 +115,7 @@ mod driver_tests {
 		assert!(res.is_err());
 	}
 
-	async fn buffer_test(buffer: &mut BufferStruct, channels: MessageChannel) {
+	async fn buffer_test(buffer: Arc<BufferStruct>, channels: MessageChannel) {
 		buffer.allow_read_blocking(); // Mimic Driver sending initialize message to Analyzer Host
 		let mess = channels.1.recv().await.unwrap(); // Mimic reading Analyzer Host buffer
 		assert_eq!(mess.to_string(), "initialize:0");
@@ -134,12 +138,12 @@ mod driver_tests {
 		let message = default_initialize_message();
 		queue.add(message).unwrap();
 
-		let mut buffer = BufferStruct::new(queue);
+		let buffer = Arc::new(BufferStruct::new(queue));
 		let driver = buffer_driver(buffer.clone());
 
 		let token = CancellationTokenSource::new();
 		let future = driver.start(token.token().clone());
-		let test_future = buffer_test(&mut buffer, driver.get_message_channel());
+		let test_future = buffer_test(buffer, driver.get_message_channel());
 		let _ = tokio::join!(future, test_future);
 	}
 }

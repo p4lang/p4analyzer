@@ -22,7 +22,7 @@ pub struct Driver {
 #[derive(Clone)]
 pub enum DriverType {
 	Console,
-	Buffer(buffer_driver::BufferStruct), // Only want to include this for testing
+	Buffer(Arc<buffer_driver::BufferStruct>), // Only want to include this for testing
 }
 
 impl DriverType {

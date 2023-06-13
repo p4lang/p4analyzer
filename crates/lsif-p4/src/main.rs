@@ -7,7 +7,8 @@ use std::sync::Arc;
 use flags::LsifP4Cmd;
 use lsif_generator::LsifGenerator;
 
-pub fn main() {
+#[tokio::main]
+pub async fn main() {
 	match LsifP4Cmd::from_env() {
 		Ok(cmd) => {
 			if cmd.version {
@@ -16,10 +17,7 @@ pub fn main() {
 			}
 
             let mut generator = LsifGenerator::new(Arc::new(cmd));
-            generator.generate_dump();
-
-            
-
+            generator.generate_dump().await;
         },
         Err(err) => {
 			println!();

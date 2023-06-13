@@ -22,3 +22,4 @@ node_modules
 *.vsix
 p4-analyzer.log
 p4analyzer*.log
+*.lsif

@@ -962,8 +962,10 @@ dependencies = [
  "cancellation",
  "lsp-types 0.94.0",
  "p4-analyzer",
+ "queues",
  "serde",
  "serde_json",
+ "tokio",
  "xflags",
 ]
 

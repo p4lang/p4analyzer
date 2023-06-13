@@ -9,7 +9,7 @@ use std::{
 	time::Duration,
 };
 
-pub fn buffer_driver(buffer: BufferStruct) -> Driver {
+pub fn buffer_driver(buffer: Arc<BufferStruct>) -> Driver {
 	Driver {
 		in_channel: async_channel::unbounded::<Message>(),
 		out_channel: async_channel::unbounded::<Message>(),
@@ -36,7 +36,7 @@ impl BufferStruct {
 		}
 	}
 
-	pub async fn read_queue(&mut self) -> io::Result<Option<Message>> {
+	pub async fn read_queue(&self) -> io::Result<Option<Message>> {
 		loop {
 			match self.read_queue_count.try_lock() {
 				Ok(mut guard) => {
@@ -59,9 +59,9 @@ impl BufferStruct {
 		}
 	}
 
-	pub fn allow_read_blocking(&mut self) { *self.read_queue_count.lock().unwrap() += 1; }
+	pub fn allow_read_blocking(&self) { *self.read_queue_count.lock().unwrap() += 1; }
 
-	pub async fn get_output_buffer(&mut self) -> Vec<String> {
+	pub async fn get_output_buffer(&self) -> Vec<String> {
 		loop {
 			match self.data.try_write() {
 				Ok(mut guard) => {
@@ -82,7 +82,7 @@ impl BufferStruct {
 		}
 	}
 
-	pub async fn message_read(&mut self) -> io::Result<Option<Message>> {
+	pub async fn message_read(&self) -> io::Result<Option<Message>> {
 		loop {
 			match self.read_queue().await {
 				Ok(guard) => return Ok(guard),
@@ -91,7 +91,7 @@ impl BufferStruct {
 		}
 	}
 
-	pub async fn message_write(&mut self, message: Message) -> io::Result<()> {
+	pub async fn message_write(&self, message: Message) -> io::Result<()> {
 		loop {
 			match self.data.try_write() {
 				Ok(mut guard) => {
