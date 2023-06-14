@@ -27,10 +27,10 @@ pub(crate) type LspServerStateDispatcher = Box<dyn (Dispatch<State>) + Send + Sy
 /// that is managed fully by the client. [`LspProtocolMachine`] ensures that the server responds accordingly by
 /// transitioning itself through states based on the requests received, and then processed on behalf of the client. If
 /// the server is in an invalid state for a given request, then the client will receive an appropriate error response.
-pub(crate) struct LspProtocolMachine {
+pub struct LspProtocolMachine {
 	dispatchers: RwLock<HashMap<LspServerState, LspServerStateDispatcher>>,
 	current_state: LspServerState,
-	state: Arc<AsyncRwLock<State>>,
+	pub state: Arc<AsyncRwLock<State>>,
 }
 
 impl LspProtocolMachine {

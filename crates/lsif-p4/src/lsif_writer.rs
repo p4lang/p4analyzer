@@ -1,6 +1,6 @@
-use std::{path::PathBuf, fs::File, io::Write, sync::Arc};
+use std::{path::PathBuf, fs::File, io::Write, sync::Arc, collections::HashMap};
 
-use lsp_types::{lsif::*, NumberOrString, Hover, HoverContents, MarkedString};
+use lsp_types::{lsif::*, NumberOrString, Hover, HoverContents, MarkedString, Url};
 
 use crate::flags::LsifP4Cmd;
 
@@ -13,18 +13,35 @@ pub struct LsifWriter {
     settings: Arc<LsifP4Cmd>,
     id: i32,        // never call this directly, use get_id()
     file: String,   // never call this directly, use append_file()
+    data: LsifData, // Data could belong to the writer or generator but here it makes sure the data and file matches up
+}
+
+pub struct LsifData {
+    files: HashMap<Url, i32>,
+}
+
+impl LsifData {
+    pub fn new() -> Self {  LsifData { files: HashMap::new() }  }
 }
 
 impl LsifWriter {
-    pub fn new(settings: Arc<LsifP4Cmd>) -> Self{
-        LsifWriter{settings, id: 0, file: String::new()}
+    pub fn new(settings: Arc<LsifP4Cmd>) -> Self {
+        LsifWriter{settings, id: 0, file: String::new(), data: LsifData::new() }
     }
 
     // Increments automatically as you should never reuse an ID number 
-    fn get_id(&mut self) -> NumberOrString {
+    fn get_id(&mut self) -> i32 {
         let ret = self.id;
         self.id += 1;
-        NumberOrString::Number(ret)
+        ret
+    }
+
+    pub fn i32_to_enum(i:i32) -> NumberOrString {
+        NumberOrString::Number(i)
+    }
+
+    pub fn data(&self) -> &LsifData { 
+        &self.data
     }
 
     // This makes sure everything written to the file is of type Entry and in JSon format
@@ -45,23 +62,40 @@ impl LsifWriter {
         println!("Finished Generating LSIF file to {:?}", filepath);
     }
 
-    pub fn text_document_hover(&mut self) {
+    pub fn document(&mut self, url: &Url) -> i32 {
+        let new_id = self.get_id();
+        let id = Self::i32_to_enum(new_id);
+
+        let vertex = Entry { id,
+            data: Element::Vertex(Vertex::Document(Document { uri: url.clone(), language_id: "P4".into() }))
+        };
+        
+        self.append_file(&vertex);
+        self.data.files.insert(url.clone(), new_id);
+
+        new_id
+    }
+
+    // https://microsoft.github.io/language-server-protocol/specifications/lsif/0.4.0/specification/#textDocument_hover
+    pub fn text_document_hover(&mut self) -> i32 {
         // get next id number but store as variable as have to reference it in the edge
         let new_id = self.get_id();
-
+        let id = Self::i32_to_enum(new_id);
         // Everything that gets added to the file has to be on type Entry
         // We generate the Vertex first as Edges references them
         // What seperate the 2 types is the Element Enum
         // How to generate different Vertex types is with the Vertex Enum (and fill it accordingly)
-        let vertex = Entry{ id: new_id, 
+        let vertex = Entry{ id, 
             data: Element::Vertex(Vertex::HoverResult{ result: Hover{ contents: HoverContents::Scalar(MarkedString::String("hi".to_string())), range: todo!() } })};
 
         // Edges are much simpilar but there can be many more and it's more difficult to link them correctly
-        let edge = Entry{ id: self.get_id(),
-            data: Element::Edge(Edge::Hover(EdgeData{ in_v: todo!(), out_v: new_id })) };
+        let edge = Entry{ id,
+            data: Element::Edge(Edge::Hover(EdgeData{ in_v: todo!(), out_v: id })) };
 
         // Add it to file ready for writing
         self.append_file(&vertex);
         self.append_file(&edge);
+
+        new_id
     }
 }

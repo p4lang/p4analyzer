@@ -31,6 +31,13 @@
 			"type": "lldb",
 			"request": "attach",
 			"pid": "${command:pickMyProcess}"
+		},
+		{
+			"name": "Debug LSIF (Rust)",
+			"type": "lldb",
+			"request": "launch",
+			"program": "${workspaceFolder}/target/debug/lsif-p4",
+			"args": ["-h", "."],
 		}
   ]
 }

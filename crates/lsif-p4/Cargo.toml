@@ -17,6 +17,6 @@ serde = "1.0.164"       # JSon
 serde_json = "1.0.96"   # JSon
 cancellation = "0.1.0"  # CancellationTokenSource
 tokio = { version = "1.21.2", features = ["full"] } # async functionality
-queues = "1.0.2"        # BufferDriver::new()
+queues = "1.0.2"        # for BufferDriver
 
 [dev-dependencies]

@@ -3,8 +3,8 @@ use analyzer_core::base_abstractions::FileId;
 
 pub(crate) type ParsedUnit = FileId;
 
-pub(crate) trait BackgroundLoad {
+pub trait BackgroundLoad {
 	fn load(&self, file_path: Url);
 }
 
-pub(crate) type AnyBackgroundLoad = dyn BackgroundLoad + Send + Sync;
+pub type AnyBackgroundLoad = dyn BackgroundLoad + Send + Sync;
