@@ -54,7 +54,7 @@ impl BufferStruct {
 				Ok(mut guard) => {
 					if *guard == 0 || self.data.read().unwrap().input_queue.size() == 0 {
 						drop(guard);
-						async_std::task::sleep(Duration::from_millis(0)).await;
+						async_std::task::sleep(Duration::from_millis(1)).await;
 						continue;
 					} // Not ready to read, so continue looping
 
@@ -67,7 +67,7 @@ impl BufferStruct {
 					let ret = Some(lock.input_queue.remove().unwrap());
 					return Ok(ret);
 				}
-				Err(_) => async_std::task::sleep(Duration::from_millis(0)).await, // couldn't get lock, so wait
+				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await, // couldn't get lock, so wait
 			}
 		}
 	}
@@ -112,7 +112,7 @@ impl BufferStruct {
 					guard.output_buffer.clear();
 					return ret;
 				}
-				Err(_) => panic!("RwLock is taken when function is given permission to proceed"),
+				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,
 			}
 		}
 	}
@@ -123,7 +123,7 @@ impl BufferStruct {
 		loop {
 			match self.read_queue().await {
 				Ok(guard) => return Ok(guard),
-				Err(_) => async_std::task::sleep(Duration::from_millis(0)).await,
+				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,
 			}
 		}
 	}
@@ -138,7 +138,7 @@ impl BufferStruct {
 					guard.output_buffer.push(buf);
 					return res;
 				}
-				Err(_) => async_std::task::sleep(Duration::from_millis(0)).await,
+				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,
 			}
 		}
 	}
@@ -157,6 +157,7 @@ impl BufferStruct {
 		let size = add.size();
 		self.add_to_queue_blocking(add);
 		self.allow_all_read_blocking().await;
+		self.wait_for_process_messages().await;
 	}
 
 	/// Helper function that will add the 1st argument to the queue and then wait for result to be returned
@@ -164,6 +165,7 @@ impl BufferStruct {
 	/// Potential for hanging the program if LSP crashes as it will wait for messages that never come
 	pub async fn send_recieve_messages(&self, add: Queue<Message>, expected_messages: usize) -> Vec<String> {
 		self.send_messages(add).await;
+		self.wait_for_process_messages().await;
 		self.get_output_buffer(expected_messages).await
 	}
 
@@ -176,5 +178,26 @@ impl BufferStruct {
 	pub fn clear_message_buffer(&self) {
 		while self.data.write().unwrap().input_queue.remove().is_ok() {}
 		*(self.read_queue_count.lock().unwrap()) = 0;
+	}
+
+	pub fn clear_both_buffers(&self) {
+		self.clear_message_buffer();
+		self.clear_output_buffer();
+	}
+
+	pub async fn wait_for_process_messages(&self) {
+		loop {
+			match self.data.try_write() {
+				Ok(mut guard) => {
+					if guard.input_queue.size() == 0 {
+						return;
+					}
+					
+					drop(guard);
+					async_std::task::sleep(Duration::from_millis(1)).await
+				}
+				Err(_) => async_std::task::sleep(Duration::from_millis(1)).await,
+			}
+		}
 	}
 }

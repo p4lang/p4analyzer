@@ -1,10 +1,10 @@
 use std::{sync::Arc, rc::Rc, fs, path::PathBuf};
 use analyzer_host::{AnalyzerHost, json_rpc::message::{Message, Request, Notification}};
-use cancellation::{CancellationToken, CancellationTokenSource};
-use lsp_types::{Url, WorkspaceFolder};
+use cancellation::CancellationTokenSource;
+use lsp_types::{Url, WorkspaceFolder, WorkspaceClientCapabilities, DidChangeWatchedFilesClientCapabilities};
 use p4_analyzer::{driver::{Driver, buffer_driver::BufferStruct}, native_fs::native_fs::NativeFs};
 use queues::*;
-use crate::{flags::LsifP4Cmd, lsif_writer::LsifWriter};
+use crate::{flags::LsifP4Cmd, lsif_writer::{LsifWriter, LsifData}};
 
 /// LsifGenerator job is to have all the components needed for the LSIF generation (it's the top level)
 /// We achive this with LsifWriter, AnalyzerHost & Driver:
@@ -18,7 +18,7 @@ pub struct LsifGenerator {
     writer: LsifWriter,
     host: Option<Rc<AnalyzerHost>>,     // Both AnalyzerHost::Start() and Self need host
     driver: Option<Arc<BufferStruct>>,  // BufferStruct is past to a thread in Driver
-    token: CancellationTokenSource
+    token: CancellationTokenSource,
 }
 
 impl LsifGenerator {
@@ -30,6 +30,10 @@ impl LsifGenerator {
             host: None,     // Initalized later
             token: CancellationTokenSource::new(),
         }
+    }
+    
+    fn data(&self) -> &LsifData { 
+        &self.writer.data()
     }
 
     // Main method that will produce and write LSIF dump file once called
@@ -72,22 +76,31 @@ impl LsifGenerator {
         println!("LSP Server Running");
         
         // Generation of LSIF data
-        println!("Starting LSIF file generation");
+        println!("Started generating LSIF file content");
         self.generate_hover().await;
+        // *Add more LSIF features here*
+        println!("Finished LSIF file content");
         
         // Closes Host and Driver 
         println!("Stopping LSP Server");
-        self.token.cancel();
+        self.stop_workspace().await;
+        println!("Exitting");
     }
 
     // Tells Analyzer core the infomation needed for the workspace
     async fn setup_workspace(&mut self) {
         let mut initialize_params = lsp_types::InitializeParams{ ..Default::default() };
 
-        // Sets the user workspace Url as root uri
-        initialize_params.root_uri = Some(Url::from_directory_path(fs::canonicalize(&self.settings.workspace.clone().unwrap_or_else(|| PathBuf::from("."))).expect("Failed to find Workspace Folder")).unwrap());
 		// Adds the System head files as additional workspace
-        initialize_params.workspace_folders = Some(vec![WorkspaceFolder{ uri: Url::from_directory_path(fs::canonicalize(&self.settings.header_files.clone()).expect("Failed to find System Header Folder")).unwrap(), name: "System_headers".into() }]);
+        initialize_params.workspace_folders = Some(vec![
+            WorkspaceFolder{ uri: Url::from_directory_path(fs::canonicalize(&self.settings.workspace.clone().unwrap_or_else(|| PathBuf::from("."))).expect("Failed to find Workspace Folder")).unwrap(), name: "main_workspace".into() },
+            WorkspaceFolder{ uri: Url::from_directory_path(fs::canonicalize(&self.settings.header_files.clone()).expect("Failed to find System Header Folder")).unwrap(), name: "system_headers".into() }
+        ]);
+
+        // Tells LSP we will handle filesystem watch & notify it
+        // We won't and we don't care if a file changes as this is a snapshot and if the file changes the LSIF file become out of sync
+        initialize_params.capabilities.workspace = Some(WorkspaceClientCapabilities{ ..Default::default() });
+        initialize_params.capabilities.workspace.as_mut().unwrap().did_change_watched_files = Some(DidChangeWatchedFilesClientCapabilities{ ..Default::default() });
         
         // packages it
         let json = serde_json::json!(initialize_params);
@@ -102,13 +115,32 @@ impl LsifGenerator {
         self.driver.as_ref().unwrap().send_messages(queue![initialize_request, initialized_notification]).await;
         // results 
         let _ = self.driver.as_ref().unwrap().get_output_buffer(1).await;
+
+        // access workspacemanager
+        // write the URLs to file
+    }
+
+    async fn stop_workspace(&mut self) {
+        self.driver.as_ref().unwrap().clear_both_buffers();
+        // shutdown request
+        let shutdown_request = Message::Request(Request{ id: 0.into(), method: String::from("shutdown"), params: "".into()});
+
+        // Ask it to shutdown(doesn't work): send request
+        self.driver.as_ref().unwrap().send_messages(queue![shutdown_request]).await;
+
+        // Force it to shutdown(doesn't work): cancel token for extra security
+        self.token.cancel();
+
+        // Nuke it(doesn't work): delete memory
+        drop(self.host.as_mut());
+        self.host = None;
     }
 
     async fn generate_hover(&mut self) {
         println!("Generating Hover data");
-        self.driver.as_ref().unwrap().clear_output_buffer();
+        self.driver.as_ref().unwrap().clear_both_buffers();
 
-        // Template of 
+        // Template logic for generating LSIF file
         // Scan the parser CST for Function/variables names
         // 
         // Something like this:
@@ -132,6 +164,7 @@ impl LsifGenerator {
         // Add it to the file
         // self.writer.text_document_hover();
         //
-        self.driver.as_ref().unwrap().clear_output_buffer();
+        
+        self.driver.as_ref().unwrap().clear_both_buffers();
     }
 }
