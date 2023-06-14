@@ -40,19 +40,19 @@ use crate::{
 	}
 
 	async fn lsp_test_messages(buffer: Arc<BufferStruct>) {
-		buffer.allow_read_blocking(); // Initialize Message sent
-		let resp0 = buffer.get_output_buffer().await;
+		buffer.allow_read_blocking().await; // Initialize Message sent
+		let resp0 = buffer.get_output_buffer(1).await;
 		assert_eq!(resp0.len(), 1);
 		assert!(resp0[0].contains("{\"jsonrpc\":\"2.0\",\"id\":0,\"result\""));
 
-		buffer.allow_read_blocking(); // Initialized Message sent
+		buffer.allow_read_blocking().await; // Initialized Message sent
 
-		buffer.allow_read_blocking(); // Shutdown Message sent
-		let resp1 = buffer.get_output_buffer().await;
+		buffer.allow_read_blocking().await; // Shutdown Message sent
+		let resp1 = buffer.get_output_buffer(1).await;
 		assert_eq!(resp1.len(), 1);
 		assert_eq!(resp1[0], "Content-Length: 38\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":null}");
 
-		buffer.allow_read_blocking(); // Exit Message sent
+		buffer.allow_read_blocking().await; // Exit Message sent
 	}
 
 	#[tokio::test]
@@ -116,13 +116,13 @@ use crate::{
 	}
 
 	async fn buffer_test(buffer: Arc<BufferStruct>, channels: MessageChannel) {
-		buffer.allow_read_blocking(); // Mimic Driver sending initialize message to Analyzer Host
+		buffer.allow_read_blocking().await; // Mimic Driver sending initialize message to Analyzer Host
 		let mess = channels.1.recv().await.unwrap(); // Mimic reading Analyzer Host buffer
 		assert_eq!(mess.to_string(), "initialize:0");
 
 		let message = Message::Response(Response { id: 0.into(), result: None, error: None });
 		channels.0.send(message).await.unwrap(); // Mimic Analyzer Host sending message to Driver
-		let mess = buffer.get_output_buffer().await; // Mimic reading driver buffer
+		let mess = buffer.get_output_buffer(1).await; // Mimic reading driver buffer
 		assert_eq!(mess.len(), 1);
 		assert_eq!(mess[0], "Content-Length: 24\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0}");
 

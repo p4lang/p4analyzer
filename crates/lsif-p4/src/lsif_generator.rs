@@ -68,12 +68,12 @@ impl LsifGenerator {
     async fn async_start(&mut self) {
         // Send Messages to get LSP to active_initialized state and links workspace files & system header files
         println!("Starting LSP Server");
-        self.setup_workspace();
+        self.setup_workspace().await;
         println!("LSP Server Running");
         
         // Generation of LSIF data
         println!("Starting LSIF file generation");
-        self.generate_hover();
+        self.generate_hover().await;
         
         // Closes Host and Driver 
         println!("Stopping LSP Server");
@@ -81,7 +81,7 @@ impl LsifGenerator {
     }
 
     // Tells Analyzer core the infomation needed for the workspace
-    fn setup_workspace(&mut self) {
+    async fn setup_workspace(&mut self) {
         let mut initialize_params = lsp_types::InitializeParams{ ..Default::default() };
 
         // Sets the user workspace Url as root uri
@@ -98,15 +98,40 @@ impl LsifGenerator {
 		let json = serde_json::json!(initialized_params);
 		let initialized_notification = Message::Notification(Notification{ method: String::from("initialized"), params: json });
         
-        // add to queue
-        self.driver.as_ref().unwrap().add_to_queue_blocking(queue![initialize_request, initialized_notification]);
-        self.driver.as_ref().unwrap().allow_read_blocking();
-        let _ = self.driver.as_ref().unwrap().read_queue();
-        self.driver.as_ref().unwrap().allow_read_blocking();
+        // add to queue & process
+        self.driver.as_ref().unwrap().send_messages(queue![initialize_request, initialized_notification]).await;
+        // results 
+        let _ = self.driver.as_ref().unwrap().get_output_buffer(1).await;
     }
 
-    // Actual working functions for LSIF file
-    fn generate_hover(&mut self) {
+    async fn generate_hover(&mut self) {
         println!("Generating Hover data");
+        self.driver.as_ref().unwrap().clear_output_buffer();
+
+        // Template of 
+        // Scan the parser CST for Function/variables names
+        // 
+        // Something like this:
+        // self.host.parser.cst()
+        // 
+        // Make a LSP Message request(textDocument/hover) from the results
+        // 
+        // let hover_params = lsp_types::HoverParams { text_document_position_params: todo!(), work_done_progress_params: todo!() };
+		// let json = serde_json::json!(hover_params);
+		// let hover_request = Message::Request(Request{ id: 0.into(), method: String::from("textDocument/hover"), params: json });
+        // 
+        // send and receive the LSP response:
+        // 
+        // self.driver.as_ref().unwrap().send_messages(queue![initialize_request, initialized_notification]);
+        // let result = self.driver.as_ref().unwrap().read_queue();
+        // 
+        // The response is serialized but matches the exact form for the LSIF 
+        // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#hover
+        // https://microsoft.github.io/language-server-protocol/specifications/lsif/0.4.0/specification/#textDocument_hover
+        // 
+        // Add it to the file
+        // self.writer.text_document_hover();
+        //
+        self.driver.as_ref().unwrap().clear_output_buffer();
     }
 }
