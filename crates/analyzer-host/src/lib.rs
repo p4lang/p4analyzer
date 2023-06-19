@@ -60,7 +60,7 @@ impl AnalyzerHost {
 			None => Arc::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone()))),
 		};
 
-		match join_all(
+		let y = match join_all(
 			self.receive_messages(requests_sender.clone(), responses_sender.clone(), cancel_token.clone()),
 			self.run_protocol_machine(
 				request_manager.clone(),
@@ -80,7 +80,10 @@ impl AnalyzerHost {
 				Ok(())
 			}
 			_ => Err(OperationCanceled),
-		}
+		};
+
+		println!("AnalyzerHost::start() Exit");
+		y
 	}
 
 	async fn receive_messages(
@@ -104,7 +107,7 @@ impl AnalyzerHost {
 
 		requests_sender.close();
 		responses_sender.close();
-
+		println!("receive_messages() exited");
 		return Err(OperationCanceled);
 	}
 
@@ -129,6 +132,7 @@ impl AnalyzerHost {
 						let request_message_span = info_span!("[Message]", message = format!("{}", message));
 
 						async {
+							println!("process_message1() start");
 							match protocol_machine.process_message(Arc::new(message)).await {
 								Ok(response_message) => {
 									if let Some(Message::Response(_)) = &response_message {
@@ -139,6 +143,7 @@ impl AnalyzerHost {
 									error!("Protocol Error: {}", &err.to_string());
 								}
 							}
+							println!("process_message1() end");
 						}
 						.instrument(request_message_span)
 						.await;
@@ -154,7 +159,7 @@ impl AnalyzerHost {
 		self.receiver.close();
 		requests_receiver.close();
 		AsyncPool::stop();
-
+		println!("run_protocol_machine() exited"); 
 		if cancel_token.is_canceled() {
 			return Err(OperationCanceled);
 		}

@@ -124,6 +124,7 @@ where
 		message: Arc<Message>,
 		state: Arc<AsyncRwLock<TState>>,
 	) -> Result<(Option<Message>, LspServerState), LspProtocolError> {
+		println!("process_message1");
 		match &*message {
 			Message::Request(request) => {
 				let method = request.method.as_str();
@@ -189,6 +190,7 @@ where
 		message: Arc<Message>,
 		state: Arc<AsyncRwLock<TState>>,
 	) -> Result<(Option<Message>, LspServerState), LspProtocolError> {
+		println!("process_message2");
 		match &*message {
 			Message::Notification(request) => {
 				let method = request.method.as_str();

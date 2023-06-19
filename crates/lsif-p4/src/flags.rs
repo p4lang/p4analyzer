@@ -6,7 +6,7 @@ xflags::xflags! {
     
 	cmd lsif-p4-cmd {
         /// Requires the path to the system header files that are different for each P4 Switch arch
-        required -h, --header-files system_dest: PathBuf
+        optional -h, --header-files system_dest: PathBuf
 
         /// Optional path directory for workspace to be analyzers (default is current directory) 
         optional -w, --workspace input_dest: PathBuf
@@ -27,7 +27,7 @@ xflags::xflags! {
 // Run `env UPDATE_XFLAGS=1 cargo build` to regenerate.
 #[derive(Debug)]
 pub struct LsifP4Cmd {
-    pub header_files: PathBuf,
+    pub header_files: Option<PathBuf>,
     pub workspace: Option<PathBuf>,
     pub filename: Option<String>,
     pub output: Option<PathBuf>,

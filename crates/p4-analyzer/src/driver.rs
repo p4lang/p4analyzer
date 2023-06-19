@@ -99,11 +99,12 @@ impl Driver {
 		// Joining to the `receiver_task` will block the current thread. Since this will likely be the main thread it will
 		// prevent the async Futures from being driven forward. `spawn_blocking` allows this blocking code to be taken into
 		// another thread and returns a `Future` that we can then await.
-		task::spawn_blocking(move || {
+		let y = task::spawn_blocking(move || {
 			cancel_token.run(
 				|| {
 					sender.close();
 					receiver.close();
+					_sender_task.join().unwrap();
 				},
 				|| {
 					receiver_task.join().unwrap();
@@ -116,6 +117,10 @@ impl Driver {
 			)
 		})
 		.await
-		.unwrap()
+		.unwrap();
+
+		println!("Driver::start() Exit");
+
+		y
 	}
 }

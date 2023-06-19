@@ -58,7 +58,7 @@ impl LspProtocolMachine {
 		// Dispatch any received Request or Notification messages to the current Dispatcher.
 		let current_state = self.current_state;
 		let current_dispatcher = self.get_dispatcher(current_state);
-
+		println!("dispatch() start");
 		match current_dispatcher.dispatch(message, self.state.clone()).await {
 			Ok((response, next_state)) => {
 				if self.current_state != next_state {
@@ -70,7 +70,7 @@ impl LspProtocolMachine {
 
 					self.current_state = next_state;
 				}
-
+				println!("dispatch() end");
 				Ok(response)
 			}
 			Err(err) => Err(err),

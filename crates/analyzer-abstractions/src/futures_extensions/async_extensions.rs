@@ -68,11 +68,12 @@ impl AsyncPool {
 		if cancel_token.is_canceled() {
 			return Err(OperationCanceled);
 		}
-
+		println!("AsyncPool Exit");
 		Ok(())
 	}
 
 	pub fn stop() {
+		println!("AsyncPool::stop() called");
 		let (sender, _) = WORK_CHANNEL.with(|c| c.borrow().clone());
 
 		sender.close();

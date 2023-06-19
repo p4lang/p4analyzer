@@ -107,8 +107,14 @@ impl<TState: Clone + Send + Sync + 'static> Dispatch<TState> for DefaultDispatch
 		message: Arc<Message>,
 		state: Arc<AsyncRwLock<TState>>,
 	) -> Result<(Option<Message>, LspServerState), LspProtocolError> {
+		println!("handler() start");
 		match self.get_handler(&*message) {
-			Some(handler) => handler.process_message(self.state, message, state).await,
+			Some(handler) => {
+				println!("handler::process_message() start");
+				let y = handler.process_message(self.state, message, state).await;
+				println!("handler::process_message() end");
+				y
+			},
 			None => {
 				// If we have no handler for the message, then return either a response representing the default
 				// error message for requests, or an 'unexpected request' error for anything else.
@@ -121,7 +127,7 @@ impl<TState: Clone + Send + Sync + 'static> Dispatch<TState> for DefaultDispatch
 								"Received an unexpected request ('{}'). Sending customized error.",
 								request.method
 							);
-
+							println!("handler() end");
 							return Ok((
 								Some(Message::Response(Response::new_error(request.id.clone(), *code as i32, message))),
 								self.state,
@@ -132,7 +138,7 @@ impl<TState: Clone + Send + Sync + 'static> Dispatch<TState> for DefaultDispatch
 							"Received an unexpected request ('{}'). Sending internal server error. Missing handler?",
 							request.method
 						);
-
+						println!("handler() end");
 						Ok((
 							Some(Message::Response(Response::new_error(
 								request.id.clone(),
@@ -144,7 +150,7 @@ impl<TState: Clone + Send + Sync + 'static> Dispatch<TState> for DefaultDispatch
 					}
 					Message::Notification(notification) => {
 						info!("Received an unexpected notification ('{}'). Missing handler?", notification.method);
-
+						println!("handler() end");
 						Err(LspProtocolError::UnexpectedRequest)
 					}
 					_ => Err(LspProtocolError::UnexpectedRequest),
