@@ -1,6 +1,6 @@
 pub(crate) mod flags;
-pub(crate) mod lsif_writer;
 pub(crate) mod lsif_generator;
+pub(crate) mod lsif_writer;
 
 use std::sync::Arc;
 
@@ -13,17 +13,18 @@ pub async fn main() {
 	// This gets the arguments from the CLI
 	match LsifP4Cmd::from_env() {
 		Ok(cmd) => {
-			if cmd.version {	// returns version
+			if cmd.version {
+				// returns version
 				println!(env!("CARGO_PKG_VERSION"));
 				return;
 			}
 			// Program is in this struct
-            let mut generator = LsifGenerator::new(Arc::new(cmd));
-            // Starts program
+			let mut generator = LsifGenerator::new(Arc::new(cmd));
+			// Starts program
 			generator.generate_dump().await;
 			// LSIF file has been created, so exit
-        },
-        Err(err) => {
+		}
+		Err(err) => {
 			println!("\n{}\n", err);
 		}
 	}

@@ -1,23 +1,22 @@
 /// BufferStruct is a type of Driver that uses internal Buffers and a counter to limit when the Driver recieves Messages
 /// This is useful for testings and tools that require more control of the program: LSIF generation & Blackbox testing
 /// BufferStruct wraps BufferStructData in Arc<> due to the strict requirement of ownership of the data and it's only handled through BufferStruct API
-/// 
+///
 /// The General premise is adding messages you want the Driver to recieve to the input_queue through BufferStruct::new() or BufferStruct::add_to_queue_blocking()
 /// Then call BufferStruct::allow_read_blocking() or simalar functions to let the Driver read the Messages in the Queue
 /// Then use BufferStruct::get_output_buffer(expected_messages) which will wait for the output_buffer size to be greater than expected_messages then return the Messages
-/// 
+///
 /// BufferStruct require AnalyzerHost::start() and Driver::start() running in Async or on a seperate thread at the same time
 /// BufferStruct just allows for the control of Message sending and receieving, the logic is done in those 2 Futures
-/// 
+///
 /// As BufferStruct is a type of Driver/subset of it, some of the code in this file is only for the Driver, that code shouldn't hold Locks for any longer than needed to avoid deadlocks
-
 use super::*;
-use queues::*;
 use core::panic;
+use queues::*;
 use std::{
 	io,
 	sync::{Mutex, RwLock},
-	time::Duration
+	time::Duration,
 };
 
 pub fn buffer_driver(buffer: Arc<BufferStruct>) -> Driver {
@@ -61,7 +60,7 @@ impl BufferStruct {
 					*guard -= 1; // confirm we're doing a Read
 					drop(guard); // drop lock to avoid dead locks
 
-			 		// now wait for data lock because we're been give the all clear
+					// now wait for data lock because we're been give the all clear
 					let mut lock = self.data.write().unwrap();
 
 					let ret = Some(lock.input_queue.remove().unwrap());
@@ -74,23 +73,23 @@ impl BufferStruct {
 
 	/// Allows Driver to read the next message in the queue
 	/// It will also hand over the concurrency thread handler to the next Future
-	pub async fn allow_read_blocking(&self) { 
+	pub async fn allow_read_blocking(&self) {
 		*(self.read_queue_count.lock().unwrap()) += 1;
 		// Gives up thread handle to another concurrent async function
-		// TODO: check this works trick works 
-        async_std::task::sleep(Duration::from_millis(0)).await;	
+		// TODO: check this works trick works
+		async_std::task::sleep(Duration::from_millis(0)).await;
 	}
 
 	/// Does the same as allow_read_blocking() but lets you specify how many it reads
 	pub async fn allow_any_read_blocking(&self, size: usize) {
 		*(self.read_queue_count.lock().unwrap()) += size;
-        async_std::task::sleep(Duration::from_millis(0)).await;	// see comment above
+		async_std::task::sleep(Duration::from_millis(0)).await; // see comment above
 	}
 
 	/// Allows Driver to read every message in the Queue & hands over concurrency handler
 	pub async fn allow_all_read_blocking(&self) {
 		*(self.read_queue_count.lock().unwrap()) = self.data.read().unwrap().input_queue.size();
-		async_std::task::sleep(Duration::from_millis(0)).await;	// see comment above
+		async_std::task::sleep(Duration::from_millis(0)).await; // see comment above
 	}
 
 	/// Call allow_read_blocking() or any assoiate functions, before trying to read output buffer
@@ -170,9 +169,7 @@ impl BufferStruct {
 	}
 
 	/// As get_output_buffer() returns everything in the buffer, past and present, this function allows the past buffer to be cleared
-	pub fn clear_output_buffer(&self) { 
-		self.data.write().unwrap().output_buffer.clear();
-	}
+	pub fn clear_output_buffer(&self) { self.data.write().unwrap().output_buffer.clear(); }
 
 	/// Removes all incoming messages from the Queue and stops any further message reads by Driver
 	pub fn clear_message_buffer(&self) {
@@ -192,7 +189,7 @@ impl BufferStruct {
 					if guard.input_queue.size() == 0 {
 						return;
 					}
-					
+
 					drop(guard);
 					async_std::task::sleep(Duration::from_millis(1)).await
 				}

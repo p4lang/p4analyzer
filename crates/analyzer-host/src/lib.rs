@@ -61,8 +61,12 @@ impl AnalyzerHost {
 			Some(fs) => fs.clone(),
 			None => Arc::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone()))),
 		};
-		
-		*(self.protocol_machine.write().await) = Some(LspProtocolMachine::new(self.trace_value.clone(), request_manager.clone(), self.file_system.clone().unwrap()));
+
+		*(self.protocol_machine.write().await) = Some(LspProtocolMachine::new(
+			self.trace_value.clone(),
+			request_manager.clone(),
+			self.file_system.clone().unwrap(),
+		));
 
 		match join_all(
 			self.receive_messages(requests_sender.clone(), responses_sender.clone(), cancel_token.clone()),
@@ -129,7 +133,15 @@ impl AnalyzerHost {
 					let request_message_span = info_span!("[Message]", message = format!("{}", message));
 
 					async {
-						match self.protocol_machine.write().await.as_mut().unwrap().process_message(Arc::new(message)).await {
+						match self
+							.protocol_machine
+							.write()
+							.await
+							.as_mut()
+							.unwrap()
+							.process_message(Arc::new(message))
+							.await
+						{
 							Ok(response_message) => {
 								if let Some(Message::Response(_)) = &response_message {
 									self.sender.send(response_message.unwrap()).await.unwrap();

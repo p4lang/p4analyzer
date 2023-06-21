@@ -19,11 +19,10 @@ pub mod native_fs {
 			folder_uri: Url,
 			file_pattern: String,
 		) -> BoxFuture<'a, Vec<TextDocumentIdentifier>> {
-
 			async fn enumerate_folder(folder_uri: Url, file_pattern: String) -> Vec<TextDocumentIdentifier> {
 				let mut folder_uri = folder_uri.clone();
 				folder_uri.path_segments_mut().unwrap().push(&file_pattern);
-				
+
 				let glob_pattern = folder_uri.to_file_path().unwrap();
 				let glob_pattern = glob_pattern.to_str().unwrap();
 
@@ -65,22 +64,20 @@ mod tests {
 	use analyzer_abstractions::lsp_types::Url;
 	use analyzer_host::lsp::RELATIVE_P4_SOURCEFILES_GLOBPATTERN;
 	use std::{fs, path::PathBuf};
-	
+
 	struct CleanUp {
-		dir: String
+		dir: String,
 	}
 
 	impl Drop for CleanUp {
-		fn drop(&mut self) {
-			fs::remove_dir_all(self.dir.clone()).expect("Failed to delete directory");
-		}
+		fn drop(&mut self) { fs::remove_dir_all(self.dir.clone()).expect("Failed to delete directory"); }
 	}
 
 	#[tokio::test]
 	async fn test_enumerate_folder() {
 		// build test file_name location
 		let dir_name = "./test_directory0";
-		let clean_obj = CleanUp{dir: dir_name.into()};
+		let clean_obj = CleanUp { dir: dir_name.into() };
 
 		fs::create_dir(dir_name).expect("Failed to create directory");
 		fs::File::create("./test_directory0/file1.p4").unwrap();
@@ -130,8 +127,8 @@ mod tests {
 	async fn test_file_content() {
 		// build test file_name
 		let dir_name = "./test_directory1";
-		let clean_obj = CleanUp{dir: dir_name.into()};
-		
+		let clean_obj = CleanUp { dir: dir_name.into() };
+
 		let file_name = "./test_directory1/file0.p4";
 		let test_string = "hello world\n";
 		fs::create_dir(dir_name).expect("Failed to create directory");
@@ -164,7 +161,7 @@ mod tests {
 	async fn test_both_together() {
 		// build test file_name
 		let dir_name = "./test_directory2";
-		let clean_obj = CleanUp{dir: dir_name.into()};
+		let clean_obj = CleanUp { dir: dir_name.into() };
 
 		let file_name = "./test_directory2/file0.p4";
 		let test_string = "This is file0.p4 content\n";

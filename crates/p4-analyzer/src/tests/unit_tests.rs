@@ -2,7 +2,7 @@ mod main_tests {
 	extern crate queues;
 	use std::sync::Arc;
 
-use crate::{
+	use crate::{
 		cli::flags::{self, P4Analyzer, P4AnalyzerCmd, Server},
 		commands::lsp_server::LspServerCommand,
 		create_default_logging_layer,
@@ -50,12 +50,11 @@ use crate::{
 		let resp1 = buffer.get_output_buffer(1).await;
 		assert_eq!(resp1.len(), 1);
 		assert_eq!(resp1[0], "Content-Length: 227\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"client/registerCapability\",\"params\":{\"registrations\":[{\"id\":\"p4-analyzer-watched-files\",\"method\":\"workspace/didChangeWatchedFiles\",\"registerOptions\":{\"watchers\":[{\"globPattern\":\"**/*.p4\"}]}}]}}");
-		
-		buffer.allow_read_blocking().await;	// Send Response
+
+		buffer.allow_read_blocking().await; // Send Response
 
 		//buffer.allow_read_blocking().await; // Shutdown Message sent
 		buffer.allow_all_read_blocking().await; // Exit Message sent
-
 	}
 
 	#[tokio::test]
@@ -85,7 +84,7 @@ mod driver_tests {
 	extern crate queues;
 	use std::sync::Arc;
 
-use crate::{
+	use crate::{
 		driver::{
 			buffer_driver::{self, BufferStruct},
 			console_driver,
