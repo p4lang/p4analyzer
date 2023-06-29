@@ -10,6 +10,7 @@ use analyzer_abstractions::{
 	tracing::*,
 };
 use async_channel::{Receiver, Sender};
+use async_rwlock::RwLock;
 use cancellation::{CancellationToken, OperationCanceled};
 use fs::LspEnumerableFileSystem;
 use fsm::LspProtocolMachine;
@@ -28,6 +29,7 @@ pub struct AnalyzerHost {
 	receiver: Receiver<Message>,
 	trace_value: Option<TraceValueAccessor>,
 	file_system: Option<Arc<AnyEnumerableFileSystem>>,
+	pub protocol_machine: Arc<RwLock<Option<LspProtocolMachine>>>,
 }
 
 impl AnalyzerHost {
@@ -43,7 +45,7 @@ impl AnalyzerHost {
 	) -> Self {
 		let (sender, receiver) = message_channel;
 
-		AnalyzerHost { sender, receiver, trace_value, file_system }
+		AnalyzerHost { sender, receiver, trace_value, file_system, protocol_machine: Arc::new(RwLock::new(None)) }
 	}
 
 	/// Starts executing the [`AnalyzerHost`] instance.
@@ -59,6 +61,12 @@ impl AnalyzerHost {
 			Some(fs) => fs.clone(),
 			None => Arc::new(Box::new(LspEnumerableFileSystem::new(request_manager.clone()))),
 		};
+
+		*(self.protocol_machine.write().await) = Some(LspProtocolMachine::new(
+			self.trace_value.clone(),
+			request_manager.clone(),
+			self.file_system.clone().unwrap(),
+		));
 
 		match join_all(
 			self.receive_messages(requests_sender.clone(), responses_sender.clone(), cancel_token.clone()),
@@ -115,40 +123,43 @@ impl AnalyzerHost {
 		requests_receiver: Receiver<Message>,
 		cancel_token: Arc<CancellationToken>,
 	) -> Result<(), OperationCanceled> {
-		{
-			// Scope: for `protocol_machine`.
-			let mut protocol_machine = LspProtocolMachine::new(self.trace_value.clone(), request_manager, file_system);
+		while self.protocol_machine.read().await.as_ref().unwrap().is_active() && !cancel_token.is_canceled() {
+			match requests_receiver.recv().await {
+				Ok(message) => {
+					if cancel_token.is_canceled() {
+						break;
+					}
 
-			while protocol_machine.is_active() && !cancel_token.is_canceled() {
-				match requests_receiver.recv().await {
-					Ok(message) => {
-						if cancel_token.is_canceled() {
-							break;
-						}
+					let request_message_span = info_span!("[Message]", message = format!("{}", message));
 
-						let request_message_span = info_span!("[Message]", message = format!("{}", message));
-
-						async {
-							match protocol_machine.process_message(Arc::new(message)).await {
-								Ok(response_message) => {
-									if let Some(Message::Response(_)) = &response_message {
-										self.sender.send(response_message.unwrap()).await.unwrap();
-									}
-								}
-								Err(err) => {
-									error!("Protocol Error: {}", &err.to_string());
+					async {
+						match self
+							.protocol_machine
+							.write()
+							.await
+							.as_mut()
+							.unwrap()
+							.process_message(Arc::new(message))
+							.await
+						{
+							Ok(response_message) => {
+								if let Some(Message::Response(_)) = &response_message {
+									self.sender.send(response_message.unwrap()).await.unwrap();
 								}
 							}
+							Err(err) => {
+								error!("Protocol Error: {}", &err.to_string());
+							}
 						}
-						.instrument(request_message_span)
-						.await;
 					}
-					Err(err) => {
-						error!("Unexpected error receiving request or notification: {:?}", err);
-					}
+					.instrument(request_message_span)
+					.await;
+				}
+				Err(err) => {
+					error!("Unexpected error receiving request or notification: {:?}", err);
 				}
 			}
-		} // End Scope
+		}
 
 		self.sender.close();
 		self.receiver.close();

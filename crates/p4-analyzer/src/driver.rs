@@ -1,6 +1,5 @@
 use analyzer_host::{json_rpc::message::Message, MessageChannel};
 use async_channel::{Receiver, Sender};
-#[cfg(test)]
 use async_std::task::block_on;
 use cancellation::{CancellationToken, OperationCanceled};
 use std::{
@@ -9,8 +8,7 @@ use std::{
 };
 use tokio::task;
 
-// Module that contains the code for the buffer driver, which is a driver used for testing only
-#[cfg(test)]
+// Module that contains the code for the buffer driver
 pub mod buffer_driver;
 
 /// Connects the `stdin` and `stdout` of the process to appropriate [`MessageChannel`] instances, and executes a sender and
@@ -24,15 +22,13 @@ pub struct Driver {
 #[derive(Clone)]
 pub enum DriverType {
 	Console,
-	#[cfg(test)]
-	Buffer(buffer_driver::BufferStruct), // Only want to include this for testing
+	Buffer(Arc<buffer_driver::BufferStruct>), // Only want to include this for testing
 }
 
 impl DriverType {
 	fn to_driver(&self) -> Driver {
 		match self {
 			DriverType::Console => console_driver(),
-			#[cfg(test)]
 			DriverType::Buffer(buffer) => buffer_driver::buffer_driver(buffer.clone()),
 		}
 	}
@@ -40,7 +36,6 @@ impl DriverType {
 	fn reader(&self) -> Result<Option<Message>, std::io::Error> {
 		match self.clone() {
 			DriverType::Console => Message::read(&mut stdin().lock()),
-			#[cfg(test)]
 			DriverType::Buffer(mut buffer) => block_on(buffer.message_read()),
 		}
 	}
@@ -48,7 +43,6 @@ impl DriverType {
 	fn writer(&self, message: Message) -> Result<(), std::io::Error> {
 		match self.clone() {
 			DriverType::Console => message.write(&mut stdout()),
-			#[cfg(test)]
 			DriverType::Buffer(mut buffer) => block_on(buffer.message_write(message)),
 		}
 	}

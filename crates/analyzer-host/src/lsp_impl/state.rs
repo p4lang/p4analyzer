@@ -25,7 +25,7 @@ use crate::{
 	tracing::TraceValueAccessor,
 };
 
-pub(crate) struct AnalyzerWrapper {
+pub struct AnalyzerWrapper {
 	inner: RefCell<analyzer_core::Analyzer>,
 	background_queue: BackgroundQueue,
 }
@@ -67,7 +67,7 @@ impl BackgroundLoad for AnalyzerWrapper {
 
 /// Represents the active state of the P4 Analyzer.
 #[derive(Clone)]
-pub(crate) struct State {
+pub struct State {
 	/// The optional [`TraceValueAccessor`] that can be used to set the trace value used in the LSP tracing layer.
 	pub trace_value: Option<TraceValueAccessor>,
 
@@ -132,7 +132,7 @@ impl State {
 	}
 
 	/// Returns a reference to the current [`ProgressManager`].
-	pub fn progress_manager(&self) -> &ProgressManager {
+	pub(crate) fn progress_manager(&self) -> &ProgressManager {
 		if let None = self.progress_manager {
 			unreachable!("the ProgressManager was not initialized");
 		}
@@ -142,7 +142,7 @@ impl State {
 
 	/// Returns a [`Progress`] instance from the initialized Progress Manager that can be used to report
 	/// progress to the LSP client.
-	pub async fn begin_work_done_progress(&self, title: &str) -> Result<Progress, LspProtocolError> {
+	pub(crate) async fn begin_work_done_progress(&self, title: &str) -> Result<Progress, LspProtocolError> {
 		self.progress_manager().begin(title.into()).await
 	}
 

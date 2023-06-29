@@ -1,7 +1,10 @@
 // A class for loading, running and testing premade or custom P4 files
 #[cfg(debug_assertions)]
 pub mod tester {
-	use analyzer_host::json_rpc::message::{Message, Notification, Request};
+	use analyzer_abstractions::lsp_types::{
+		DidChangeWatchedFilesClientCapabilities, Url, WorkspaceClientCapabilities, WorkspaceFolder,
+	};
+	use analyzer_host::json_rpc::message::{Message, Notification, Request, Response};
 	use lazy_static::lazy_static;
 	use queues::*;
 	use serde_json::Value;
@@ -43,7 +46,22 @@ pub mod tester {
 	}
 
 	pub fn default_initialize_message() -> Message {
-		let initialize_params = analyzer_abstractions::lsp_types::InitializeParams { ..Default::default() };
+		let mut initialize_params = analyzer_abstractions::lsp_types::InitializeParams { ..Default::default() };
+
+		// Gives it a workspace folder
+		initialize_params.workspace_folders = Some(vec![WorkspaceFolder {
+			uri: Url::from_directory_path(
+				fs::canonicalize(PathBuf::from(".")).expect("Failed to find Workspace Folder"),
+			)
+			.unwrap(),
+			name: "main_workspace".into(),
+		}]);
+
+		// Needed for a check in initialize method
+		initialize_params.capabilities.workspace = Some(WorkspaceClientCapabilities { ..Default::default() });
+		initialize_params.capabilities.workspace.as_mut().unwrap().did_change_watched_files =
+			Some(DidChangeWatchedFilesClientCapabilities { ..Default::default() });
+
 		let json = serde_json::json!(initialize_params);
 		Message::Request(Request { id: 0.into(), method: String::from("initialize"), params: json })
 	}
@@ -60,6 +78,10 @@ pub mod tester {
 
 	pub fn default_exit_message() -> Message {
 		Message::Notification(Notification { method: String::from("exit"), params: Value::Null })
+	}
+
+	pub fn default_response() -> Message {
+		Message::Response(Response { id: 0.into(), result: Some(serde_json::json!(())), error: None })
 	}
 
 	pub fn start_black_box() {

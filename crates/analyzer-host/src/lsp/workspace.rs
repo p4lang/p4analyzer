@@ -26,9 +26,9 @@ use super::{
 
 /// Manages a collection of workspaces opened by an LSP compliant host.
 #[derive(Clone)]
-pub(crate) struct WorkspaceManager {
+pub struct WorkspaceManager {
 	has_workspaces: bool,
-	workspaces: HashMap<Url, Arc<Workspace>>,
+	pub workspaces: HashMap<Url, Arc<Workspace>>,
 }
 
 impl WorkspaceManager {
@@ -99,7 +99,7 @@ impl WorkspaceManager {
 	/// Asynchronously indexes the contents of each [`Workspace`].
 	///
 	/// Returns immediately if the [`WorkspaceManager`] was not initialized with workspace folders.
-	pub async fn index(&self, progress: &ProgressManager) {
+	pub(crate) async fn index(&self, progress: &ProgressManager) {
 		if !self.has_workspaces() {
 			return; // Do nothing if there are no workspace folders.
 		}
@@ -126,11 +126,11 @@ impl<'a> IntoIterator for &'a WorkspaceManager {
 
 /// Encapsulates a collection of related files opened as part of a set managed by an LSP compliant host.
 #[derive(Clone)]
-pub(crate) struct Workspace {
+pub struct Workspace {
 	file_system: Arc<AnyEnumerableFileSystem>,
 	workspace_folder: WorkspaceFolder,
 	background_load: Arc<AnyBackgroundLoad>,
-	files: Arc<RwLock<HashMap<Url, Arc<File>>>>,
+	pub files: Arc<RwLock<HashMap<Url, Arc<File>>>>,
 }
 
 impl Workspace {
@@ -229,7 +229,7 @@ unsafe impl Sync for FileState {}
 unsafe impl Send for FileState {}
 
 #[derive(Clone)]
-pub(crate) struct File {
+pub struct File {
 	pub document_identifier: TextDocumentIdentifier,
 	state: Arc<AsyncRwLock<FileState>>,
 }

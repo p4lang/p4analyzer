@@ -26,7 +26,7 @@ pub(crate) mod fluent;
 pub(crate) mod progress;
 pub(crate) mod request;
 pub(crate) mod state;
-pub(crate) mod workspace;
+pub mod workspace;
 
 /// A string representing a glob pattern of all relative `'*.p4'` files.
 pub const RELATIVE_P4_SOURCEFILES_GLOBPATTERN: &str = "**/*.p4";
