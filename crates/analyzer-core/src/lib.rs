@@ -90,6 +90,7 @@ impl Analyzer {
 	pub fn diagnostics(&self, id: FileId) -> Vec<Diagnostic> {
 		if let Some(buf) = self.filesystem().get(&id) {
 			let mut d = lex::accumulated::<Diagnostics>(&self.db, id, *buf);
+			// FIXME: duplicates
 			d.append(&mut preprocess::accumulated::<Diagnostics>(&self.db, self.fs.unwrap(), id));
 			d.append(&mut parse::accumulated::<Diagnostics>(&self.db, self.fs.unwrap(), id));
 			d
@@ -197,6 +198,15 @@ pub fn lex(db: &dyn crate::Db, file_id: FileId, buf: Buffer) -> LexedBuffer {
 	LexedBuffer::new(db, tokens)
 }
 
+// foo.p4:
+// 256_w2
+
+
+// oof.p4
+// #include <foo.p4>
+// #include <foo.p4>
+
+
 #[salsa::tracked(return_ref)]
 pub fn preprocess(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<Vec<(FileId, Token, Span)>> {
 	let mut pp = PreprocessorState::new(
@@ -248,6 +258,26 @@ pub fn parse(db: &dyn crate::Db, fs: Fs, file_id: FileId) -> Option<parser::ast:
 	let lexemes = preprocess(db, fs, file_id).as_deref()?;
 	let cumulative_sum = cumulative_sum(db, fs, file_id).as_deref()?;
 	let lexemes: Vec<_> = lexemes.iter().map(|(_, tk, _)| tk.clone()).collect();
+
+	// #define X 01
+	// #include <architecture.p4>
+	// #if X
+	//    yada
+	// #endif
+
+	// vs code notification
+	// => analyzer update: (string per file)
+	// => lex: (stream per file)
+	// => preprocessing: (single stream)
+	// => diffing: (diff against the previous stream)
+	// => parser: (cst)
+
+	// for i in 0..stream.len() {
+	// 	if stream[i] != previous_stream[i] {
+	// 		// okay, from now on it's different
+	// 	}
+	// }
+
 
 	let mk_parser = Parser::from_grammar(grammar).ok()?;
 	// TODO: use the locking mechanism

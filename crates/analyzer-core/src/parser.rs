@@ -47,6 +47,13 @@ pub struct Matcher<'a, RuleName, Token: Debug + PartialEq + PartialOrd + Clone> 
 	max_examined_pos: isize,
 }
 
+/*
+S -> A, B
+A -> C | xyz
+B -> A, C
+C -> x
+*/
+
 #[derive(Debug, Clone)]
 struct Column<RuleName, Token: Debug + PartialEq + PartialOrd + Clone> {
 	memo: HashMap<RuleName, MemoTableEntry<RuleName, Token>>,
@@ -68,6 +75,11 @@ pub struct ExistingMatch<RuleName, Token: Clone> {
 	cst: Cst<RuleName, Token>,
 	match_length: usize,
 }
+
+/*
+A -> A | B
+B -> x
+*/
 
 /// The concrete syntax tree type exactly mirrors the structure of the grammar.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]

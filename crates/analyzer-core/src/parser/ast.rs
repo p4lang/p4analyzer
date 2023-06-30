@@ -27,6 +27,10 @@ use super::{p4_grammar::P4GrammarRules, Cst, ExistingMatch, Rule, TriviaClass};
 //          non-terminal should arguably be a part of it, rather than a separater
 //          from_rules param)
 
+// green nodes = CSTs, cheap to clone
+// syntax nodes = cursors or zippers, also cheap to clone
+// AST nodes = typed wrappers of syntax nodes
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GreenNode(pub Rc<ExistingMatch<P4GrammarRules, Token>>);
 
@@ -47,7 +51,7 @@ pub type Grammar = Rc<super::Grammar<P4GrammarRules, Token>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SyntaxData {
-	pub grammar: Grammar, // FIXME: Rc
+	pub grammar: Grammar,
 	pub offset: usize,
 	pub node: GreenNode,
 	/// Identifies both our parent and the rule through which we got here.
@@ -131,12 +135,182 @@ pub fn preorder(depth: u32, node: SyntaxNode) -> Box<dyn Iterator<Item = (u32, S
 	match node.trivia_class() {
 		TriviaClass::Keep => Box::new(
 			std::iter::once((depth, node.clone()))
-				.chain(node.children().collect::<Vec<_>>().into_iter().flat_map(move |node| preorder(depth + 1, node))),
+				.chain(
+					node.children().collect::<Vec<_>>().into_iter()
+					.flat_map(move |node| preorder(depth + 1, node))),
 		),
 		TriviaClass::SkipNodeOnly => {
+			// flat_map(_: Iter<A>, _: A => Iter<B>): Iter<B>
 			Box::new(node.children().collect::<Vec<_>>().into_iter().flat_map(move |node| preorder(depth, node)))
 		}
 		TriviaClass::SkipNodeAndChildren => Box::new(std::iter::empty()),
+	}
+
+	// Haskell equivalent of the above:
+	// preorder :: Int -> SyntaxNode -> [(Int, SyntaxNode)]
+	// preorder depth node =
+	//   case triviaClass node of
+	//     Keep -> (depth, node) : concatMap (preorder (depth + 1)) (children node)
+	//     SkipNodeOnly -> concatMap (preorder depth) (children node)
+	//     SkipNodeAndChildren -> []
+}
+
+pub fn lexical_preorder_v1(
+	env: HashMap<String, SyntaxNode>,
+	node: SyntaxNode,
+) -> Box<dyn Iterator<Item = (HashMap<String, SyntaxNode>, SyntaxNode)>> {
+	match node.trivia_class() {
+		TriviaClass::Keep => {
+			let f = {
+				let mut env = env.clone();
+				// FIXME: definition nodes only have identifiers as children!
+				if let Some(def) = Definition::cast(node.clone()) {
+					if let Some(ident) = def.ident().next() {
+						env.insert(ident.as_str().to_string(), def.syntax);
+					}
+				}
+				move |node| lexical_preorder_v1(env.clone(), node)
+			};
+
+			Box::new(std::iter::once((env.clone(), node.clone()))
+				// FIXME: definitions within a block won't propagate to siblings!
+				.chain(node.children().collect::<Vec<_>>().into_iter().flat_map(f)),
+			)
+		},
+		TriviaClass::SkipNodeOnly => Box::new(node
+			.children()
+			.collect::<Vec<_>>()
+			.into_iter()
+			.flat_map(move |node| lexical_preorder_v1(env.clone(), node))
+		),
+		TriviaClass::SkipNodeAndChildren => Box::new(std::iter::empty()),
+	}
+}
+
+pub fn lexical_preorder_v2(
+	env: HashMap<String, SyntaxNode>,
+	node: SyntaxNode,
+) -> Box<dyn Iterator<Item = (HashMap<String, SyntaxNode>, SyntaxNode)>> {
+	match node.trivia_class() {
+		TriviaClass::Keep => {
+			let f = {
+				let mut env = env.clone();
+				// use a method instead of just casting
+				for def in node.definitions_v2() {
+					if let Some(ident) = def.ident().next() {
+						env.insert(ident.as_str().to_string(), def.syntax);
+					}
+				}
+				move |node| lexical_preorder_v2(env.clone(), node)
+			};
+
+			Box::new(std::iter::once((env.clone(), node.clone()))
+				// remaining FIXME: definitions within a block won't propagate to siblings!
+				.chain(node.children().collect::<Vec<_>>().into_iter().flat_map(f)),
+			)
+		},
+		TriviaClass::SkipNodeOnly => Box::new(node
+			.children()
+			.collect::<Vec<_>>()
+			.into_iter()
+			.flat_map(move |node| lexical_preorder_v2(env.clone(), node))
+		),
+		TriviaClass::SkipNodeAndChildren => Box::new(std::iter::empty()),
+	}
+}
+
+// let's extend SyntaxNode to recognise nodes with definitions
+impl SyntaxNode {
+	fn definitions_v2(&self) -> impl Iterator<Item = Definition> {
+		let parser_decl_iter = ParserDecl::cast(self.clone()).into_iter().flat_map(|parser_decl|
+			// take only the main definition, don't go over the parameters
+			parser_decl.definition().take(1).chain(
+				parser_decl.parameter_list()
+					.flat_map(|param| param.parameter())
+					.flat_map(|param| param.definition())
+			)
+		);
+
+		let definition_stmt_iter = DefinitionStmt::cast(self.clone())
+			.into_iter()
+			// again take only the main definition, in case the RHS contains some as well (e.g. for a ternary if)
+			.flat_map(|def_stmt| def_stmt.definition().take(1));
+
+		parser_decl_iter.chain(definition_stmt_iter)
+	}
+}
+
+pub fn lexical_preorder(
+	env: HashMap<String, SyntaxNode>,
+	node: SyntaxNode,
+) -> (HashMap<String, SyntaxNode>, Box<dyn Iterator<Item = (HashMap<String, SyntaxNode>, SyntaxNode)>>) {
+	match node.trivia_class() {
+		TriviaClass::Keep => {
+			let original_env = env.clone();
+
+			// use a method instead of just casting
+			for def in node.exported_definitions() {
+				// FIXME: depends on whether it's a decl or a definition (a statement isn't accessible from its RHS)
+				if let Some(ident) = def.ident().next() {
+					env.insert(ident.as_str().to_string(), def.syntax);
+				}
+			}
+
+			let iter = std::iter::once((original_env, node.clone()))
+				// remaining FIXME: definitions within a block won't propagate to siblings!
+				.chain(node
+					.children()
+					.collect::<Vec<_>>()
+					.into_iter()
+					.scan(env, move |env, node| {
+						let (updates, iter) = lexical_preorder(env.clone(), node); // TODO: avoid cloning
+
+						for (k, v) in updates {
+							env.insert(k, v);
+						}
+
+						Some(iter)
+					})
+					.flatten()
+				);
+			(todo!(), Box::new(iter))
+		},
+		TriviaClass::SkipNodeOnly => {
+			let iter = node
+				.children()
+				.collect::<Vec<_>>()
+				.into_iter()
+				// TODO: scan
+				.flat_map(move |node| {
+					let (updates, iter) = lexical_preorder(env, node);
+					iter
+				});
+			(todo!(), Box::new(iter))
+		},
+		TriviaClass::SkipNodeAndChildren => {
+			(todo!(), Box::new(std::iter::empty()))
+		},
+	}
+}
+
+impl SyntaxNode {
+	/// Go over the definitions that this node's siblings can see.
+	fn exported_definitions(&self) -> impl Iterator<Item = Definition> {
+		let parser_decl_iter = ParserDecl::cast(self.clone()).into_iter().flat_map(|parser_decl|
+			// take only the main definition, don't go over the parameters
+			parser_decl.definition().take(1).chain(
+				parser_decl.parameter_list()
+					.flat_map(|param| param.parameter())
+					.flat_map(|param| param.definition())
+			)
+		);
+
+		let definition_stmt_iter = DefinitionStmt::cast(self.clone())
+			.into_iter()
+			// again take only the main definition, in case the RHS contains some as well (e.g. for a ternary if)
+			.flat_map(|def_stmt| def_stmt.definition().take(1));
+
+		parser_decl_iter.chain(definition_stmt_iter)
 	}
 }
 
@@ -222,10 +396,14 @@ macro_rules! ast_node {
 	};
 }
 
-ast_node!(parser_decl, methods: parameter_list);
+ast_node!(parser_decl, methods: definition, parameter_list);
 ast_node!(parameter_list, methods: parameter);
 ast_node!(parameter, methods: direction, typ, definition);
 ast_node!(definition, methods: ident);
+
+ast_node!(stmt, methods: definition_stmt, assignment_stmt);
+ast_node!(definition_stmt, methods: definition);
+ast_node!(assignment_stmt);
 
 ast_node!(typ);
 ast_node!(ident);
