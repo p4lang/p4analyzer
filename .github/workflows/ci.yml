@@ -13,10 +13,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Install node-JS 18
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
           node-version: '18'
 
@@ -32,7 +32,7 @@ jobs:
 
       - name: Restore cached Build
         id: cache-restore
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -58,7 +58,7 @@ jobs:
 
       - name: Save Build
         id: cache-build
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -69,7 +69,7 @@ jobs:
           key: ${{ steps.cache-restore.outputs.cache-primary-key }}
 
       - name: Artifact vsix file
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: .vsix-file
           path: packages/p4-analyzer-vscode/p4-analyzer-vscode-*.vsix
