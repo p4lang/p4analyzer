@@ -7,7 +7,7 @@
 			"inputs": [
 				"default",
 				{
-					"runtime": "stat -c %Z crates/p4-analyzer-wasm/pkg/*"
+					"runtime": "node -e \"const{readdirSync,statSync}=require('fs');const p='crates/p4-analyzer-wasm/pkg';try{readdirSync(p).sort().forEach(f=>process.stdout.write(statSync(p+'/'+f).mtimeMs+' '));}catch(e){process.stdout.write('0')}\""
 				}
 			],
 			"executor": "nx:run-commands",
