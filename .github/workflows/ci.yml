@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install node-JS 18
         uses: actions/setup-node@v6
@@ -32,7 +32,7 @@ jobs:
 
       - name: Restore cached Build
         id: cache-restore
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/bin/
@@ -58,7 +58,7 @@ jobs:
 
       - name: Save Build
         id: cache-build
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: |
             ~/.cargo/bin/
