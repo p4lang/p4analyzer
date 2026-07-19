@@ -4,7 +4,7 @@
 	"private": true,
 	"publisher": "P4.org",
 	"scripts": {
-		"prebuild": "cargo build && wasm-pack build --target nodejs crates/p4-analyzer-wasm",
+		"prebuild": "cargo build --locked && wasm-pack build --target nodejs crates/p4-analyzer-wasm",
 		"build": "run-script-os",
 		"build:nix": "nx run-many --target=build-nix --all",
 		"build:windows": "nx run-many --target=build-windows --all",

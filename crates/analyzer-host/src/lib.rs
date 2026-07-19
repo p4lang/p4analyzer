@@ -65,7 +65,7 @@ impl AnalyzerHost {
 		*(self.protocol_machine.write().await) = Some(LspProtocolMachine::new(
 			self.trace_value.clone(),
 			request_manager.clone(),
-			self.file_system.clone().unwrap(),
+			file_system.clone(),
 		));
 
 		match join_all(
