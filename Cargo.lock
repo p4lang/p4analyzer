@@ -64,6 +64,7 @@ dependencies = [
  "analyzer-abstractions",
  "analyzer-core",
  "async-channel",
+ "async-io",
  "async-rwlock",
  "cancellation",
  "dyn-clonable",
@@ -71,6 +72,7 @@ dependencies = [
  "itertools",
  "serde",
  "serde_json",
+ "tester",
  "thiserror",
  "tracing-subscriber",
 ]

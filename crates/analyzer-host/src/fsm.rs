@@ -1,12 +1,13 @@
 use analyzer_abstractions::{fs::AnyEnumerableFileSystem, tracing::info};
 use async_rwlock::RwLock as AsyncRwLock;
+use serde_json::Value;
 use std::{
 	collections::HashMap,
 	sync::{Arc, RwLock},
 };
 
 use crate::{
-	json_rpc::{message::Message, ErrorCode},
+	json_rpc::{message::{Message, Request, self, Notification}, ErrorCode},
 	lsp::{dispatch::Dispatch, request::RequestManager, state::LspServerState, DispatchBuilder, LspProtocolError},
 	lsp_impl::{
 		active_initialized::create_dispatcher as create_dispatcher_active_initialized,
@@ -51,6 +52,9 @@ impl LspProtocolMachine {
 
 	/// Returns `true` if the current [`LspProtocolMachine`] is in an active state; otherwise `false`.
 	pub fn is_active(&self) -> bool { self.current_state != LspServerState::Stopped }
+
+	/// Returns the current_state that the [`LspProtocolMachine`] is in. 
+	pub fn current_state(&self) -> LspServerState { self.current_state }
 
 	/// Processes a [`Message`] for the current [`LspProtocolMachine`], and returns an optional [`Message`] that represents
 	/// its response.
